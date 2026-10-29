@@ -1,0 +1,27 @@
+# Node/package manager artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Rust/Tauri build output and generated schemas
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Local VPN/server configuration and external binaries
+config1.json
+src-tauri/config1.json
+src-tauri/xui.exe
+src-tauri/xray/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.suo
+*.user
+*.sln

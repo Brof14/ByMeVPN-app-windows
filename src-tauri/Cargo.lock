@@ -1,0 +1,61 @@
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíãMwõ:-jZ.¶›­–)Ş³R2F†—2f–ÆR—2WFöÖF–6ÆÇ’vVæW&FVB'’6&vòà¢2—B—2æ÷B–çFVæFVBf÷"ÖçVÂVF—F–ærà§fW'6–öâÒ@ ¥µ·6¶vUÕĞ¦æÖRÒ&FÆW#" §fW'6–öâÒ#"ãã §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ#3#“Ss–f6C–3#ƒƒFcV3CƒcCcsFCSc#Sc#S#cfcSfScƒ“ƒ3C&Vf  ¥µ·6¶vUÕĞ¦æÖRÒ&†òÖ6÷&6–6² §fW'6–öâÒ#ããR §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ&3“ƒ#cC&f–SƒccScƒ#†VS–ƒSSs3s#3&#““S63s–VfSƒcV3S–C&& ¦FWVæFVæ6–W2Ò°¢&ÖVÖ6‡""À¥Ğ ¥µ·6¶vUÕĞ¦æÖRÒ&ÆÆö2Öæò×7FFÆ–" §fW'6–öâÒ#2ãã §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ&3&f#f6fCCv&cC“ffccC“V3#V&3#CFVS3ƒsFCCC&f6fF333Ff63v  ¥µ·6¶vUÕĞ¦æÖRÒ&ÆÆö2×7FFÆ–" §fW'6–öâÒ#ã2ã §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ##V3ƒcSsƒ3ƒ†&fƒcC#Vc#Csƒ“Cƒvf3CƒcF3fS–33ccf3CsSƒfS ¦FWVæFVæ6–W2Ò°¢&ÆÆö2Öæò×7FFÆ–""À¥Ğ ¥µ·6¶vUÕĞ¦æÖRÒ&æG&ö–E÷7—7FVÕ÷&÷W'F–W2 §fW'6–öâÒ#ããb §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ&S##cC–3““sffcf3SfSf6cCc6FF#3663cc3F#v#c#“&CC#3vf&2 ¦FWVæFVæ6–W2Ò°¢&Æ–&2"À¥Ğ ¥µ·6¶vUÕĞ¦æÖRÒ&ç–†÷r §fW'6–öâÒ#ããB §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æFW‚ ¦6†V6·7VÒÒ#33VVCvfSFSCs&3–Cf3CsFcsCC#vf3VcfS#F&&CcsvSSS“““CcCs  ¥µ·6¶vUÕĞ¦æÖRÒ&7–æ2Ö'&öF67B §fW'6–öâÒ#ãrã" §6÷W&6RÒ'&Vv—7G'’¶‡GG3¢òöv—F‡V"æ6öÒ÷'W7BÖÆærö7&FW2æ–òÖ–æF]ı×m¢G§²ÚîÆ­yİ "0.11.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "zlib-rs"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[package]]
+name = "zvariant"
+version = "5.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80bf6d6cd6a4b601acb64cfb8284cdc643fcfa75ef26ae3c46ec8aa4e8a1fbb7"
+dependencies = [
+ "endi",
+ "enumflags2",
+ "serde",
+ "winnow 1.0.4",
+ "zcheapstr",
+ "zvariant_derive",
+ "zvariant_utils",
+]
+
+[[package]]
+name = "zvariant_derive"
+version = "5.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef2672456ba1cb54b5eaec136e63135b3c7495fb938e53b28a62e633496d486d"
+dependencies = [
+ "proc-macro-crate 3.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+ "zvariant_utils",
+]
+
+[[package]]
+name = "zvariant_utils"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bad0294361a320b694a328460dc73add56c306150f5cb6bfafc44446120008a3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 3.0.9",
+ "winnow 1.0.4",
+]

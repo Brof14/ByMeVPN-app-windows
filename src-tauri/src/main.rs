@@ -13,6 +13,12 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            if let Ok(dir) = app.path().app_data_dir() {
+                let stale_config = dir.join("active_tunnel.json");
+                if stale_config.exists() {
+                    let _ = std::fs::remove_file(stale_config);
+                }
+            }
             #[cfg(all(debug_assertions, windows))]
             app.deep_link().register_all()?;
             Ok(())
@@ -50,7 +56,7 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("ByMeVPN failed to start")
         .run(|app_handle, event| {
-            if let RunEvent::ExitRequested { .. } = event {
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(state) = app_handle.try_state::<service::AppState>() {
                     if let Ok(mut lock) = state.tunnel.lock() {
                         if let Some(mut active) = lock.take() {

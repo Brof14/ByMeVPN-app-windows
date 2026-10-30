@@ -736,41 +736,23 @@ pub async fn delete_device(app: AppHandle, device_id: String) -> Result<(), Stri
 pub async fn auth_google(
     app: AppHandle,
     id_token: Option<String>,
-    email: Option<String>,
-    name: Option<String>,
+    _email: Option<String>,
+    _name: Option<String>,
 ) -> Result<AuthResult, String> {
+    let token = match id_token {
+        Some(t) if !t.trim().is_empty() && t.split('.').count() >= 3 => t,
+        _ => {
+            return Err("Серверная авторизация через Google отключена в текущей версии (GOOGLE_AUTH_SERVER_VERIFIED = false). Пожалуйста, используйте вход по Email или через Telegram.".into());
+        }
+    };
+
     let id = install_id(&app)?;
-    let target_email = email
-        .map(|e| e.trim().to_string())
-        .filter(|e| !e.is_empty())
-        .unwrap_or_else(|| {
-            id_token
-                .as_deref()
-                .filter(|t| t.contains('@'))
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "user@gmail.com".to_string())
-        });
-    let target_name = name
-        .map(|n| n.trim().to_string())
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| {
-            target_email
-                .split('@')
-                .next()
-                .unwrap_or("Google User")
-                .to_string()
-        });
-
-    let token_to_send = id_token
-        .filter(|t| !t.trim().is_empty())
-        .unwrap_or_else(|| format!("{target_email}:{target_name}"));
-
     let val = request(
         &app,
         Method::POST,
         "/auth/google",
         Some(json!({
-            "id_token": token_to_send,
+            "id_token": token,
             "install_id": id
         })),
         false,
@@ -778,10 +760,7 @@ pub async fn auth_google(
     )
     .await?;
 
-    let mut auth = store_auth(val).await?;
-    auth.user.email = target_email;
-    auth.user.name = target_name;
-    auth.user.is_google = true;
+    let auth = store_auth(val).await?;
     Ok(auth)
 }
 
@@ -809,15 +788,31 @@ pub async fn create_payment(
     app: AppHandle,
     plan_code: String,
     devices: Option<i64>,
+    amount_rub: Option<i64>,
+    days: Option<i64>,
 ) -> Result<Value, String> {
     let id = install_id(&app)?;
+    let dev = devices.unwrap_or(2);
+    let (computed_days, computed_amount) = match plan_code.as_str() {
+        "month" => (30, match dev { 5 => 109, 10 => 129, _ => 89 }),
+        "quarter" => (90, match dev { 5 => 396, 10 => 476, _ => 316 }),
+        "half_year" => (180, match dev { 5 => 712, 10 => 872, _ => 552 }),
+        "year" => (365, match dev { 5 => 1185, 10 => 1485, _ => 885 }),
+        _ => (30, 89),
+    };
+    let final_days = days.unwrap_or(computed_days);
+    let final_amount = amount_rub.unwrap_or(computed_amount);
+
     request(
         &app,
         Method::POST,
         "/payment/create",
         Some(json!({
             "plan_code": plan_code,
-            "devices": devices.unwrap_or(2),
+            "amount_rub": final_amount,
+            "days": final_days,
+            "devices": dev,
+            "provider": "yookassa",
             "install_id": id
         })),
         true,
@@ -1179,7 +1174,7 @@ pub fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
 pub fn open_external_url(url: String) -> Result<(), String> {
     let parsed = reqwest::Url::parse(&url).map_err(|_| "Некорректная ссылка.".to_string())?;
     let host = parsed.host_str().unwrap_or_default();
-    let is_allowed_host = matches!(host, "t.me" | "bymevpn-site.duckdns.org")
+    let is_allowed_host = matches!(host, "t.me" | "bymevpn-site.duckdns.org" | "bymevpn.duckdns.org")
         || host == "yookassa.ru"
         || host.ends_with(".yookassa.ru")
         || host == "yoomoney.ru"

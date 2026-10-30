@@ -47,7 +47,7 @@
       <!-- ============================================== -->
       <!-- AUTH VIEW (Screen 1 Login & Screen 2 Register) -->
       <!-- ============================================== -->
-      <section id="view-auth" class="view-panel auth-view hidden">
+      <section id="view-auth" class="view-panel auth-view">
         <div class="auth-hero-side">
           <div class="auth-globe-bg"></div>
           <div class="auth-hero-content">
@@ -118,13 +118,19 @@
 
             <div class="telegram-banner-box">
               <div class="tg-info-row">
-                <div class="tg-badge">✈</div>
+                <div class="tg-badge">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                    <path d="M21.5 3L2 10.5l7 2.5 2.5 7 3-3.5 5 4L21.5 3z" fill="#fff"/>
+                  </svg>
+                </div>
                 <div class="tg-text">
                   <strong data-i18n="tg_prompt">Уже пользовались через Telegram-бота?</strong>
                 </div>
               </div>
               <button type="button" id="btn-tg-login-modal" class="btn-telegram-inner">
-                <span>✈</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="vertical-align: middle;">
+                  <path d="M21.5 3L2 10.5l7 2.5 2.5 7 3-3.5 5 4L21.5 3z" fill="currentColor"/>
+                </svg>
                 <span data-i18n="tg_login_btn">Войти через Telegram</span>
                 <span class="btn-arrow">›</span>
               </button>
@@ -178,13 +184,19 @@
 
             <div class="telegram-banner-box">
               <div class="tg-info-row">
-                <div class="tg-badge">✈</div>
+                <div class="tg-badge">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                    <path d="M21.5 3L2 10.5l7 2.5 2.5 7 3-3.5 5 4L21.5 3z" fill="#fff"/>
+                  </svg>
+                </div>
                 <div class="tg-text">
                   <strong data-i18n="tg_prompt">Уже пользовались через Telegram-бота?</strong>
                 </div>
               </div>
               <button type="button" id="btn-tg-register-modal" class="btn-telegram-inner">
-                <span>✈</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="vertical-align: middle;">
+                  <path d="M21.5 3L2 10.5l7 2.5 2.5 7 3-3.5 5 4L21.5 3z" fill="currentColor"/>
+                </svg>
                 <span data-i18n="tg_login_btn">Войти через Telegram</span>
                 <span class="btn-arrow">›</span>
               </button>
@@ -909,7 +921,7 @@
       </div>
     </div>
 
-    <!-- Google OAuth Modal -->
+    <!-- Google OAuth Status Modal -->
     <div id="modal-google" class="modal-backdrop hidden">
       <div class="glass-card modal-window modal-google-window">
         <div class="modal-head">
@@ -917,24 +929,18 @@
           <h3 data-i18n="google_modal_title">Вход через Google</h3>
           <button type="button" class="btn-modal-close" data-close-modal="modal-google">×</button>
         </div>
-        <p class="modal-desc">Укажите ваш аккаунт Google для быстрой авторизации в ByMeVPN:</p>
-        <form id="form-google" class="auth-form-fields">
-          <div class="input-field-box">
-            <span class="field-icon">✉</span>
-            <input type="email" id="google-email" placeholder="example@gmail.com" required autocomplete="email" />
-          </div>
-          <div class="input-field-box">
-            <span class="field-icon">👤</span>
-            <input type="text" id="google-name" placeholder="Имя (необязательно)" autocomplete="name" />
-          </div>
-          <div class="modal-actions-row">
-            <button type="button" class="btn-secondary" data-close-modal="modal-google" data-i18n="cancel">Отмена</button>
-            <button type="submit" id="btn-submit-google" class="btn-primary">
-              <span>Войти</span>
-              <span class="btn-arrow">›</span>
-            </button>
-          </div>
-        </form>
+        <p class="modal-desc" style="line-height: 1.5; color: var(--text-secondary); margin-bottom: 16px;">
+          Серверная верификация Google OAuth в текущей версии отключена на стороне бэкенда (<code style="color: var(--neon-cyan);">GOOGLE_AUTH_SERVER_VERIFIED = false</code>).
+          <br><br>
+          Для безопасной работы, пожалуйста, используйте:
+          <br>• Вход по <strong>Email и паролю</strong>
+          <br>• Быстрый вход в 1 клик через <strong>Telegram-бота</strong>
+        </p>
+        <div class="modal-actions-row" style="justify-content: flex-end;">
+          <button type="button" class="btn-primary" data-close-modal="modal-google" style="min-width: 120px;">
+            <span>Понятно</span>
+          </button>
+        </div>
       </div>
     </div>
 

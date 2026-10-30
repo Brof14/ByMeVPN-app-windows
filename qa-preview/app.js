@@ -443,7 +443,6 @@ function setupEventListeners() {
   // Google sign in buttons
   document.getElementById('btn-google-login')?.addEventListener('click', handleGoogleAuth);
   document.getElementById('btn-google-register')?.addEventListener('click', handleGoogleAuth);
-  document.getElementById('form-google')?.addEventListener('submit', handleGoogleSubmit);
 
   // Telegram login buttons
   document.getElementById('btn-tg-login-modal')?.addEventListener('click', startTelegramAuthFlow);
@@ -608,36 +607,6 @@ let tgPollingInterval = null;
 
 function handleGoogleAuth() {
   openModal('modal-google');
-}
-
-async function handleGoogleSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById('google-email')?.value.trim();
-  const name = document.getElementById('google-name')?.value.trim() || '';
-
-  if (!email || !email.includes('@')) {
-    showToast('Введите корректный email Google', true);
-    return;
-  }
-
-  showToast('Авторизация через Google...');
-  try {
-    const res = await invoke('auth_google', {
-      email,
-      name: name || undefined,
-      idToken: `${email}:${name || 'Google User'}`
-    });
-    if (res && res.user) {
-      state.user = res.user;
-      state.subscription = res.subscription;
-      closeModal('modal-google');
-      showAppShell();
-      showToast(`Добро пожаловать, ${state.user.name || state.user.email}!`);
-      await refreshAccountSnapshot();
-    }
-  } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Не удалось войти через Google', true);
-  }
 }
 
 async function startTelegramAuthFlow() {
@@ -1318,34 +1287,31 @@ function showToast(text, isError = false) {
   }, 3200);
 }
 
-// Standalone Mock Fallback
-function mockIpc(cmd, args) {
+// Standalone Fallback: Safe offline/unauthenticated state (Zero fake accounts/subscriptions)
+function mockIpc(cmd, _args) {
   switch (cmd) {
     case 'get_settings':
       return { autoStart: true, stayConnectedInBackground: true, bypassRu: true, adBlock: 'recommended', killSwitch: true, language: 'ru' };
     case 'get_servers':
-      return DEFAULT_SERVERS;
+      return [];
     case 'restore_session':
-      return {
-        user: { id: 'usr-1', name: 'Arseniy', email: 'arseniy@example.com', is_google: false },
-        subscription: { status: 'active', plan_name: 'Годовой', expires_at: '24.11.2026', seconds_remaining: 31536000 }
-      };
+      return null;
+    case 'account_snapshot':
+      return { user: null, subscription: null, devices: [] };
     case 'vpn_status':
       return {
-        connected: state.vpnConnected,
-        connected_seconds: state.connectedSeconds,
-        download_mbps: 92.4,
-        upload_mbps: 38.7,
-        ping_ms: 28,
-        server_name: state.selectedServer.name,
-        country: state.selectedServer.country,
-        ip: '2.27.120.247'
+        connected: false,
+        connected_seconds: 0,
+        download_mbps: null,
+        upload_mbps: null,
+        ping_ms: null,
+        server_name: '',
+        country: '',
+        ip: ''
       };
-    case 'vpn_start':
-      return { connected: true, download_mbps: 92.4, upload_mbps: 38.7, ping_ms: 28 };
     case 'vpn_stop':
       return true;
     default:
-      return true;
+      return null;
   }
 }

@@ -1,24 +1,29 @@
 # ByMeVPN for Windows
 
-Windows desktop client based on the public ByMeVPN Android and Telegram bot repositories.
+A Windows desktop client for the ByMeVPN service, built with **Tauri 2**, **Rust**, and a lightweight HTML/CSS/JavaScript interface.
 
-## Current status
+> **Status:** Work in progress. The interface and API contract are being developed. A working production VPN tunnel is not yet implemented.
 
-This is an in-progress Windows client. The desktop UI and source contract are being built from the checked-out upstream sources. A production VPN requires a valid ByMeVPN account/API entitlement and an installed, integrity-checked Xray Windows runtime with its matching Wintun component. The app must report connected only after the tunnel and traffic checks succeed.
+## Requirements
+
+- Windows 10/11 (x64)
+- Rust stable and Microsoft C++ build tools
+- WebView2 Runtime
+
+Cargo downloads the Tauri dependencies during the build. The frontend is in `ui/`; the Windows-native application code is in `src-tauri/`.
 
 ## Development
 
-- Windows 10/11 x64
-- Rust stable and the Microsoft C++ build tools
-- WebView2 Runtime
-- Tauri v2 Rust dependencies (Cargo fetches them)
+Open the project in the repository and follow the Tauri 2 development workflow for the local Windows toolchain. The API endpoints are defined in `src-tauri/src/api_transport.rs`.
 
-API addresses are defined together in `src-tauri/src/api_transport.rs`. The current server uses HTTP, so passwords and bearer tokens are not protected in transit. Change both configured URLs to the verified HTTPS endpoints when available. The fallback is attempted only when a connection cannot be established; requests are not retried after an HTTP response or an ambiguous delivery failure.
+The current API server uses HTTP. Passwords and bearer tokens are not protected in transit, so authentication must remain blocked until verified HTTPS endpoints are available. Do not enter real account credentials into an unencrypted connection.
 
-The frontend is plain HTML/CSS/JavaScript in `ui/`; no Node package manager is needed. The Windows-native shell lives in `src-tauri/`.
+## Implementation status
 
-See [`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md) and [`docs/STATUS.md`](docs/STATUS.md) for the verified API contract, parity map, and remaining implementation gates.
+A production VPN requires an integrity-checked Xray Windows runtime, its matching Wintun component, tunnel and route management, DNS handling, traffic validation, and reliable shutdown. The app must only report **Connected** after the tunnel and traffic checks pass.
 
-## Secrets
+See [`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md) and [`docs/STATUS.md`](docs/STATUS.md) for the verified API contract, parity notes, and remaining work.
 
-Never put passwords, API tokens, subscription links, or VPN keys in source control or chat. Windows credentials belong in Windows Credential Manager. Do not run an unsigned driver installer or disable TLS validation. HTTP does not protect credentials in transit, even when the server hashes passwords and signs tokens.
+## Security
+
+Never commit passwords, API tokens, subscription URLs, or VPN keys. Store user credentials with Windows Credential Manager. Do not run unsigned driver installers or disable TLS verification.

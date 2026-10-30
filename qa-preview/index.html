@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060d13">
+  <title>ByMeVPN</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="app" class="app-root">
+
+    <!-- Custom Windows Titlebar -->
+    <header class="window-titlebar" data-tauri-drag-region>
+      <div class="window-title-left" data-tauri-drag-region>
+        <div class="titlebar-logo">
+          <svg width="22" height="24" viewBox="0 0 92 104" fill="none">
+            <defs>
+              <linearGradient id="tbShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00d2ff"/>
+                <stop offset="0.55" stop-color="#00e5b0"/>
+                <stop offset="1" stop-color="#00f5a0"/>
+              </linearGradient>
+            </defs>
+            <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#tbShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
+            <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#tbShieldGrad)"/>
+          </svg>
+        </div>
+        <span class="titlebar-brand">ByMe<span class="neon-green">VPN</span></span>
+      </div>
+      <div class="window-controls">
+        <button id="btn-minimize" class="win-btn" aria-label="Свернуть">
+          <svg width="11" height="1" viewBox="0 0 11 1"><rect width="11" height="1" fill="currentColor"/></svg>
+        </button>
+        <button id="btn-maximize" class="win-btn" aria-label="Развернуть">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor"/></svg>
+        </button>
+        <button id="btn-close" class="win-btn win-close" aria-label="Закрыть">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div id="main-container" class="main-container">
+
+      <!-- ============================================== -->
+      <!-- AUTH VIEW (Screen 1 Login & Screen 2 Register) -->
+      <!-- ============================================== -->
+      <section id="view-auth" class="view-panel auth-view hidden">
+        <div class="auth-hero-side">
+          <div class="auth-globe-bg"></div>
+          <div class="auth-hero-content">
+            <div class="hero-shield-emblem">
+              <div class="shield-halo-glow"></div>
+              <svg width="110" height="124" viewBox="0 0 92 104" fill="none" class="auth-shield-svg">
+                <defs>
+                  <linearGradient id="authShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#00d2ff"/>
+                    <stop offset="0.55" stop-color="#00e5b0"/>
+                    <stop offset="1" stop-color="#00f5a0"/>
+                  </linearGradient>
+                  <filter id="authGlow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="4" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
+                <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#authShieldGrad)" stroke-width="6" stroke-linejoin="round" filter="url(#authGlow)"/>
+                <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#authShieldGrad)"/>
+              </svg>
+            </div>
+            <h1 class="auth-brand-name">ByMe<span class="neon-green">VPN</span></h1>
+            <p class="auth-slogan" data-i18n="slogan">Скорость. Анонимность. Честность.</p>
+            <div class="auth-perks-row">
+              <span class="perk-pill">
+                <span class="perk-icon">⚡</span>
+                <span data-i18n="perk_fast">Быстрое подключение</span>
+              </span>
+              <span class="perk-pill">
+                <span class="perk-icon">⚙</span>
+                <span data-i18n="perk_easy">Простое управление</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-card-side">
+          <!-- LOGIN FORM -->
+          <div id="auth-box-login" class="glass-card auth-card">
+            <h2 class="auth-title" data-i18n="login_title">Вход</h2>
+            <p class="auth-subtitle" data-i18n="login_subtitle">Войдите в свой аккаунт ByMeVPN</p>
+
+            <button type="button" id="btn-google-login" class="btn-google">
+              <span class="google-g-icon">G</span>
+              <span data-i18n="continue_google">Продолжить с Google</span>
+              <span class="btn-arrow">›</span>
+            </button>
+
+            <div class="auth-divider">
+              <span data-i18n="or_email">или по почте</span>
+            </div>
+
+            <form id="form-login" class="auth-form-fields">
+              <div class="input-field-box">
+                <span class="field-icon">✉</span>
+                <input type="email" id="login-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+              </div>
+              <div class="input-field-box">
+                <span class="field-icon">🔒</span>
+                <input type="password" id="login-password" placeholder="Пароль" required autocomplete="current-password" />
+                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+              </div>
+              <button type="submit" id="btn-submit-login" class="btn-primary auth-submit-btn">
+                <span data-i18n="sign_in">Войти</span>
+                <span class="btn-arrow">›</span>
+              </button>
+            </form>
+
+            <div class="telegram-banner-box">
+              <div class="tg-info-row">
+                <div class="tg-badge">✈</div>
+                <div class="tg-text">
+                  <strong data-i18n="tg_prompt">Уже пользовались через Telegram-бота?</strong>
+                </div>
+              </div>
+              <button type="button" id="btn-tg-login-modal" class="btn-telegram-inner">
+                <span>✈</span>
+                <span data-i18n="tg_login_btn">Войти через Telegram</span>
+                <span class="btn-arrow">›</span>
+              </button>
+            </div>
+
+            <div class="auth-switch-link">
+              <span data-i18n="no_account">Нет аккаунта?</span>
+              <a href="#" id="link-goto-register" class="neon-link" data-i18n="register_link">Зарегистрироваться ›</a>
+            </div>
+          </div>
+
+          <!-- REGISTER FORM -->
+          <div id="auth-box-register" class="glass-card auth-card hidden">
+            <h2 class="auth-title" data-i18n="register_title">Регистрация</h2>
+            <p class="auth-subtitle" data-i18n="register_subtitle">Создайте аккаунт ByMeVPN</p>
+
+            <button type="button" id="btn-google-register" class="btn-google">
+              <span class="google-g-icon">G</span>
+              <span data-i18n="continue_google">Продолжить с Google</span>
+              <span class="btn-arrow">›</span>
+            </button>
+
+            <div class="auth-divider">
+              <span data-i18n="or_email">или по почте</span>
+            </div>
+
+            <form id="form-register" class="auth-form-fields">
+              <div class="input-field-box">
+                <span class="field-icon">👤</span>
+                <input type="text" id="register-name" placeholder="Имя пользователя" autocomplete="name" />
+              </div>
+              <div class="input-field-box">
+                <span class="field-icon">✉</span>
+                <input type="email" id="register-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+              </div>
+              <div class="input-field-box">
+                <span class="field-icon">🔒</span>
+                <input type="password" id="register-password" placeholder="Придумайте пароль" required autocomplete="new-password" />
+                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+              </div>
+              <div class="input-field-box">
+                <span class="field-icon">🔒</span>
+                <input type="password" id="register-password-confirm" placeholder="Повторите пароль" required autocomplete="new-password" />
+                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+              </div>
+              <button type="submit" id="btn-submit-register" class="btn-primary auth-submit-btn">
+                <span data-i18n="create_account">Создать аккаунт</span>
+                <span class="btn-arrow">›</span>
+              </button>
+            </form>
+
+            <div class="telegram-banner-box">
+              <div class="tg-info-row">
+                <div class="tg-badge">✈</div>
+                <div class="tg-text">
+                  <strong data-i18n="tg_prompt">Уже пользовались через Telegram-бота?</strong>
+                </div>
+              </div>
+              <button type="button" id="btn-tg-register-modal" class="btn-telegram-inner">
+                <span>✈</span>
+                <span data-i18n="tg_login_btn">Войти через Telegram</span>
+                <span class="btn-arrow">›</span>
+              </button>
+            </div>
+
+            <div class="auth-switch-link">
+              <span data-i18n="have_account">Есть аккаунт?</span>
+              <a href="#" id="link-goto-login" class="neon-link" data-i18n="login_link">Войти ›</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- APP SHELL VIEW (Screens 3, 4, 5, 6, 7, 8)      -->
+      <!-- ============================================== -->
+      <div id="view-app-shell" class="view-panel app-shell-layout hidden">
+        
+        <!-- Left Navigation Sidebar -->
+        <aside class="app-sidebar">
+          <div class="sidebar-brand">
+            <div class="sidebar-logo">
+              <svg width="26" height="29" viewBox="0 0 92 104" fill="none">
+                <defs>
+                  <linearGradient id="sbShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#00d2ff"/>
+                    <stop offset="0.55" stop-color="#00e5b0"/>
+                    <stop offset="1" stop-color="#00f5a0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#sbShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
+                <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#sbShieldGrad)"/>
+              </svg>
+            </div>
+            <span class="sidebar-brand-text">ByMe<span class="neon-green">VPN</span></span>
+          </div>
+
+          <nav class="sidebar-nav">
+            <button type="button" class="sidebar-tab active" data-tab="tab-home">
+              <span class="tab-icon">⏻</span>
+              <span class="tab-label" data-i18n="nav_connection">Подключение</span>
+            </button>
+            <button type="button" class="sidebar-tab" data-tab="tab-account">
+              <span class="tab-icon">👤</span>
+              <span class="tab-label" data-i18n="nav_account">Аккаунт</span>
+            </button>
+            <button type="button" class="sidebar-tab" data-tab="tab-settings">
+              <span class="tab-icon">⚙</span>
+              <span class="tab-label" data-i18n="nav_settings">Настройки</span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Right Content Frame -->
+        <main class="app-main-frame">
+
+          <!-- Top Navigation Header -->
+          <div class="app-top-header">
+            <div class="header-left">
+              <h1 id="page-title" class="page-title">Подключение</h1>
+              <span id="vpn-active-pill" class="badge-active-pill hidden">
+                <span class="dot-green">●</span>
+                <span data-i18n="protection_active">Защита активна</span>
+              </span>
+            </div>
+            <div class="header-right-actions">
+              <button type="button" id="btn-top-help" class="header-circle-btn" title="Помощь">?</button>
+              <button type="button" id="btn-top-menu" class="header-circle-btn" title="Меню">⋯</button>
+            </div>
+          </div>
+
+          <!-- Tab Contents Container -->
+          <div class="app-tab-pages">
+
+            <!-- TAB 1: HOME (Screen 3: No Plan / Screen 5: Connected) -->
+            <div id="tab-home" class="tab-content active">
+
+              <!-- STATE A: CONNECTED (Screen 5) -->
+              <div id="home-state-connected" class="home-state-box hidden">
+                <div class="glass-card hero-connection-card">
+                  <div class="hero-card-globe-art"></div>
+                  <div class="connection-hero-inner">
+                    <div id="vpn-power-ring" class="pulse-power-ring ring-connected">
+                      <div class="outer-glow-pulsar"></div>
+                      <div class="inner-shield-circle">
+                        <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
+                          <defs>
+                            <linearGradient id="connShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                              <stop stop-color="#00d2ff"/>
+                              <stop offset="0.55" stop-color="#00e5b0"/>
+                              <stop offset="1" stop-color="#00f5a0"/>
+                            </linearGradient>
+                          </defs>
+                          <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#connShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
+                          <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#connShieldGrad)"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    <div class="connection-status-headline">
+                      <span class="status-check-icon">✓</span>
+                      <h2 class="status-title-text" data-i18n="vpn_connected">VPN подключён</h2>
+                    </div>
+                    <div class="connection-substatus">
+                      <span data-i18n="conn_secured">Соединение защищено</span>
+                      <span class="substatus-sep">•</span>
+                      <span id="vpn-live-timer" class="neon-green">00:42:18</span>
+                    </div>
+
+                    <div id="btn-active-location-pill" class="location-chip-pill">
+                      <span id="conn-flag-chip" class="chip-flag">🇩🇪</span>
+                      <span id="conn-location-name">Германия • Франкфурт</span>
+                    </div>
+
+                    <div class="metrics-triad-row">
+                      <div class="metric-triad-col">
+                        <div class="metric-col-icon icon-down">↓</div>
+                        <div class="metric-col-data">
+                          <span class="metric-lbl" data-i18n="download">Скачивание</span>
+                          <strong id="metric-download" class="metric-val">92.4 Мбит/с</strong>
+                        </div>
+                      </div>
+                      <div class="metric-col-divider"></div>
+                      <div class="metric-triad-col">
+                        <div class="metric-col-icon icon-up">↑</div>
+                        <div class="metric-col-data">
+                          <span class="metric-lbl" data-i18n="upload">Отправка</span>
+                          <strong id="metric-upload" class="metric-val">38.7 Мбит/с</strong>
+                        </div>
+                      </div>
+                      <div class="metric-col-divider"></div>
+                      <div class="metric-triad-col">
+                        <div class="metric-col-icon icon-ping">⚡</div>
+                        <div class="metric-col-data">
+                          <span class="metric-lbl" data-i18n="latency">Задержка</span>
+                          <strong id="metric-ping" class="metric-val">28 мс</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Lower Row Cards -->
+                <div class="home-cards-duo">
+                  <!-- Server Card -->
+                  <div class="glass-card sub-card-item">
+                    <div class="card-item-header">
+                      <span class="card-item-icon">🌐</span>
+                      <strong data-i18n="card_server">Сервер</strong>
+                    </div>
+                    <div class="card-interactive-row" id="row-server-info">
+                      <div class="card-row-left">
+                        <span id="home-server-flag" class="chip-flag">🇩🇪</span>
+                        <div class="card-row-texts">
+                          <strong id="home-server-country">Германия</strong>
+                          <span id="home-server-city">Франкфурт</span>
+                        </div>
+                      </div>
+                      <span class="card-row-arrow">›</span>
+                    </div>
+                    <div class="card-divider-line"></div>
+                    <div class="card-interactive-row" id="btn-open-server-picker">
+                      <div class="card-row-left">
+                        <span class="icon-swap">⇄</span>
+                        <strong data-i18n="change_server">Сменить сервер</strong>
+                      </div>
+                      <span class="card-row-arrow">›</span>
+                    </div>
+                  </div>
+
+                  <!-- Subscription Card -->
+                  <div class="glass-card sub-card-item">
+                    <div class="card-item-header">
+                      <span class="card-item-icon">👑</span>
+                      <strong data-i18n="card_sub">Подписка</strong>
+                    </div>
+                    <div class="card-interactive-row" id="row-sub-info">
+                      <div class="card-row-left">
+                        <div class="card-row-texts">
+                          <strong id="home-sub-title">Годовой</strong>
+                          <span id="home-sub-expiry">Действует до 24.11.2026</span>
+                        </div>
+                      </div>
+                      <span id="home-sub-badge" class="badge-active-mini" data-i18n="active">Активна</span>
+                    </div>
+                    <div class="card-divider-line"></div>
+                    <div class="card-interactive-row" id="btn-open-manage-pricing">
+                      <div class="card-row-left">
+                        <span class="icon-gear">⚙</span>
+                        <strong data-i18n="manage_sub">Управлять</strong>
+                      </div>
+                      <span class="card-row-arrow">›</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Bottom Strip -->
+                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick">
+                  <div class="bypass-left">
+                    <span class="bypass-antenna-icon">📡</span>
+                    <span data-i18n="ru_bypass_label">Российские сервисы работают напрямую</span>
+                  </div>
+                  <span class="card-row-arrow">›</span>
+                </div>
+              </div>
+
+              <!-- STATE B: DISCONNECTED / NO SUBSCRIPTION (Screen 3) -->
+              <div id="home-state-disconnected" class="home-state-box">
+                <div class="glass-card hero-connection-card">
+                  <div class="hero-card-globe-art"></div>
+                  <div class="connection-hero-inner">
+                    <div id="vpn-power-ring-off" class="pulse-power-ring ring-off">
+                      <div class="inner-shield-circle">
+                        <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
+                          <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="#4a6572" stroke-width="5" stroke-linejoin="round"/>
+                          <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="#3a515c"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    <h2 class="status-title-text" data-i18n="vpn_off">VPN выключен</h2>
+                    <p id="home-off-desc" class="connection-substatus" data-i18n="vpn_off_desc">Нажмите, чтобы подключиться</p>
+                    
+                    <button type="button" id="btn-toggle-vpn" class="btn-primary vpn-big-cta">
+                      <span id="vpn-btn-text" data-i18n="connect">Подключиться</span>
+                      <span class="btn-arrow">›</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Trial Promo Box (Screen 3 Bottom) -->
+                <div class="glass-card promo-trial-box">
+                  <div class="promo-trial-content">
+                    <h3 class="promo-trial-title">
+                      <span data-i18n="try_bymevpn">Попробовать ByMeVPN за</span> <span class="neon-green">1 ₽</span>
+                    </h3>
+                    <p class="promo-trial-desc" data-i18n="trial_perks">
+                      3 дня полного доступа ко всем серверам без ограничений скорости. Затем — 89 ₽ за 30 дней.
+                    </p>
+                    <div class="promo-buttons-row">
+                      <button type="button" id="btn-home-activate-trial" class="btn-primary">
+                        <span data-i18n="activate_1rub">Активировать за 1 ₽</span>
+                        <span class="btn-arrow">›</span>
+                      </button>
+                      <button type="button" id="btn-home-all-tariffs" class="btn-secondary">
+                        <span data-i18n="view_all_plans">Посмотреть все тарифы ›</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- TAB 2: PRICING & PAYMENT (Screen 4) -->
+            <div id="tab-pricing" class="tab-content">
+              <!-- Top Banner -->
+              <div class="glass-card promo-trial-banner">
+                <div class="banner-texts">
+                  <h2 class="banner-headline">
+                    <span data-i18n="trial_access_headline">Пробный доступ за</span> <span class="neon-green">1 ₽</span>
+                  </h2>
+                  <p class="banner-sub" data-i18n="trial_for_new">3 дня доступа для новых пользователей</p>
+                  <p class="banner-sub-note" data-i18n="trial_then_price">Затем — 89 ₽ за 30 дней при сохранённом способе оплаты</p>
+                  <button type="button" id="btn-pricing-activate-trial" class="btn-primary banner-cta-btn">
+                    <span data-i18n="activate_1rub">Активировать за 1 ₽</span>
+                    <span class="btn-arrow">›</span>
+                  </button>
+                </div>
+                <div class="banner-art-right">
+                  <svg width="100" height="110" viewBox="0 0 92 104" fill="none">
+                    <defs>
+                      <linearGradient id="banShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#00d2ff"/>
+                        <stop offset="0.55" stop-color="#00e5b0"/>
+                        <stop offset="1" stop-color="#00f5a0"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#banShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
+                    <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#banShieldGrad)"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Device Selection Tabs -->
+              <div class="pricing-devices-section">
+                <span class="section-micro-label" data-i18n="select_device_count">Выберите количество устройств</span>
+                <div class="device-segmented-control">
+                  <button type="button" class="dev-seg-btn active" data-devices="2">
+                    <span class="dev-icon">💻</span>
+                    <span data-i18n="devices_2">2 устройства</span>
+                  </button>
+                  <button type="button" class="dev-seg-btn" data-devices="5">
+                    <span class="dev-icon">💻📱</span>
+                    <span data-i18n="devices_5">5 устройств</span>
+                  </button>
+                  <button type="button" class="dev-seg-btn" data-devices="10">
+                    <span class="dev-icon">💻📱📺</span>
+                    <span data-i18n="devices_10">10 устройств</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 4 Tariff Cards Grid -->
+              <div class="pricing-cards-grid">
+                <div class="glass-card tariff-card" data-plan="month">
+                  <span class="tariff-period-name" data-i18n="plan_1m">1 месяц</span>
+                  <div class="tariff-price-block">
+                    <strong class="tariff-price-number" id="price-month">89 ₽</strong>
+                    <span class="tariff-period-note" id="days-month">30 дней</span>
+                  </div>
+                </div>
+
+                <div class="glass-card tariff-card" data-plan="quarter">
+                  <div class="tariff-head-line">
+                    <span class="tariff-period-name" data-i18n="plan_3m">3 месяца</span>
+                    <span class="gift-badge" data-i18n="plus_1_gift">+ 1 в подарок</span>
+                  </div>
+                  <div class="tariff-price-block">
+                    <strong class="tariff-price-number" id="price-quarter">316 ₽</strong>
+                    <span class="tariff-period-note" id="rate-quarter">79 ₽ / месяц</span>
+                  </div>
+                </div>
+
+                <div class="glass-card tariff-card" data-plan="half_year">
+                  <div class="tariff-head-line">
+                    <span class="tariff-period-name" data-i18n="plan_6m">6 месяцев</span>
+                    <span class="gift-badge" data-i18n="plus_2_gift">+ 2 в подарок</span>
+                  </div>
+                  <div class="tariff-price-block">
+                    <strong class="tariff-price-number" id="price-half_year">552 ₽</strong>
+                    <span class="tariff-period-note" id="rate-half_year">69 ₽ / месяц</span>
+                  </div>
+                </div>
+
+                <!-- Best Value Card (Selected by default) -->
+                <div class="glass-card tariff-card selected best-value" data-plan="year">
+                  <div class="best-badge-crown">
+                    <span class="crown-icon">👑</span>
+                    <span data-i18n="best_price">Лучшая цена</span>
+                  </div>
+                  <div class="tariff-head-line">
+                    <span class="tariff-period-name" data-i18n="plan_12m">12 месяцев</span>
+                    <span class="gift-badge" data-i18n="plus_3_gift">+ 3 в подарок</span>
+                  </div>
+                  <div class="tariff-price-block">
+                    <strong class="tariff-price-number" id="price-year">885 ₽</strong>
+                    <span class="tariff-period-note" id="rate-year">59 ₽ / месяц</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pay Button -->
+              <button type="button" id="btn-pay-yookassa" class="btn-primary btn-pay-large">
+                <span data-i18n="pay_via_yookassa">Оплатить через ЮKassa</span>
+                <span class="btn-arrow">›</span>
+              </button>
+
+              <!-- Payment Footnote -->
+              <div class="payment-footnotes">
+                <div class="payment-methods-row">
+                  <span class="sbp-icon-stars">❖</span>
+                  <span data-i18n="payment_methods_text">СБП, карты, SberPay, T-Pay</span>
+                </div>
+                <p data-i18n="auto_renew_note">Подписка продлевается автоматически. Вы можете отменить продление в любой момент в настройках аккаунта.</p>
+                <p data-i18n="terms_agreement">Нажимая «Оплатить», вы соглашаетесь с <a href="#" id="link-pricing-terms" class="cyan-link">Условиями использования</a> и <a href="#" id="link-pricing-privacy" class="cyan-link">Политикой конфиденциальности</a>.</p>
+              </div>
+            </div>
+
+            <!-- TAB 3: SERVER SELECTION (Screen 6) -->
+            <div id="tab-servers" class="tab-content">
+              <div class="servers-view-container">
+                <div class="servers-top-bar">
+                  <button type="button" id="btn-back-from-servers" class="btn-back-pill">
+                    <span>‹</span>
+                    <span data-i18n="back">Назад</span>
+                  </button>
+                  <div class="search-input-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="server-search-input" placeholder="Поиск сервера или страны..." />
+                  </div>
+                </div>
+
+                <!-- Recommended Auto Card -->
+                <div class="glass-card recommended-server-card selected" data-server-code="auto">
+                  <div class="rec-icon-badge">✨</div>
+                  <div class="rec-server-info">
+                    <strong data-i18n="server_auto">Автоматически</strong>
+                    <span data-i18n="server_auto_desc">Выберем лучшее доступное соединение</span>
+                  </div>
+                  <div class="radio-selection-dot"></div>
+                </div>
+
+                <div class="section-micro-label" data-i18n="available_servers">ДОСТУПНЫЕ СЕРВЕРЫ</div>
+
+                <!-- Server List -->
+                <div id="servers-dynamic-list" class="servers-cards-stack">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 4: ACCOUNT (Screen 7) -->
+            <div id="tab-account" class="tab-content">
+              <!-- Top Row Cards -->
+              <div class="account-top-cards-row">
+                <!-- User Profile Card -->
+                <div class="glass-card account-profile-card">
+                  <div class="profile-card-globe-art"></div>
+                  <div class="profile-avatar-circle">
+                    <span class="avatar-user-icon">👤</span>
+                  </div>
+                  <div class="profile-details-column">
+                    <h2 id="acc-user-name" class="profile-name-text">Arseniy</h2>
+                    <span id="acc-user-email" class="profile-email-text">arseniy@example.com</span>
+                    <span id="acc-user-status-pill" class="badge-active-mini">
+                      <span class="dot-green">●</span>
+                      <span data-i18n="active">Активна</span>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Subscription Management Card -->
+                <div class="glass-card account-sub-card">
+                  <div class="acc-sub-head">
+                    <span class="crown-icon">👑</span>
+                    <span data-i18n="card_sub">Подписка</span>
+                  </div>
+                  <div class="acc-sub-plan-row">
+                    <h3 id="acc-plan-name" class="acc-plan-title">Годовой</h3>
+                    <span id="acc-autorenew-badge" class="badge-active-pill" data-i18n="autorenew_on">Автопродление включено</span>
+                  </div>
+                  <p id="acc-plan-validity" class="acc-validity-text">Действует до 24.11.2026</p>
+                  
+                  <div class="acc-sub-actions-row">
+                    <button type="button" id="btn-acc-renew" class="btn-primary btn-acc-renew">
+                      <span data-i18n="renew">Продлить</span>
+                      <span class="btn-arrow">›</span>
+                    </button>
+                    <button type="button" id="btn-acc-manage" class="btn-secondary btn-acc-manage">
+                      <span>⚙</span>
+                      <span data-i18n="manage_subscription">Управлять подпиской</span>
+                      <span class="btn-arrow">›</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Devices Section -->
+              <div class="account-devices-section">
+                <div class="devices-head-line">
+                  <div class="devices-title-group">
+                    <span class="devices-icon">💻</span>
+                    <strong data-i18n="devices">Устройства</strong>
+                  </div>
+                  <span id="acc-devices-ratio" class="badge-devices-ratio">3 / 5</span>
+                </div>
+
+                <div id="acc-devices-list" class="devices-cards-stack">
+                  <!-- Dynamically populated from real backend API devices -->
+                </div>
+              </div>
+
+              <!-- Support Card -->
+              <div class="glass-card account-support-card">
+                <div class="support-left">
+                  <span class="support-headset-icon">🎧</span>
+                  <div class="support-texts">
+                    <strong data-i18n="support_title">Поддержка</strong>
+                    <span data-i18n="support_desc">Если у вас возникли вопросы или нужна помощь — мы всегда рядом.</span>
+                  </div>
+                </div>
+                <button type="button" id="btn-acc-open-support" class="btn-secondary support-cta-btn">
+                  <span>💬</span>
+                  <span data-i18n="write_support">Написать в поддержку</span>
+                  <span class="btn-arrow">›</span>
+                </button>
+              </div>
+
+              <!-- Footer Actions -->
+              <div class="account-footer-row">
+                <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout">
+                  <span>[→]</span>
+                  <span data-i18n="logout">Выйти из аккаунта</span>
+                </button>
+                <button type="button" id="btn-acc-delete" class="footer-action-btn action-delete">
+                  <span>🗑</span>
+                  <span data-i18n="delete_account">Удалить аккаунт</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- TAB 5: SETTINGS (Screen 8) -->
+            <div id="tab-settings" class="tab-content">
+              <div class="settings-sections-stack">
+                <!-- Group 1: General -->
+                <div class="glass-card settings-group-card">
+                  <div class="settings-group-header">
+                    <div class="settings-group-icon-circle">⚙</div>
+                    <div class="settings-group-titles">
+                      <strong data-i18n="set_general_title">Основное</strong>
+                      <span data-i18n="set_general_desc">Удобная работа с ByMeVPN</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">🪟</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="autostart_title">Запускать вместе с системой</strong>
+                      <span data-i18n="autostart_desc">ByMeVPN будет включаться автоматически при запуске компьютера</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-autostart" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="card-divider-line"></div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">∞</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="background_title">Оставаться подключённым в фоне</strong>
+                      <span data-i18n="background_desc">VPN продолжит работать, даже если вы закроете приложение</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-background" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="card-divider-line"></div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">🌐</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="bypass_title">Умный обход российских сервисов</strong>
+                      <span data-i18n="bypass_desc">Российские сайты и сервисы будут открываться без VPN</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-bypass" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Group 2: Comfort and Security -->
+                <div class="glass-card settings-group-card">
+                  <div class="settings-group-header">
+                    <div class="settings-group-icon-circle icon-shield">🛡</div>
+                    <div class="settings-group-titles">
+                      <strong data-i18n="set_security_title">Комфорт и защита</strong>
+                      <span data-i18n="set_security_desc">Больше свободы и безопасности в интернете</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">⊘</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="adblock_title">Блокировка рекламы</strong>
+                      <span data-i18n="adblock_desc">Убирает рекламу на сайтах и в приложениях</span>
+                    </div>
+                    <div class="radio-segmented-group" id="adblock-group">
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="none" />
+                        <span data-i18n="adblock_off">Выкл.</span>
+                      </label>
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="basic" />
+                        <span data-i18n="adblock_basic">Базовая</span>
+                      </label>
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="recommended" checked />
+                        <span data-i18n="adblock_recommended">Рекомендуется</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="card-divider-line"></div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">🔒</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="killswitch_title">Аварийная защита</strong>
+                      <span data-i18n="killswitch_desc">Если VPN неожиданно отключится, интернет будет временно заблокирован, чтобы сохранить вашу приватность.</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-killswitch" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Group 3: Support and Legal -->
+                <div class="glass-card settings-group-card">
+                  <div class="settings-group-header">
+                    <div class="settings-group-icon-circle icon-info">❓</div>
+                    <div class="settings-group-titles">
+                      <strong data-i18n="support_info_title">Поддержка и информация</strong>
+                      <span data-i18n="support_info_desc">Мы всегда рядом</span>
+                    </div>
+                  </div>
+
+                  <div class="settings-links-grid-2x2">
+                    <div class="setting-link-tile" id="tile-support-telegram">
+                      <span class="tile-icon">✈</span>
+                      <strong data-i18n="tile_telegram">Поддержка в Telegram</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-privacy-policy">
+                      <span class="tile-icon">📄</span>
+                      <strong data-i18n="tile_privacy">Политика конфиденциальности</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-faq-modal">
+                      <span class="tile-icon">❓</span>
+                      <strong data-i18n="tile_faq">Частые вопросы</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-terms-of-use">
+                      <span class="tile-icon">📄</span>
+                      <strong data-i18n="tile_terms">Условия использования</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Settings Bottom Footer Bar -->
+                <div class="settings-bottom-bar">
+                  <div class="lang-selector-block">
+                    <span class="lang-globe-icon">🌐</span>
+                    <span class="lang-label" data-i18n="app_language">Язык приложения</span>
+                    <div class="lang-segmented-control">
+                      <button type="button" class="lang-btn active" data-lang="ru">
+                        <span>🇷🇺</span> Русский
+                      </button>
+                      <button type="button" class="lang-btn" data-lang="en">
+                        <span>🇬🇧</span> English
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="settings-version-block">
+                    <div class="version-logo">
+                      <svg width="20" height="22" viewBox="0 0 92 104" fill="none">
+                        <defs>
+                          <linearGradient id="vShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#00d2ff"/>
+                            <stop offset="0.55" stop-color="#00e5b0"/>
+                            <stop offset="1" stop-color="#00f5a0"/>
+                          </linearGradient>
+                        </defs>
+                        <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
+                        <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
+                      </svg>
+                    </div>
+                    <span class="version-text">ByMeVPN <span class="version-num">Версия 1.2.0</span></span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </main>
+      </div>
+
+    </div>
+
+    <!-- ============================================== -->
+    <!-- MODALS & DIALOGS                               -->
+    <!-- ============================================== -->
+
+    <!-- Telegram OAuth Modal -->
+    <div id="modal-telegram" class="modal-backdrop hidden">
+      <div class="glass-card modal-window modal-telegram-window">
+        <div class="modal-head">
+          <div class="modal-icon-badge tg-badge-icon">✈</div>
+          <h3 data-i18n="tg_modal_title">Вход через Telegram</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-telegram">×</button>
+        </div>
+
+        <div id="tg-oauth-waiting" class="tg-oauth-box">
+          <div class="tg-radar-spinner">
+            <div class="radar-ping"></div>
+            <div class="radar-core">✈</div>
+          </div>
+          <h4 class="tg-oauth-step-title">Подтвердите вход в Telegram-боте</h4>
+          <p class="modal-desc">
+            Мы открыли Telegram-бота <strong>@ByMeVPNbot</strong>.<br/>
+            Нажмите <strong>СТАРТ</strong> (или кнопку подтверждения) в боте для завершения входа.
+          </p>
+          <div class="tg-oauth-actions">
+            <button type="button" id="btn-tg-reopen" class="btn-primary btn-tg-reopen">
+              <span>✈</span> Открыть бота в Telegram
+            </button>
+            <div class="tg-polling-indicator">
+              <span class="spinner-mini"></span>
+              <span id="tg-polling-status">Ожидание подтверждения от Telegram...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Optional fallback toggle -->
+        <div class="tg-fallback-accordion">
+          <button type="button" id="btn-toggle-manual-tg" class="text-link-subtle">
+            Вход по ссылке конфигурации (альтернативный способ) ▾
+          </button>
+          <div id="tg-manual-box" class="tg-manual-fields hidden">
+            <div class="input-field-box">
+              <input type="text" id="input-tg-sub-url" placeholder="https://bymevpn.duckdns.org:2096/yay/..." />
+            </div>
+            <button type="button" id="btn-submit-tg-login" class="btn-secondary btn-wide">
+              Войти по ссылке
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-actions-row">
+          <button type="button" class="btn-secondary btn-wide" data-close-modal="modal-telegram" data-i18n="cancel">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Google OAuth Modal -->
+    <div id="modal-google" class="modal-backdrop hidden">
+      <div class="glass-card modal-window modal-google-window">
+        <div class="modal-head">
+          <div class="modal-icon-badge google-badge-icon">G</div>
+          <h3 data-i18n="google_modal_title">Вход через Google</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-google">×</button>
+        </div>
+        <p class="modal-desc">Укажите ваш аккаунт Google для быстрой авторизации в ByMeVPN:</p>
+        <form id="form-google" class="auth-form-fields">
+          <div class="input-field-box">
+            <span class="field-icon">✉</span>
+            <input type="email" id="google-email" placeholder="example@gmail.com" required autocomplete="email" />
+          </div>
+          <div class="input-field-box">
+            <span class="field-icon">👤</span>
+            <input type="text" id="google-name" placeholder="Имя (необязательно)" autocomplete="name" />
+          </div>
+          <div class="modal-actions-row">
+            <button type="button" class="btn-secondary" data-close-modal="modal-google" data-i18n="cancel">Отмена</button>
+            <button type="submit" id="btn-submit-google" class="btn-primary">
+              <span>Войти</span>
+              <span class="btn-arrow">›</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- FAQ Modal -->
+    <div id="modal-faq" class="modal-backdrop hidden">
+      <div class="glass-card modal-window modal-faq-window">
+        <div class="modal-head">
+          <div class="modal-icon-badge">❓</div>
+          <h3 data-i18n="faq_title">Часто задаваемые вопросы</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-faq">×</button>
+        </div>
+        <div class="faq-accordion-list">
+          <div class="faq-accordion-item">
+            <button type="button" class="faq-item-toggle">
+              <span data-i18n="faq_q1">Как работает протокол VLESS + Reality?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-item-body" data-i18n="faq_a1">
+              Протокол маскирует зашифрованный VPN-трафик под обычные TLS-сессии к популярным зарубежным веб-сервисам, делая его неотличимым от посещения защищённых сайтов и устойчивым к блокировкам.
+            </div>
+          </div>
+          <div class="faq-accordion-item">
+            <button type="button" class="faq-item-toggle">
+              <span data-i18n="faq_q2">Что даёт «Умный обход российских сервисов»?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-item-body" data-i18n="faq_a2">
+              Сайты с доменами .ru, .рф, .su, российские банки и государственные порталы направляются напрямую минуя VPN, что обеспечивает максимальную скорость и отсутствие капч.
+            </div>
+          </div>
+          <div class="faq-accordion-item">
+            <button type="button" class="faq-item-toggle">
+              <span data-i18n="faq_q3">Как отменить автопродление подписки?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-item-body" data-i18n="faq_a3">
+              Отключить автопродление можно в любой момент на вкладке «Аккаунт» -> «Управлять подпиской» без штрафов и скрытых комиссий.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legal Terms/Privacy Modal -->
+    <div id="modal-legal" class="modal-backdrop hidden">
+      <div class="glass-card modal-window modal-faq-window">
+        <div class="modal-head">
+          <div class="modal-icon-badge">📄</div>
+          <h3 id="legal-modal-title">Документы</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-legal">×</button>
+        </div>
+        <div id="legal-modal-body" class="legal-text-scroll"></div>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="modal-confirm" class="modal-backdrop hidden">
+      <div class="glass-card modal-window">
+        <div class="modal-head">
+          <div class="modal-icon-badge" id="confirm-badge">⚠️</div>
+          <h3 id="confirm-title">Подтверждение</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-confirm">×</button>
+        </div>
+        <p id="confirm-desc" class="modal-desc"></p>
+        <div class="modal-actions-row">
+          <button type="button" class="btn-secondary" data-close-modal="modal-confirm" data-i18n="cancel">Отмена</button>
+          <button type="button" id="btn-confirm-accept" class="btn-primary" data-i18n="confirm">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-notify" class="toast-popup" role="status" aria-live="polite"></div>
+
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

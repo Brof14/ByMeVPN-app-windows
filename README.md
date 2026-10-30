@@ -1,41 +1,24 @@
-# v2rust
+# ByMeVPN for Windows
 
-Небольшой экспериментальный Windows-клиент на Tauri 2 и Rust для запуска локального Xray-прокси и управления системным HTTP-прокси Windows.
+Windows desktop client based on the public ByMeVPN Android and Telegram bot repositories.
 
-## Состояние проекта
+## Current status
 
-Это ранний прототип, а не готовый VPN-клиент. Здесь пока нет входа через Google, email или Telegram, подписок, оплаты и списка серверов. Клиент включает системный HTTP-прокси Windows; он не создаёт полноценный VPN-туннель для всего трафика компьютера.
+This is an in-progress Windows client. The desktop UI and source contract are being built from the checked-out upstream sources. A production VPN requires a valid ByMeVPN account/API entitlement and an installed, integrity-checked Xray Windows runtime with its matching Wintun component. The app must report connected only after the tunnel and traffic checks succeed.
 
-Для подключения требуются собственные `xray.exe`, `xui.exe` и локальный `config1.json`. Их нет в репозитории: конфигурация может содержать адрес сервера и данные доступа, а происхождение внешних исполняемых файлов нужно проверять отдельно. Не публикуйте конфигурацию, ключи или учётные данные.
+## Development
 
-## Сборка в Windows
+- Windows 10/11 x64
+- Rust stable and the Microsoft C++ build tools
+- WebView2 Runtime
+- Tauri v2 Rust dependencies (Cargo fetches them)
 
-Нужны Windows, Rust с MSVC toolchain, Visual Studio Build Tools с компонентом «Средства сборки MSVC для x64/x86», Windows SDK и WebView2 Runtime. Установите Tauri CLI:
+API addresses are defined together in `src-tauri/src/api_transport.rs`. The current server uses HTTP, so passwords and bearer tokens are not protected in transit. Change both configured URLs to the verified HTTPS endpoints when available. The fallback is attempted only when a connection cannot be established; requests are not retried after an HTTP response or an ambiguous delivery failure.
 
-```powershell
-cargo install tauri-cli
-```
+The frontend is plain HTML/CSS/JavaScript in `ui/`; no Node package manager is needed. The Windows-native shell lives in `src-tauri/`.
 
-Затем из корня проекта:
+See [`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md) and [`docs/STATUS.md`](docs/STATUS.md) for the verified API contract, parity map, and remaining implementation gates.
 
-```powershell
-Set-Location .\src-tauri
-cargo tauri dev
-```
+## Secrets
 
-Сборка установщика запускается из той же папки:
-
-```powershell
-cargo tauri build
-```
-
-Настройки пакета ожидают локальные Xray-файлы в `src-tauri/target/debug/xray/` и `src-tauri/target/debug/xui.exe`. Эти каталоги сборки исключены из Git. Перед запуском подготовьте собственные проверенные файлы и конфигурацию.
-
-## Структура
-
-- `src/` — HTML, CSS и JavaScript интерфейса.
-- `src-tauri/` — код Rust, настройки Tauri и управление Windows proxy.
-- `src-tauri/Cargo.toml` и `src-tauri/Cargo.lock` — зависимости Rust.
-
-Кэш Cargo, результаты сборки, локальные VPN-конфиги и настройки IDE исключены из Git.
-
+Never put passwords, API tokens, subscription links, or VPN keys in source control or chat. Windows credentials belong in Windows Credential Manager. Do not run an unsigned driver installer or disable TLS validation. HTTP does not protect credentials in transit, even when the server hashes passwords and signs tokens.

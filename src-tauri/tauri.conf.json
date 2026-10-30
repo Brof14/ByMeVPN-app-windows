@@ -1,34 +1,45 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "v2rust",
+  "productName": "ByMeVPN",
   "version": "0.1.0",
-  "identifier": "com.rimuru.v2rust",
+  "identifier": "space.parahin.bymevpn.desktop",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../ui"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "v2rust",
-        "width": 360,
-        "height": 540,
-        "resizable": false,
-        "decorations": true,
-        "maximizable": false
+        "title": "ByMeVPN",
+        "width": 1320,
+        "height": 850,
+        "minWidth": 900,
+        "minHeight": 620,
+        "decorations": false,
+        "center": true,
+        "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset:; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["bymevpn"]
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "resources": [
-      "target/debug/xray/",
-      "target/debug/xui.exe"
-    ]
+    "targets": ["nsis"],
+    "shortDescription": "ByMeVPN for Windows",
+    "longDescription": "ByMeVPN desktop client for Windows",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }
-

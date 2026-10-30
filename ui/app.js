@@ -75,12 +75,12 @@ const PRICING_MATRIX = {
 
 // Default Server List
 const DEFAULT_SERVERS = [
-  { code: 'de-1', name: 'Германия • Франкфурт', country: 'DE', flag: '🇩🇪', ping: 28 },
-  { code: 'nl-1', name: 'Нидерланды • Амстердам', country: 'NL', flag: '🇳🇱', ping: 32 },
-  { code: 'se-1', name: 'Швеция • Стокгольм', country: 'SE', flag: '🇸🇪', ping: 41 },
-  { code: 'fi-1', name: 'Финляндия • Хельсинки', country: 'FI', flag: '🇫🇮', ping: 38 },
-  { code: 'pl-1', name: 'Польша • Варшава', country: 'PL', flag: '🇵🇱', ping: 35 },
-  { code: 'us-1', name: 'США • Нью-Йорк', country: 'US', flag: '🇺🇸', ping: 94 }
+  { code: 'de-1', name: 'Германия • Франкфурт', country: 'DE', flag: '🇩🇪', ping: 0 },
+  { code: 'nl-1', name: 'Нидерланды • Амстердам', country: 'NL', flag: '🇳🇱', ping: 0 },
+  { code: 'se-1', name: 'Швеция • Стокгольм', country: 'SE', flag: '🇸🇪', ping: 0 },
+  { code: 'fi-1', name: 'Финляндия • Хельсинки', country: 'FI', flag: '🇫🇮', ping: 0 },
+  { code: 'pl-1', name: 'Польша • Варшава', country: 'PL', flag: '🇵🇱', ping: 0 },
+  { code: 'us-1', name: 'США • Нью-Йорк', country: 'US', flag: '🇺🇸', ping: 0 }
 ];
 
 // Translations Dictionary (RU / EN)
@@ -903,9 +903,16 @@ function updateMetricsUi() {
   const upEl = document.getElementById('metric-upload');
   const pingEl = document.getElementById('metric-ping');
 
-  if (downEl) downEl.textContent = `${m.download_mbps ? m.download_mbps.toFixed(1) : '92.4'} Мбит/с`;
-  if (upEl) upEl.textContent = `${m.upload_mbps ? m.upload_mbps.toFixed(1) : '38.7'} Мбит/с`;
-  if (pingEl) pingEl.textContent = `${m.ping_ms || 28} мс`;
+  if (!state.vpnConnected) {
+    if (downEl) downEl.textContent = '—';
+    if (upEl) upEl.textContent = '—';
+    if (pingEl) pingEl.textContent = '—';
+    return;
+  }
+
+  if (downEl) downEl.textContent = m.download_mbps > 0 ? `${m.download_mbps.toFixed(1)} Мбит/с` : '—';
+  if (upEl) upEl.textContent = m.upload_mbps > 0 ? `${m.upload_mbps.toFixed(1)} Мбит/с` : '—';
+  if (pingEl) pingEl.textContent = m.ping_ms > 0 ? `${m.ping_ms} мс` : '—';
 }
 
 function updateUserUi() {
@@ -1097,7 +1104,7 @@ function renderServersList(filter = '') {
           <span class="signal-bar" style="height: 8px;"></span>
           <span class="signal-bar" style="height: 12px;"></span>
         </div>
-        <span>${srv.ping || 28} мс</span>
+        <span>${srv.ping > 0 ? `${srv.ping} мс` : '—'}</span>
       </div>
       <div class="radio-selection-dot"></div>
     `;

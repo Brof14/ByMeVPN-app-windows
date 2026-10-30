@@ -686,13 +686,48 @@ pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
     snapshot(&app).await
 }
 
+pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let target = if host.contains(':') && !host.starts_with('[') {
+        host.to_string()
+    } else {
+        format!("{host}:{default_port}")
+    };
+    if let Ok(addrs) = target.to_socket_addrs() {
+        for addr in addrs {
+            let start = std::time::Instant::now();
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(1800)).is_ok() {
+                return (start.elapsed().as_millis().max(1) as u32).min(9999);
+            }
+        }
+    }
+    0
+}
+
 #[tauri::command]
 pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
-    data.get("servers")
+    let mut servers = data
+        .get("servers")
         .and_then(Value::as_array)
         .cloned()
-        .ok_or("Сервер не вернул список доступных локаций.".into())
+        .ok_or("Сервер не вернул список доступных локаций.".to_string())?;
+
+    for server in &mut servers {
+        if let Some(obj) = server.as_object_mut() {
+            let host = obj
+                .get("server")
+                .or_else(|| obj.get("endpoint"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let port = obj.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
+            if !host.is_empty() {
+                let ping = measure_real_ping(host, port);
+                obj.insert("ping".into(), json!(ping));
+            }
+        }
+    }
+    Ok(servers)
 }
 
 #[tauri::command]
@@ -1012,6 +1047,8 @@ pub async fn vpn_start(
         let _ = verify_egress(expected_ip).await;
     }
 
+    let ping = measure_real_ping(host, 443);
+
     let started_at = std::time::Instant::now();
     let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
     *lock = Some(ActiveTunnel {
@@ -1027,9 +1064,9 @@ pub async fn vpn_start(
     Ok(TunnelMetrics {
         connected: true,
         connected_seconds: 0,
-        download_mbps: 92.4,
-        upload_mbps: 38.7,
-        ping_ms: 28,
+        download_mbps: 0.0,
+        upload_mbps: 0.0,
+        ping_ms: ping,
         server_name,
         country,
         ip: host.to_string(),
@@ -1054,26 +1091,39 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn vpn_status(state: State<'_, AppState>) -> TunnelMetrics {
-    let lock = state.tunnel.lock().unwrap();
-    if let Some(active) = lock.as_ref() {
-        let elapsed = active.started_at.elapsed().as_secs();
-        let seed = (elapsed % 7) as f64;
-        let down = (91.0 + seed * 0.7).min(98.5);
-        let up = (37.0 + seed * 0.4).min(44.0);
-        let ping = (26 + (elapsed % 4)) as u32;
-        TunnelMetrics {
+pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+    let active_info = {
+        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        lock.as_ref().map(|active| {
+            (
+                active.started_at.elapsed().as_secs(),
+                active.server_name.clone(),
+                active.country.clone(),
+                active.server_ip.clone(),
+            )
+        })
+    };
+
+    if let Some((elapsed, server_name, country, ip)) = active_info {
+        let ping_ip = ip.clone();
+        let ping = tokio::task::spawn_blocking(move || {
+            measure_real_ping(&ping_ip, 443)
+        })
+        .await
+        .unwrap_or(0);
+
+        Ok(TunnelMetrics {
             connected: true,
             connected_seconds: elapsed,
-            download_mbps: down,
-            upload_mbps: up,
+            download_mbps: 0.0,
+            upload_mbps: 0.0,
             ping_ms: ping,
-            server_name: active.server_name.clone(),
-            country: active.country.clone(),
-            ip: active.server_ip.clone(),
-        }
+            server_name,
+            country,
+            ip,
+        })
     } else {
-        TunnelMetrics {
+        Ok(TunnelMetrics {
             connected: false,
             connected_seconds: 0,
             download_mbps: 0.0,
@@ -1082,7 +1132,7 @@ pub fn vpn_status(state: State<'_, AppState>) -> TunnelMetrics {
             server_name: String::new(),
             country: String::new(),
             ip: String::new(),
-        }
+        })
     }
 }
 

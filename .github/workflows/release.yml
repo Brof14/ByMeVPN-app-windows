@@ -30,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@stable
@@ -64,19 +64,19 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "dist" -Force | Out-Null
           
-          # Copy installers
-          Copy-Item "src-tauri/target/release/bundle/nsis/*.exe" "dist/" -Force -ErrorAction SilentlyContinue
-          Copy-Item "src-tauri/target/release/bundle/msi/*.msi" "dist/" -Force -ErrorAction SilentlyContinue
-          Copy-Item "src-tauri/target/release/bymevpn.exe" "dist/bymevpn-standalone.exe" -Force -ErrorAction SilentlyContinue
+          # Copy installers and standalone binary using robust PowerShell discovery
+          Get-ChildItem -Path "src-tauri\target\release\bundle" -Include *.exe, *.msi -Recurse | Copy-Item -Destination "dist" -Force
+          if (Test-Path "src-tauri\target\release\bymevpn.exe") {
+            Copy-Item "src-tauri\target\release\bymevpn.exe" "dist\bymevpn-standalone.exe" -Force
+          }
           
           # Compute SHA-256 hashes
-          cd dist
-          Get-FileHash -Algorithm SHA256 * | ForEach-Object {
-            "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)"
-          } | Out-File -Encoding utf8 "SHA256SUMS.txt"
-          cd ..
+          Get-ChildItem -Path "dist" -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Path "dist\SHA256SUMS.txt" -Encoding utf8
           
-          Get-ChildItem -Path dist | Format-Table Name, Length
+          Get-ChildItem -Path "dist" | Format-Table Name, Length
 
       - name: Upload Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
@@ -109,8 +109,6 @@ jobs:
             ### Контрольные суммы (SHA-256):
             См. прикреплённый файл `SHA256SUMS.txt`.
           files: |
-            dist/*.exe
-            dist/*.msi
-            dist/SHA256SUMS.txt
+            dist/*
           draft: false
           prerelease: false

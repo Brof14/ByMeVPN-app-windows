@@ -5,6 +5,8 @@
 /vendor/downloads/
 /vendor/runtime/
 *.exe
+*.msi
+/dist/
 .env
 .env.*
 !.env.example

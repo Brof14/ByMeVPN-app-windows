@@ -854,6 +854,8 @@ pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(res) = app.path().resource_dir() {
         candidates.push(res.join("vendor/runtime/windows-x64"));
         candidates.push(res.join("runtime/windows-x64"));
+        candidates.push(res.join("vendor/runtime"));
+        candidates.push(res.clone());
     }
 
     for dir in candidates {

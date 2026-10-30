@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test & Verify Backend
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup and verify tunnel runtime
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/setup-runtime.ps1
+
+      - name: Cargo Check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Unit Tests
+        shell: powershell
+        run: |
+          $env:BYMEVPN_NO_ADMIN_MANIFEST = "1"
+          cargo test --release --manifest-path src-tauri/Cargo.toml

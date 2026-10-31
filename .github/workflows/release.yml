@@ -100,15 +100,15 @@ jobs:
             * **`bymevpn-standalone.exe`** — Портативный бинарник.
             
             ### Основные возможности:
-            * VPN-туннель **Xray-core + Wintun** (VLESS + Reality, MTU 1500, полный захват трафика без WinINET HTTP-прокси).
-            * Авторизация через Telegram (@ByMeVPNbot), Google OAuth и Email.
-            * Умный обход российских сайтов (`.ru`, `.рф`, `gosuslugi.ru`, `geoip:ru` идут напрямую).
-            * Kill Switch & аварийная защита сети при сбое.
-            * 8 экранов Pixel-Perfect интерфейса, оптимизированных для работы на слабых и старых ПК (0% CPU в простое, аппаратное ускорение анимаций).
+            * Экспериментальный клиент Xray/Wintun: запуск и проверка конфигурации реализованы, реальные сетевые сценарии требуют проверки.
+            * Вход через email и Telegram, Google OAuth временно отключён.
+            * Kill Switch, фоновый сервис, IPv6/DNS leak protection и проверка безошибочного восстановления маршрутов не прошли Windows acceptance.
+            * Не использовать как подтверждённое средство защиты до прохождения полного набора сетевых тестов.
             
             ### Контрольные суммы (SHA-256):
             См. прикреплённый файл `SHA256SUMS.txt`.
           files: |
             dist/*
-          draft: false
-          prerelease: false
+          # Not publicly marked stable until real Windows VPN acceptance is signed off.
+          draft: true
+          prerelease: true

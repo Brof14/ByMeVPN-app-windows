@@ -37,6 +37,8 @@ pub struct ActiveTunnel {
 #[derive(Default)]
 pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
+    // Serialize connect/disconnect across network requests and Xray startup.
+    pub connection_gate: tokio::sync::Mutex<()>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -522,11 +524,15 @@ pub async fn telegram_check_session(
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("pending");
-    if status == "approved" || status == "success" {
+    if status == "authenticated" || status == "approved" || status == "success" {
         if let Some(access_token) = res.get("access_token").and_then(Value::as_str) {
             save_secret(ACCESS_KEY, access_token)?;
             if let Some(refresh_token) = res.get("refresh_token").and_then(Value::as_str) {
                 save_secret(REFRESH_KEY, refresh_token)?;
+            } else if let Ok(entry) = entry(REFRESH_KEY) {
+                // Telegram currently issues access-only credentials; never retain a
+                // refresh token belonging to the previous account.
+                let _ = entry.delete_credential();
             }
             clear_telegram_session();
             let mut user: UserProfile = res
@@ -635,16 +641,8 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
             object.insert("is_current".into(), json!(is_current));
         }
     }
-    if device_list.is_empty() {
-        device_list.push(json!({
-            "id": "current_pc",
-            "device_model": "Windows • Этот компьютер",
-            "platform": "Windows",
-            "last_active": "Сейчас онлайн",
-            "is_current": true
-        }));
-    }
-    Ok(json!({"user":user,"subscription":subscription,"devices":device_list}))
+    Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
+        "devices_supported": devices.get("supported").and_then(Value::as_bool).unwrap_or(true)}))
 }
 
 #[tauri::command]
@@ -679,7 +677,8 @@ pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
             return Ok(json!({
                 "user": session.user,
                 "subscription": session.subscription,
-                "devices": []
+                "devices": [],
+                "devices_supported": false
             }));
         }
     }
@@ -707,27 +706,42 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
 #[tauri::command]
 pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
-    let mut servers = data
-        .get("servers")
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or("Сервер не вернул список доступных локаций.".to_string())?;
-
-    for server in &mut servers {
-        if let Some(obj) = server.as_object_mut() {
-            let host = obj
-                .get("server")
-                .or_else(|| obj.get("endpoint"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let port = obj.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
-            if !host.is_empty() {
-                let ping = measure_real_ping(host, port);
-                obj.insert("ping".into(), json!(ping));
-            }
+    let servers = data.get("servers").and_then(Value::as_array)
+        .ok_or("Сервер не вернул список доступных локаций.")?;
+    let mut tasks = Vec::with_capacity(servers.len());
+    let mut normalized = Vec::with_capacity(servers.len());
+    for server in servers {
+        let config = server.get("config").unwrap_or(server);
+        let code = server.get("node_code").or_else(|| server.get("code"))
+            .and_then(Value::as_str).unwrap_or("");
+        if code.is_empty() { continue; }
+        let name = server.get("display_name").or_else(|| server.get("name"))
+            .or_else(|| server.get("remark")).and_then(Value::as_str).unwrap_or(code);
+        let country = server.get("country_code").or_else(|| server.get("country"))
+            .and_then(Value::as_str).unwrap_or("");
+        let flag = server.get("flag").and_then(Value::as_str).unwrap_or("🌐");
+        let host = config.get("server").or_else(|| config.get("endpoint"))
+            .and_then(Value::as_str).unwrap_or("").to_string();
+        let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
+        let supported = config.get("protocol").and_then(Value::as_str).unwrap_or("vless") == "vless"
+            && config.get("security").and_then(Value::as_str).unwrap_or("reality") == "reality"
+            && matches!(config.get("network").and_then(Value::as_str).unwrap_or("tcp"), "tcp" | "raw");
+        let task = if !host.is_empty() && (1..=65535).contains(&port) {
+            Some(tokio::task::spawn_blocking(move || measure_real_ping(&host, port as u16)))
+        } else {
+            None
+        };
+        tasks.push(task);
+        normalized.push(json!({"code":code, "name":name, "country":country,
+            "flag":flag, "supported":supported, "ping":0}));
+    }
+    // Concurrent TCP probes; never block the async runtime or measure one by one.
+    for (server, task) in normalized.iter_mut().zip(tasks) {
+        if let Some(task) = task {
+            server["ping"] = json!(task.await.unwrap_or(0));
         }
     }
-    Ok(servers)
+    Ok(normalized)
 }
 
 #[tauri::command]
@@ -875,12 +889,6 @@ pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     }
     candidates.push(PathBuf::from("vendor/runtime/windows-x64"));
     candidates.push(PathBuf::from("../vendor/runtime/windows-x64"));
-    candidates.push(PathBuf::from(
-        r"C:\Users\User\Documents\ByMeVPN-app-windows\vendor\runtime\windows-x64",
-    ));
-    candidates.push(PathBuf::from(
-        r"C:\Users\User\Documents\ChatGPT\ByMeVPN\vendor\runtime\windows-x64",
-    ));
     if let Ok(res) = app.path().resource_dir() {
         candidates.push(res.join("vendor/runtime/windows-x64"));
         candidates.push(res.join("runtime/windows-x64"));
@@ -906,10 +914,10 @@ pub fn load_settings(app: &AppHandle) -> Value {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_else(|| json!({
             "autoStart": false,
-            "stayConnectedInBackground": true,
+            "stayConnectedInBackground": false,
             "bypassRu": true,
             "adBlock": "recommended",
-            "killSwitch": true,
+            "killSwitch": false,
             "language": "ru"
         }))
 }
@@ -924,6 +932,7 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
     let allowed = [
         "autoStart",
         "autoConnect",
+        "selectedServerCode",
         "stayConnectedInBackground",
         "bypassRu",
         "adBlock",
@@ -932,6 +941,16 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
     ];
     if !allowed.contains(&key.as_str()) {
         return Err("Неизвестная настройка.".into());
+    }
+    if matches!(key.as_str(), "stayConnectedInBackground" | "killSwitch") && value == Value::Bool(true) {
+        return Err("Эта функция недоступна, пока не пройдёт проверку безопасности.".into());
+    }
+    if key == "selectedServerCode" {
+        let code = value.as_str().ok_or("Неверный код сервера.")?;
+        if code.len() > 128 || code.is_empty() ||
+            !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+            return Err("Неверный код сервера.".into());
+        }
     }
     let dir: PathBuf = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -951,6 +970,7 @@ pub async fn vpn_start(
     state: State<'_, AppState>,
     node_code: Option<String>,
 ) -> Result<TunnelMetrics, String> {
+    let _connection_guard = state.connection_gate.lock().await;
     {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if lock.is_some() {
@@ -962,14 +982,15 @@ pub async fn vpn_start(
     let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false).await;
     let has_active_sub = match sub_status {
         Ok(ref d) => {
-            let status = d.get("status").and_then(Value::as_str).unwrap_or("none");
-            status == "active" || status == "trial"
+            let subscription = d.get("subscription").unwrap_or(d);
+            let status = subscription.get("status").and_then(Value::as_str).unwrap_or("none");
+            matches!(status, "active" | "trial" | "grace")
         }
         Err(_) => false,
     };
 
     if !has_active_sub && read_secret(TELEGRAM_SUBSCRIPTION_KEY).is_none() {
-        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте пробный доступ за 1 ₽ или выберите тариф.".into());
+        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте 3 дня бесплатного доступа или выберите тариф.".into());
     }
 
     let runtime_dir = get_runtime_dir(&app)?;
@@ -996,13 +1017,15 @@ pub async fn vpn_start(
     .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
     let session = session_val.get("session").unwrap_or(&session_val);
-    let host = session.get("server").and_then(Value::as_str).unwrap_or("2.27.120.247");
-    let server_name = session
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or("Германия • Франкфурт")
-        .to_string();
-    let country = session.get("country").and_then(Value::as_str).unwrap_or("DE").to_string();
+    let host = session.get("server").and_then(Value::as_str)
+        .ok_or("Сервер не вернул адрес VPN.")?;
+    let server_name = session.get("display_name").or_else(|| session.get("name"))
+        .and_then(Value::as_str).unwrap_or(host).to_string();
+    let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
+    // Egress must be independently confirmed before reporting a protected tunnel.
+    let expected_ip: std::net::IpAddr = host.parse().map_err(|_| {
+        "Проверка выхода VPN пока поддерживает только IP-адрес сервера. Подключение отменено.".to_string()
+    })?;
 
     let xray_config = build_tun_config_ext(session, bypass_ru, ad_block)?;
 
@@ -1030,24 +1053,59 @@ pub async fn vpn_start(
         .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
 
     if !test_res.status.success() {
-        let err_str = String::from_utf8_lossy(&test_res.stderr);
-        return Err(format!("Конфигурация туннеля не прошла проверку Xray: {err_str}"));
+        let _ = fs::remove_file(&config_path);
+        return Err("Конфигурация туннеля не прошла проверку Xray.".into());
     }
 
-    let child = std::process::Command::new(runtime_dir.join("xray.exe"))
+    let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
         .current_dir(&runtime_dir)
         .env("XRAY_LOCATION_ASSET", &runtime_dir)
         .args(["run", "-config"])
         .arg(&config_path)
         .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map_err(|e| format!("Не удалось запустить Xray: {e}"))?;
+        .spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                let _ = fs::remove_file(&config_path);
+                return Err(format!("Не удалось запустить Xray: {e}"));
+            }
+        };
 
-    if let Ok(expected_ip) = host.parse::<std::net::IpAddr>() {
-        let _ = verify_egress(expected_ip).await;
+    let mut verified = false;
+    let mut last_error = "Проверка VPN не завершилась.".to_string();
+    for _ in 0..3 {
+        tokio::time::sleep(Duration::from_millis(750)).await;
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                last_error = "Xray завершился до установления туннеля.".into();
+                break;
+            }
+            Err(_) => {
+                last_error = "Не удалось проверить процесс Xray.".into();
+                break;
+            }
+            Ok(None) => {}
+        }
+        match verify_egress(expected_ip).await {
+            Ok(()) => {
+                verified = true;
+                break;
+            }
+            Err(message) => last_error = message,
+        }
+    }
+    if !verified {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_file(&config_path);
+        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+        return Err(format!("VPN не подтверждён: {last_error}"));
     }
 
-    let ping = measure_real_ping(host, 443);
+    let ping = tokio::task::spawn_blocking({
+        let host = host.to_string();
+        move || measure_real_ping(&host, 443)
+    }).await.unwrap_or(0);
 
     let started_at = std::time::Instant::now();
     let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
@@ -1075,6 +1133,7 @@ pub async fn vpn_start(
 
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _connection_guard = state.connection_gate.lock().await;
     let maybe_active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.take()
@@ -1093,47 +1152,39 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
     let active_info = {
-        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        lock.as_ref().map(|active| {
-            (
-                active.started_at.elapsed().as_secs(),
-                active.server_name.clone(),
-                active.country.clone(),
-                active.server_ip.clone(),
-            )
-        })
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        let exited = match lock.as_mut() {
+            Some(active) => active.child.try_wait().map(|status| status.is_some()).unwrap_or(true),
+            None => false,
+        };
+        if exited {
+            if let Some(active) = lock.take() {
+                let _ = fs::remove_file(active.config_path);
+            }
+        }
+        lock.as_ref().map(|active| (
+            active.started_at.elapsed().as_secs(),
+            active.server_name.clone(),
+            active.country.clone(),
+            active.server_ip.clone()
+        ))
     };
-
     if let Some((elapsed, server_name, country, ip)) = active_info {
         let ping_ip = ip.clone();
-        let ping = tokio::task::spawn_blocking(move || {
-            measure_real_ping(&ping_ip, 443)
-        })
-        .await
-        .unwrap_or(0);
-
-        Ok(TunnelMetrics {
-            connected: true,
-            connected_seconds: elapsed,
-            download_mbps: 0.0,
-            upload_mbps: 0.0,
-            ping_ms: ping,
-            server_name,
-            country,
-            ip,
-        })
-    } else {
-        Ok(TunnelMetrics {
-            connected: false,
-            connected_seconds: 0,
-            download_mbps: 0.0,
-            upload_mbps: 0.0,
-            ping_ms: 0,
-            server_name: String::new(),
-            country: String::new(),
-            ip: String::new(),
-        })
+        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&ping_ip, 443))
+            .await.unwrap_or(0);
+        return Ok(TunnelMetrics {
+            connected: true, connected_seconds: elapsed,
+            download_mbps: 0.0, upload_mbps: 0.0,
+            ping_ms: ping, server_name, country, ip
+        });
     }
+    Ok(TunnelMetrics {
+        connected: false, connected_seconds: 0,
+        download_mbps: 0.0, upload_mbps: 0.0,
+        ping_ms: 0, server_name: String::new(),
+        country: String::new(), ip: String::new()
+    })
 }
 
 #[cfg(windows)]

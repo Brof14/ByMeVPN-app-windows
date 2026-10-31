@@ -138,7 +138,7 @@
               <!-- Manual Key / Subscription Link Accordion matching Android WelcomeScreen -->
               <div class="auth-manual-key-toggle-box">
                 <button type="button" id="btn-toggle-manual-key" class="btn-link-key-toggle">
-                  <span id="manual-key-btn-text">Ввести ключ или ссылку вручную ▾</span>
+                  <span id="manual-key-btn-text">Ввести ссылку подписки вручную ▾</span>
                 </button>
                 <div id="auth-manual-key-pane" class="auth-manual-key-pane hidden">
                   <textarea id="input-manual-key-url" class="textarea-manual-key" placeholder="Вставьте ссылку подписки или vless://..."></textarea>
@@ -315,7 +315,7 @@
                   <div class="no-plan-perks-row">
                     <div class="perk-pill">
                       <span class="perk-icon">⚡</span>
-                      <span>До 1 Гбит/с</span>
+                      <span>Защищённое соединение</span>
                     </div>
                     <div class="perk-pill">
                       <span class="perk-icon">🛡️</span>
@@ -625,7 +625,7 @@
                 <div class="pricing-perk-item">
                   <span class="perk-bullet">⚡</span>
                   <div>
-                    <strong>Скорость до 1 Гбит/с</strong>
+                    <strong>Скорость зависит от сервера и сети</strong>
                     <span>YouTube 4K, Reels, игры и скачивание без задержек</span>
                   </div>
                 </div>
@@ -691,14 +691,14 @@
                 </div>
 
                 <!-- Recommended Auto Card -->
-                <div class="glass-card recommended-server-card selected" data-server-code="auto">
+                <button type="button" id="recommended-server-auto" class="glass-card recommended-server-card selected" data-server-code="auto" aria-pressed="true">
                   <div class="rec-icon-badge">✨</div>
                   <div class="rec-server-info">
                     <strong data-i18n="server_auto">Автоматически</strong>
                     <span data-i18n="server_auto_desc">Выберем лучшее доступное соединение</span>
                   </div>
                   <div class="radio-selection-dot"></div>
-                </div>
+                </button>
 
                 <div class="section-micro-label" data-i18n="available_servers">ДОСТУПНЫЕ СЕРВЕРЫ</div>
 
@@ -737,7 +737,7 @@
                   </div>
                   <div class="acc-sub-plan-row">
                     <h3 id="acc-plan-name" class="acc-plan-title">Годовой</h3>
-                    <span id="acc-autorenew-badge" class="badge-active-pill" data-i18n="autorenew_on">Автопродление включено</span>
+                    <span id="acc-autorenew-badge" class="badge-active-pill" data-i18n="autorenew_on">Статус автопродления</span>
                   </div>
                   <p id="acc-plan-validity" class="acc-validity-text">Действует до 24.11.2026</p>
                   
@@ -833,10 +833,10 @@
                     <span class="setting-row-icon">∞</span>
                     <div class="setting-copy-column">
                       <strong data-i18n="background_title">Оставаться подключённым в фоне</strong>
-                      <span data-i18n="background_desc">VPN продолжит работать, даже если вы закроете приложение</span>
+                      <span data-i18n="background_desc">Фоновая работа в разработке; закрытие окна сейчас отключает VPN</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-background" checked />
+                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -894,10 +894,10 @@
                     <span class="setting-row-icon">🔒</span>
                     <div class="setting-copy-column">
                       <strong data-i18n="killswitch_title">Аварийная защита</strong>
-                      <span data-i18n="killswitch_desc">Если VPN неожиданно отключится, интернет будет временно заблокирован, чтобы сохранить вашу приватность.</span>
+                      <span data-i18n="killswitch_desc">Полная аварийная блокировка трафика пока не реализована. Не считайте её активной.</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-killswitch" checked />
+                      <input type="checkbox" id="set-killswitch" disabled title="Полная аварийная защита пока в разработке" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>

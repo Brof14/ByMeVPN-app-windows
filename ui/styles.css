@@ -18,6 +18,7 @@
   --text-muted: #536f7a;
   --danger-color: #ff5555;
 
+  --radius-sm: 10px;
   --radius-card: 20px;
   --radius-btn: 14px;
   --radius-pill: 9999px;
@@ -2878,3 +2879,54 @@ html, body {
   gap: 8px;
 }
 
+
+/* Keyboard accessibility and responsive desktop layouts. */
+:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 3px;
+}
+button:disabled, input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.server-stack-item {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.server-empty-message {
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+@media (max-width: 1120px) {
+  .auth-view { gap: 12px; padding: 12px 18px; }
+  .auth-globe-bg { width: min(60vw, 550px); height: 360px; }
+  .auth-hero-side { flex: 0.8; min-width: 0; }
+  .auth-hero-content { padding: 10px; }
+}
+@media (max-height: 740px) {
+  .auth-view { align-items: flex-start; overflow-y: auto; padding-top: 10px; padding-bottom: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+#recommended-server-auto {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#recommended-server-auto:focus-visible,
+.server-stack-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}

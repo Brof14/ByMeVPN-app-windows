@@ -639,7 +639,14 @@ pub async fn auth_logout(app: AppHandle) -> Result<(), String> {
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     let me = request(app, Method::GET, "/me", None, true, false).await?;
-    let sub = request(app, Method::GET, "/subscription/status", None, true, false).await?;
+    // An outage in the subscription panel must not look like invalid login.
+    // Unknown is different from "none" and must not trigger a purchase prompt.
+    let sub = request(app, Method::GET, "/subscription/status", None, true, false)
+        .await.unwrap_or_else(|_| json!({
+            "status": "unknown",
+            "plan_name": "Не удалось проверить подписку",
+            "trial_available": false
+        }));
     // Device-management downtime must never break login or session recovery.
     let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
     let user = me.get("user").unwrap_or(&me).clone();

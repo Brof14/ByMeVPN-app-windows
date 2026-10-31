@@ -334,7 +334,8 @@ async function loadInitialData() {
 
   // Plans can be requested without an authenticated user. Never show stale
   // local price constants as a live checkout option.
-  await loadPricingCatalog();
+  // Pricing is nonessential for login: never delay startup on /plans timeout.
+  void loadPricingCatalog();
   let session = null;
   let restoreFailed = false;
   try {

@@ -914,10 +914,10 @@ pub fn load_settings(app: &AppHandle) -> Value {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_else(|| json!({
             "autoStart": false,
-            "stayConnectedInBackground": true,
+            "stayConnectedInBackground": false,
             "bypassRu": true,
             "adBlock": "recommended",
-            "killSwitch": true,
+            "killSwitch": false,
             "language": "ru"
         }))
 }
@@ -940,6 +940,9 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
     ];
     if !allowed.contains(&key.as_str()) {
         return Err("Неизвестная настройка.".into());
+    }
+    if matches!(key.as_str(), "stayConnectedInBackground" | "killSwitch") && value == Value::Bool(true) {
+        return Err("Эта функция недоступна, пока не пройдёт проверку безопасности.".into());
     }
     let dir: PathBuf = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

@@ -1233,9 +1233,14 @@ function escapeHtml(str) {
 // Pricing Matrix UI Calculation
 function updatePricingMatrixUi() {
   document.getElementById('btn-pay-yookassa')?.toggleAttribute('disabled', !state.catalogReady);
+  document.getElementById('btn-paywall-yookassa-action')?.toggleAttribute('disabled', !state.catalogReady);
   const dev = state.selectedDevicesCount || 2;
   const matrix = PRICING_MATRIX[dev] || PRICING_MATRIX[2];
   if (!state.catalogReady) {
+    for (const card of document.querySelectorAll('.paywall-mini-tariffs .tariff-card')) {
+      const price = card.querySelector('.tariff-price-bold');
+      if (price) price.textContent = '—';
+    }
     for (const id of ['price-month', 'price-quarter', 'price-half_year', 'price-year']) {
       const element = document.getElementById(id);
       if (element) element.textContent = '—';
@@ -1358,6 +1363,8 @@ async function handlePayYooKassa() {
   const selected = PRICING_MATRIX[devices]?.[plan];
   if (!selected || !selected.days) return;
   showToast('Формирование счёта ЮKassa...');
+  const previousExpiry = state.subscription?.expires_at ?? null;
+  const previousStatus = state.subscription?.status ?? 'none';
   try {
     const res = await invoke('create_payment', {
       planCode: plan, devices, amountRub: selected.price, days: selected.days
@@ -1370,10 +1377,16 @@ async function handlePayYooKassa() {
     for (let attempt = 0; attempt < 24; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000));
       const result = await invoke('check_payment');
-      if (result?.status === 'active' || result?.is_active === true) {
-        await refreshAccountSnapshot();
-        showToast('Оплата подтверждена сервером. Подписка обновлена.');
-        return;
+      if (result?.subscription) {
+        const updated = result.subscription;
+        const changed = updated.expires_at !== previousExpiry ||
+          (!['active', 'trial', 'grace'].includes(previousStatus) &&
+           ['active', 'trial', 'grace'].includes(updated.status));
+        if (changed) {
+          await refreshAccountSnapshot();
+          showToast('Статус подписки обновлён. Проверьте срок действия.');
+          return;
+        }
       }
     }
     showToast('Оплата пока не подтверждена. Проверить статус можно в аккаунте.');
@@ -1406,9 +1419,9 @@ function applySettingsToUi() {
   const setKill = document.getElementById('set-killswitch');
 
   if (setAuto) setAuto.checked = !!s.autoStart;
-  if (setBg) setBg.checked = !!s.stayConnectedInBackground;
+  if (setBg) setBg.checked = false;
   if (setBypass) setBypass.checked = !!s.bypassRu;
-  if (setKill) setKill.checked = !!s.killSwitch;
+  if (setKill) setKill.checked = false;
 
   const adRadio = document.querySelector(`input[name="adblock"][value="${s.adBlock || 'recommended'}"]`);
   if (adRadio) adRadio.checked = true;

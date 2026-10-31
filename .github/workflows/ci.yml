@@ -37,6 +37,12 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File scripts/setup-runtime.ps1
 
+      - name: Validate frontend JavaScript
+        run: node --check ui/app.js
+
+      - name: Frontend contract regression tests
+        run: node --test tests/frontend-contract.test.mjs
+
       - name: Cargo Check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 

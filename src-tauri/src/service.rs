@@ -528,8 +528,15 @@ pub async fn telegram_check_session(
     app: AppHandle,
     session_token: String,
 ) -> Result<TelegramCheckResult, String> {
-    let path = format!("/auth/telegram/check-session?token={}", session_token.trim());
-    let res = request(&app, Method::GET, &path, None, false, false).await?;
+    let token = session_token.trim();
+    if token.len() > 256 || token.is_empty() {
+        return Err("Некорректный токен Telegram.".into());
+    }
+    // Avoid exposing one-time session tickets in URL/proxy access logs.
+    let res = request(
+        &app, Method::POST, "/auth/telegram/check-session",
+        Some(json!({"token": token})), false, false,
+    ).await?;
     let status = res
         .get("status")
         .and_then(Value::as_str)
@@ -840,19 +847,22 @@ pub async fn create_payment(
     devices: Option<i64>,
     amount_rub: Option<i64>,
     days: Option<i64>,
+    request_id: Option<String>,
 ) -> Result<Value, String> {
     let id = install_id(&app)?;
     let dev = devices.unwrap_or(2);
-    let (computed_days, computed_amount) = match plan_code.as_str() {
-        "month" => (30, match dev { 5 => 109, 10 => 129, _ => 89 }),
-        "quarter" => (90, match dev { 5 => 396, 10 => 476, _ => 316 }),
-        "half_year" => (180, match dev { 5 => 712, 10 => 872, _ => 552 }),
-        "year" => (365, match dev { 5 => 1185, 10 => 1485, _ => 885 }),
-        _ => (30, 89),
-    };
-    let final_days = days.unwrap_or(computed_days);
-    let final_amount = amount_rub.unwrap_or(computed_amount);
-    let request_id = format!("req_{}", uuid::Uuid::new_v4().simple());
+    if !matches!(dev, 2 | 5 | 10) {
+        return Err("Недопустимое количество устройств.".into());
+    }
+    // The UI only submits values received from GET /plans. The API verifies
+    // them again; never fall back to historical hard-coded prices or durations.
+    let final_days = days.filter(|d| *d > 0).ok_or("Не загружен срок тарифа.")?;
+    let final_amount = amount_rub.filter(|a| *a > 0).ok_or("Не загружена цена тарифа.")?;
+    let request_id = request_id.unwrap_or_else(|| format!("req_{}", Uuid::new_v4().simple()));
+    if request_id.len() < 8 || request_id.len() > 128 ||
+        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Некорректный идентификатор платежа.".into());
+    }
 
     request(
         &app,
@@ -871,6 +881,20 @@ pub async fn create_payment(
         false,
     )
     .await
+}
+
+/// Check only a payment invoice owned by the signed-in user.
+/// The server verifies webhook fulfillment before reporting success.
+#[tauri::command]
+pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
+    if invoice_id.is_empty() || invoice_id.len() > 128 ||
+        !invoice_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Некорректный номер счёта.".into());
+    }
+    request(
+        &app, Method::GET, &format!("/payment/check?invoice_id={invoice_id}&provider=yookassa"),
+        None, true, false,
+    ).await
 }
 
 #[tauri::command]
@@ -1057,7 +1081,14 @@ pub async fn vpn_start(
 
     if !test_res.status.success() {
         let _ = fs::remove_file(&config_path);
-        return Err("Конфигурация туннеля не прошла проверку Xray.".into());
+        // Xray emits actionable parser/config diagnostics on stderr.
+        let cause = String::from_utf8_lossy(&test_res.stderr);
+        let detail: String = cause.trim().chars().take(500).collect();
+        return Err(if detail.is_empty() {
+            format!("Конфигурация Xray отклонена (код {:?}).", test_res.status.code())
+        } else {
+            format!("Ошибка конфигурации Xray: {detail}")
+        });
     }
 
     let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))

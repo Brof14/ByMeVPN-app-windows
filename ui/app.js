@@ -143,7 +143,7 @@ const I18N = {
     server_auto: 'Автоматически',
     server_auto_desc: 'Выберем лучшее доступное соединение',
     available_servers: 'ДОСТУПНЫЕ СЕРВЕРЫ',
-    autorenew_on: 'Автопродление включено',
+    autorenew_on: 'Статус автопродления',
     renew: 'Продлить',
     manage_subscription: 'Управлять подпиской',
     devices: 'Устройства',
@@ -162,7 +162,7 @@ const I18N = {
     autostart_title: 'Запускать вместе с системой',
     autostart_desc: 'ByMeVPN будет включаться автоматически при запуске компьютера',
     background_title: 'Оставаться подключённым в фоне',
-    background_desc: 'VPN продолжит работать, даже если вы закроете приложение',
+    background_desc: 'Фоновая работа пока в разработке. Закрытие окна отключает VPN.',
     bypass_title: 'Умный обход российских сервисов',
     bypass_desc: 'Российские сайты и сервисы будут открываться без VPN',
     set_security_title: 'Комфорт и защита',
@@ -173,7 +173,7 @@ const I18N = {
     adblock_basic: 'Базовая',
     adblock_recommended: 'Рекомендуется',
     killswitch_title: 'Аварийная защита',
-    killswitch_desc: 'Если VPN неожиданно отключится, интернет будет временно заблокирован, чтобы сохранить вашу приватность.',
+    killswitch_desc: 'Полная аварийная блокировка пока не реализована.',
     support_info_title: 'Поддержка и информация',
     support_info_desc: 'Мы всегда рядом',
     tile_telegram: 'Поддержка в Telegram',
@@ -181,6 +181,15 @@ const I18N = {
     tile_faq: 'Частые вопросы',
     tile_terms: 'Условия использования',
     app_language: 'Язык приложения',
+    tg_modal_title: 'Вход через Telegram',
+    google_modal_title: 'Вход через Google',
+    faq_title: 'Частые вопросы',
+    faq_q1: 'Как работает VLESS + Reality?',
+    faq_a1: 'VLESS + Reality шифрует трафик и использует TLS-маскировку. Доступность зависит от сети и сервера.',
+    faq_q2: 'Как работает обход российских сервисов?',
+    faq_a2: 'При включённом обходе поддерживаемые российские домены и адреса направляются напрямую. Фактические маршруты проверяются на устройстве.',
+    faq_q3: 'Как отключить автопродление?',
+    faq_a3: 'Управление списаниями через приложение пока не реализовано. Обратитесь в поддержку для проверки и изменения автопродления.',
     cancel: 'Отмена',
     confirm: 'Подтвердить'
   },
@@ -227,7 +236,7 @@ const I18N = {
     view_all_plans: 'View all plans ›',
     trial_access_headline: 'Free Trial Access',
     trial_for_new: '3 days of unlimited access for new users',
-    trial_then_price: '$0 charge • No credit card required',
+    trial_then_price: '0 ₽ charged • No card required',
     select_device_count: 'Select number of devices',
     devices_2: '2 devices',
     devices_5: '5 devices',
@@ -248,7 +257,7 @@ const I18N = {
     server_auto: 'Automatic',
     server_auto_desc: 'We will select the lowest latency server',
     available_servers: 'AVAILABLE SERVERS',
-    autorenew_on: 'Auto-renewal active',
+    autorenew_on: 'Auto-renewal status',
     renew: 'Extend',
     manage_subscription: 'Manage subscription',
     devices: 'Devices',
@@ -267,7 +276,7 @@ const I18N = {
     autostart_title: 'Launch on Windows startup',
     autostart_desc: 'ByMeVPN starts automatically with your system',
     background_title: 'Stay connected in background',
-    background_desc: 'VPN stays connected even when app window is closed',
+    background_desc: 'Background VPN mode is not available yet. Closing the app disconnects.',
     bypass_title: 'Smart local services bypass',
     bypass_desc: 'Direct routes for local government, banking and local domain services',
     set_security_title: 'Comfort & Protection',
@@ -278,7 +287,7 @@ const I18N = {
     adblock_basic: 'Basic',
     adblock_recommended: 'Recommended',
     killswitch_title: 'Kill Switch',
-    killswitch_desc: 'Blocks internet if VPN disconnects unexpectedly to prevent data leaks.',
+    killswitch_desc: 'Full kill switch protection is not available yet.',
     support_info_title: 'Help & Legal',
     support_info_desc: 'Always by your side',
     tile_telegram: 'Telegram Support',
@@ -286,6 +295,15 @@ const I18N = {
     tile_faq: 'FAQ',
     tile_terms: 'Terms of Use',
     app_language: 'App Language',
+    tg_modal_title: 'Telegram Sign-in',
+    google_modal_title: 'Google Sign-in',
+    faq_title: 'Frequently asked questions',
+    faq_q1: 'How does VLESS + Reality work?',
+    faq_a1: 'VLESS + Reality encrypts traffic and uses TLS camouflage. Availability depends on the network and server.',
+    faq_q2: 'How does local site bypass work?',
+    faq_a2: 'When enabled, supported local domains and IPs are routed directly. Actual routing depends on your computer.',
+    faq_q3: 'How can I cancel auto-renewal?',
+    faq_a3: 'In-app auto-renewal management is not ready. Contact support to verify or change recurring payments.',
     cancel: 'Cancel',
     confirm: 'Confirm'
   }
@@ -1121,7 +1139,7 @@ function updateSubscriptionUi() {
   const homeSubBadge = document.getElementById('home-sub-badge');
   const accPlanName = document.getElementById('acc-plan-name');
   const accPlanValidity = document.getElementById('acc-plan-validity');
-  const accPlanBadge = document.getElementById('acc-auto-renew-badge');
+  const accPlanBadge = document.getElementById('acc-autorenew-badge');
   const accRenewBtn = document.getElementById('btn-acc-renew');
 
   if (homeSubTitle) homeSubTitle.textContent = title;

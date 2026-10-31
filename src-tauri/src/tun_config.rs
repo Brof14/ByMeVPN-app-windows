@@ -69,7 +69,7 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str) ->
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         rules.push(json!({
             "type": "field",
-            "ip": [format!("{ip}/32")],
+            "ip": [format!("{ip}/{}", if ip.is_ipv4() { 32 } else { 128 })],
             "outboundTag": "direct"
         }));
     } else {

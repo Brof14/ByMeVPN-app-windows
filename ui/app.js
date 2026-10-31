@@ -382,23 +382,40 @@ async function loadPricingCatalog() {
     if (!Array.isArray(plans)) throw new Error('Missing plans');
     for (const code of codes) {
       const plan = plans.find(p => p.code === code);
-      if (!Array.isArray(plan?.device_options)) throw new Error('No device-specific prices');
-      for (const devices of [2, 5, 10]) {
-        const choice = plan.device_options.find(o => o.devices === devices);
-        if (!Number.isSafeInteger(choice?.price_rub) || choice.price_rub <= 0 ||
-            !Number.isSafeInteger(choice?.days) || choice.days <= 0) {
-          throw new Error('Incomplete price catalog');
+      if (!plan) continue;
+      if (Array.isArray(plan.device_options)) {
+        for (const devices of [2, 5, 10]) {
+          const choice = plan.device_options.find(o => o.devices === devices);
+          if (!Number.isSafeInteger(choice?.price_rub) || choice.price_rub <= 0 ||
+              !Number.isSafeInteger(choice?.days) || choice.days <= 0) {
+            throw new Error('Incomplete price catalog');
+          }
+          PRICING_MATRIX[devices][code] = {
+            price: choice.price_rub,
+            days: choice.days,
+            note: code === 'month' ? `${choice.days} дней` :
+              `${Math.round(choice.price_rub / (choice.days / 30))} ₽ / месяц`
+          };
         }
-        PRICING_MATRIX[devices][code] = {
-          price: choice.price_rub,
-          days: choice.days,
-          note: code === 'month' ? `${choice.days} дней` :
-            `${Math.round(choice.price_rub / (choice.days / 30))} ₽ / месяц`
-        };
+      } else if (Number.isSafeInteger(plan.price_rub) && plan.price_rub > 0) {
+        const days = Number.isSafeInteger(plan.days) && plan.days > 0 ? plan.days : 30;
+        const mult = { 2: 1.0, 5: 1.34, 10: 1.68 };
+        for (const devices of [2, 5, 10]) {
+          const price = Math.round(plan.price_rub * mult[devices]);
+          PRICING_MATRIX[devices][code] = {
+            price,
+            days,
+            note: code === 'month' ? `${days} дней` :
+              `${Math.round(price / (days / 30))} ₽ / месяц`
+          };
+        }
+      } else {
+        throw new Error('Incomplete price catalog');
       }
     }
     state.catalogReady = true;
   } catch (err) {
+    state.catalogReady = false;
     showToast('Тарифы сейчас недоступны: оплата временно заблокирована.', true);
   }
   updatePricingMatrixUi();
@@ -932,6 +949,12 @@ async function toggleVpn() {
       return;
     }
 
+    if (Array.isArray(state.servers) && state.servers.length === 0) {
+      showToast('У вашего аккаунта нет доступных серверов. Активируйте пробный доступ или обновите подписку.', true);
+      openModal('modal-paywall');
+      return;
+    }
+
     showToast('Запуск туннеля Xray + Wintun...');
     try {
       const code = state.selectedServer.code === 'auto' ? null : state.selectedServer.code;
@@ -947,8 +970,16 @@ async function toggleVpn() {
       showToast('Подключение проверено и установлено');
     } catch (err) {
       state.vpnConnected = false;
-      showToast(typeof err === 'string' ? err : 'Не удалось подключиться', true);
-      updateVpnUi();
+      const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
+      showToast(errMsg, true);
+      if (errMsg.includes('403') || errMsg.includes('подписки') || errMsg.includes('пробный период')) {
+        state.subscription = null;
+        updateSubscriptionUi();
+        updateVpnUi();
+        openModal('modal-paywall');
+      } else {
+        updateVpnUi();
+      }
     }
   }
   } finally {

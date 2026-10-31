@@ -851,6 +851,7 @@ pub async fn create_payment(
     };
     let final_days = days.unwrap_or(computed_days);
     let final_amount = amount_rub.unwrap_or(computed_amount);
+    let request_id = format!("req_{}", uuid::Uuid::new_v4().simple());
 
     request(
         &app,
@@ -862,6 +863,7 @@ pub async fn create_payment(
             "days": final_days,
             "devices": dev,
             "provider": "yookassa",
+            "request_id": request_id,
             "install_id": id
         })),
         true,

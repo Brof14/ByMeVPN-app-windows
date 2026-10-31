@@ -49,6 +49,25 @@ test('checkout prices and gift durations come from server catalog', async () => 
   assert.deepEqual(result, { ready: true, price: 885, days: 450, bigger: 476 });
 });
 
+test('checkout prices parse correctly from live production flat catalog', async () => {
+  const liveCatalog = [
+    { code: 'trial', name: '3 дня бесплатно', price_rub: 0, days: 3 },
+    { code: 'month', name: '1 месяц', price_rub: 149, days: 30 },
+    { code: 'quarter', name: '3 месяца', price_rub: 380, days: 90 },
+    { code: 'half_year', name: '6 месяцев', price_rub: 625, days: 180 },
+    { code: 'year', name: '1 год', price_rub: 983, days: 365 }
+  ];
+  const app = harness(async () => liveCatalog);
+  await app.eval('loadPricingCatalog()');
+  const result = JSON.parse(app.eval(`JSON.stringify({
+    ready: state.catalogReady,
+    monthPrice: PRICING_MATRIX[2].month.price,
+    yearPrice: PRICING_MATRIX[2].year.price,
+    quarterDays: PRICING_MATRIX[2].quarter.days
+  })`));
+  assert.deepEqual(result, { ready: true, monthPrice: 149, yearPrice: 983, quarterDays: 90 });
+});
+
 test('failed catalog fetch blocks payment rather than selling old prices', async () => {
   const app = harness(async () => { throw new Error('offline'); });
   await app.eval('loadPricingCatalog()');

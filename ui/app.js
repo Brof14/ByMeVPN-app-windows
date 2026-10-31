@@ -41,6 +41,7 @@ const state = {
   connectionBusy: false,
   catalogReady: false,
   devicesSupported: false,
+  preferredServerCode: 'auto',
   settings: {
     autoStart: false,
     stayConnectedInBackground: true,
@@ -307,7 +308,10 @@ function setupWindowControls() {
 // Initial Data Loader
 async function loadInitialData() {
   const savedSettings = await invoke('get_settings').catch(() => null);
-  if (savedSettings) state.settings = { ...state.settings, ...savedSettings };
+  if (savedSettings) {
+    state.settings = { ...state.settings, ...savedSettings };
+    state.preferredServerCode = savedSettings.selectedServerCode || 'auto';
+  }
   applySettingsToUi();
 
   // Plans can be requested without an authenticated user. Never show stale
@@ -335,10 +339,13 @@ async function loadAvailableServers() {
   try {
     const servers = await invoke('get_servers');
     state.servers = Array.isArray(servers) ? servers : [];
-    if (state.selectedServer.code !== 'auto') {
-      const current = state.servers.find(s => s.code === state.selectedServer.code);
-      state.selectedServer = current || { code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 };
-    }
+    const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
+    state.selectedServer = preferred || {
+      code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0
+    };
+    const autoButton = document.getElementById('recommended-server-auto');
+    autoButton?.classList.toggle('selected', state.selectedServer.code === 'auto');
+    autoButton?.setAttribute('aria-pressed', String(state.selectedServer.code === 'auto'));
     renderServersList();
     updateVpnUi();
   } catch (err) {
@@ -568,6 +575,15 @@ function setupEventListeners() {
   document.getElementById('btn-active-location-pill')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('row-server-info')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('btn-back-from-servers')?.addEventListener('click', () => switchTab('tab-home'));
+  document.getElementById('recommended-server-auto')?.addEventListener('click', () => {
+    state.preferredServerCode = 'auto';
+    state.selectedServer = { code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 };
+    void invoke('save_setting', { key: 'selectedServerCode', value: 'auto' }).catch(() =>
+      showToast('Не удалось сохранить выбор сервера', true));
+    renderServersList();
+    updateVpnUi();
+    switchTab('tab-home');
+  });
 
   // Pricing / Subscription triggers
   document.getElementById('btn-home-activate-trial')?.addEventListener('click', handleActivateTrial);
@@ -1321,6 +1337,11 @@ function renderServersList(filter = '') {
     card.append(flag, details, ping, dot);
     card.addEventListener('click', () => {
       state.selectedServer = srv;
+      state.preferredServerCode = srv.code;
+      void invoke('save_setting', { key: 'selectedServerCode', value: srv.code }).catch(() =>
+        showToast('Не удалось сохранить выбор сервера', true));
+      document.getElementById('recommended-server-auto')?.classList.remove('selected');
+      document.getElementById('recommended-server-auto')?.setAttribute('aria-pressed', 'false');
       renderServersList(filter);
       updateVpnUi();
       showToast(`Выбран сервер: ${srv.name || srv.code}`);

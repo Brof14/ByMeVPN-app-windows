@@ -2917,3 +2917,16 @@ button:disabled, input:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+#recommended-server-auto {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#recommended-server-auto:focus-visible,
+.server-stack-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}

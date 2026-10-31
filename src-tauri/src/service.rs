@@ -932,6 +932,7 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
     let allowed = [
         "autoStart",
         "autoConnect",
+        "selectedServerCode",
         "stayConnectedInBackground",
         "bypassRu",
         "adBlock",
@@ -943,6 +944,13 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
     }
     if matches!(key.as_str(), "stayConnectedInBackground" | "killSwitch") && value == Value::Bool(true) {
         return Err("Эта функция недоступна, пока не пройдёт проверку безопасности.".into());
+    }
+    if key == "selectedServerCode" {
+        let code = value.as_str().ok_or("Неверный код сервера.")?;
+        if code.len() > 128 || code.is_empty() ||
+            !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+            return Err("Неверный код сервера.".into());
+        }
     }
     let dir: PathBuf = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

@@ -122,13 +122,13 @@ const I18N = {
     vpn_off_desc: 'Нажмите, чтобы подключиться',
     connect: 'Подключиться',
     disconnect: 'Отключить',
-    try_bymevpn: 'Попробовать ByMeVPN за',
-    trial_perks: '3 дня полного доступа ко всем серверам без ограничений скорости. Затем — 89 ₽ за 30 дней.',
-    activate_1rub: 'Активировать за 1 ₽',
+    try_bymevpn: 'Попробовать ByMeVPN',
+    trial_perks: '3 дня полного доступа ко всем серверам без ограничений скорости. Без привязки карты.',
+    activate_1rub: 'Попробовать бесплатно',
     view_all_plans: 'Посмотреть все тарифы ›',
-    trial_access_headline: 'Пробный доступ за',
-    trial_for_new: '3 дня доступа для новых пользователей',
-    trial_then_price: 'Затем — 89 ₽ за 30 дней при сохранённом способе оплаты',
+    trial_access_headline: 'Бесплатный пробный доступ',
+    trial_for_new: '3 дня полного доступа для новых пользователей',
+    trial_then_price: '0 ₽ к списанию • Без привязки банковской карты',
     select_device_count: 'Выберите количество устройств',
     devices_2: '2 устройства',
     devices_5: '5 устройств',
@@ -227,13 +227,13 @@ const I18N = {
     vpn_off_desc: 'Click to establish secure connection',
     connect: 'Connect',
     disconnect: 'Disconnect',
-    try_bymevpn: 'Try ByMeVPN for',
-    trial_perks: '3 days of full access to all servers with no speed limits. Then 89 ₽ for 30 days.',
-    activate_1rub: 'Activate for 1 ₽',
+    try_bymevpn: 'Try ByMeVPN Free',
+    trial_perks: '3 days of full access to all servers with no speed limits. No credit card required.',
+    activate_1rub: 'Start 3-Day Free Trial',
     view_all_plans: 'View all plans ›',
-    trial_access_headline: 'Trial access for',
-    trial_for_new: '3 days access for new users',
-    trial_then_price: 'Then 89 ₽ for 30 days with saved payment method',
+    trial_access_headline: 'Free Trial Access',
+    trial_for_new: '3 days of unlimited access for new users',
+    trial_then_price: '$0 charge • No credit card required',
     select_device_count: 'Select number of devices',
     devices_2: '2 devices',
     devices_5: '5 devices',
@@ -402,6 +402,18 @@ function switchTab(tabId) {
     case 'tab-settings':
       titleEl.textContent = dict.nav_settings;
       break;
+    case 'tab-devices':
+      titleEl.textContent = lang === 'ru' ? 'Мои устройства' : 'My Devices';
+      break;
+    case 'tab-renewal':
+      titleEl.textContent = lang === 'ru' ? 'Автопродление' : 'Auto-Renewal';
+      break;
+    case 'tab-support':
+      titleEl.textContent = lang === 'ru' ? 'Помощь' : 'Support & Help';
+      break;
+    case 'tab-advanced':
+      titleEl.textContent = lang === 'ru' ? 'Расширенные настройки' : 'Advanced Settings';
+      break;
   }
 }
 
@@ -452,10 +464,59 @@ function setupEventListeners() {
     document.getElementById('tg-manual-box')?.classList.toggle('hidden');
   });
 
+  // Manual key / subscription link entry (view-auth)
+  document.getElementById('btn-toggle-manual-key')?.addEventListener('click', () => {
+    const pane = document.getElementById('auth-manual-key-pane');
+    const label = document.getElementById('manual-key-btn-text');
+    if (pane) {
+      pane.classList.toggle('hidden');
+      const isHidden = pane.classList.contains('hidden');
+      if (label) {
+        label.textContent = isHidden ? 'Ввести ключ или ссылку вручную ▾' : 'Ввести ключ или ссылку вручную ▴';
+      }
+    }
+  });
+
+  document.getElementById('btn-submit-manual-key')?.addEventListener('click', async () => {
+    const textarea = document.getElementById('input-manual-key-url');
+    const keyUrl = textarea?.value?.trim();
+    if (!keyUrl) {
+      showToast('Вставьте ссылку подписки или vless:// ключ', true);
+      return;
+    }
+    showToast('Проверка и подключение ключа...');
+    try {
+      const res = await invoke('telegram_login', {
+        subscriptionUrl: keyUrl,
+        name: 'Пользователь ByMeVPN'
+      });
+      state.user = res.user;
+      state.subscription = res.subscription;
+      showAppShell();
+      showToast('Ключ успешно активирован!');
+      await refreshAccountSnapshot();
+    } catch (err) {
+      showToast(typeof err === 'string' ? err : 'Неверный формат ключа или ссылки', true);
+    }
+  });
+
   // Sidebar navigation
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
+
+  // Subpage Back Buttons
+  document.getElementById('btn-back-from-devices')?.addEventListener('click', () => switchTab('tab-account'));
+  document.getElementById('btn-back-from-renewal')?.addEventListener('click', () => switchTab('tab-account'));
+  document.getElementById('btn-back-from-support')?.addEventListener('click', () => switchTab('tab-account'));
+  document.getElementById('btn-back-from-advanced')?.addEventListener('click', () => switchTab('tab-settings'));
+
+  // Account Subpages Triggers
+  document.getElementById('btn-acc-open-devices')?.addEventListener('click', () => switchTab('tab-devices'));
+  document.getElementById('btn-acc-manage')?.addEventListener('click', () => switchTab('tab-renewal'));
+  document.getElementById('btn-acc-open-support')?.addEventListener('click', () => switchTab('tab-support'));
+  document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
+  document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
@@ -470,11 +531,49 @@ function setupEventListeners() {
 
   // Pricing / Subscription triggers
   document.getElementById('btn-home-activate-trial')?.addEventListener('click', handleActivateTrial);
+  document.getElementById('btn-no-plan-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-pricing-activate-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-home-all-tariffs')?.addEventListener('click', () => switchTab('tab-pricing'));
+  document.getElementById('btn-no-plan-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('btn-open-manage-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('btn-acc-renew')?.addEventListener('click', () => switchTab('tab-pricing'));
-  document.getElementById('btn-acc-manage')?.addEventListener('click', () => switchTab('tab-pricing'));
+
+  // Support subpage actions
+  document.getElementById('btn-open-telegram-support')?.addEventListener('click', handleOpenTelegramSupport);
+  document.getElementById('card-support-channel')?.addEventListener('click', () => {
+    const url = 'https://t.me/bymevpn_channel';
+    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+  });
+  document.getElementById('card-support-faq')?.addEventListener('click', () => openModal('modal-faq'));
+
+  // Telegram bot payment button
+  document.getElementById('btn-pay-telegram-bot')?.addEventListener('click', () => {
+    const url = 'https://t.me/ByMeVPNbot';
+    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+  });
+
+  // Paywall modal actions
+  document.getElementById('btn-paywall-trial')?.addEventListener('click', () => {
+    closeModal('modal-paywall');
+    handleActivateTrial();
+  });
+  document.getElementById('btn-paywall-yookassa-action')?.addEventListener('click', () => {
+    closeModal('modal-paywall');
+    handlePayYooKassa();
+  });
+  document.getElementById('btn-paywall-tg-action')?.addEventListener('click', () => {
+    closeModal('modal-paywall');
+    const url = 'https://t.me/ByMeVPNbot';
+    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+  });
+
+  document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      state.selectedPlanCode = card.dataset.pwPlan || 'year';
+    });
+  });
 
   // Device tabs on pricing screen
   document.querySelectorAll('.dev-seg-btn').forEach(btn => {
@@ -744,8 +843,8 @@ async function toggleVpn() {
     const sub = state.subscription;
     const hasActiveSub = sub && (sub.status === 'active' || sub.status === 'trial');
     if (!hasActiveSub) {
-      showToast('Для подключения требуется активная подписка. Активируйте 3 дня за 1 ₽ или выберите тариф.', true);
-      switchTab('tab-pricing');
+      showToast('Для подключения требуется активный доступ (3 дня бесплатно или тариф).');
+      openModal('modal-paywall');
       return;
     }
 
@@ -847,15 +946,25 @@ function updateVpnUi() {
   const sub = state.subscription;
   const hasPlan = sub && (sub.status === 'active' || sub.status === 'trial');
 
+  const noPlanBox = document.getElementById('home-state-no-plan');
   const connectedBox = document.getElementById('home-state-connected');
   const disconnectedBox = document.getElementById('home-state-disconnected');
   const activePill = document.getElementById('vpn-active-pill');
 
   if (isConn) {
+    noPlanBox?.classList.add('hidden');
     connectedBox?.classList.remove('hidden');
     disconnectedBox?.classList.add('hidden');
     activePill?.classList.remove('hidden');
+  } else if (!hasPlan) {
+    // Parity with Android Mockup 03_home_no_plan
+    noPlanBox?.classList.remove('hidden');
+    connectedBox?.classList.add('hidden');
+    disconnectedBox?.classList.add('hidden');
+    activePill?.classList.add('hidden');
   } else {
+    // Has active plan, disconnected
+    noPlanBox?.classList.add('hidden');
     connectedBox?.classList.add('hidden');
     disconnectedBox?.classList.remove('hidden');
     activePill?.classList.add('hidden');
@@ -865,19 +974,11 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (!hasPlan) {
-      if (desc) desc.textContent = 'Нет активной подписки';
-      if (btn) btn.textContent = 'Попробовать за 1 ₽';
-      ringOff?.classList.add('ring-off');
-      ringOff?.classList.remove('ring-ready');
-      promoBox?.classList.remove('hidden');
-    } else {
-      if (desc) desc.textContent = 'Нажмите, чтобы подключиться';
-      if (btn) btn.textContent = 'Подключиться';
-      ringOff?.classList.remove('ring-off');
-      ringOff?.classList.add('ring-ready');
-      promoBox?.classList.add('hidden');
-    }
+    if (desc) desc.textContent = 'Нажмите, чтобы подключиться';
+    if (btn) btn.textContent = 'Подключиться';
+    ringOff?.classList.remove('ring-off');
+    ringOff?.classList.add('ring-ready');
+    promoBox?.classList.add('hidden');
   }
 
   // Update Server info in card
@@ -962,15 +1063,23 @@ function updateSubscriptionUi() {
     const renewText = accRenewBtn.querySelector('[data-i18n="renew"]') || accRenewBtn;
     renewText.textContent = hasPlan ? 'Продлить' : 'Оформить подписку';
   }
+
+  const renewalBadge = document.getElementById('renewal-current-status-badge');
+  if (renewalBadge) {
+    renewalBadge.textContent = hasPlan ? 'Активно' : 'Отключено';
+    renewalBadge.className = hasPlan ? 'badge-active-mini' : 'badge-inactive';
+  }
 }
 
 function updateDevicesUi() {
   const container = document.getElementById('acc-devices-list');
-  if (!container) return;
+  const fullContainer = document.getElementById('devices-full-cards-list');
+  const heroCurrent = document.getElementById('devices-hero-current');
+  const heroMax = document.getElementById('devices-hero-max');
 
   const ratioEl = document.getElementById('acc-devices-ratio');
   const sub = state.subscription;
-  const maxDev = sub?.max_devices || 2;
+  const maxDev = sub?.max_devices || 5;
   const devList = Array.isArray(state.devices) && state.devices.length > 0
     ? state.devices
     : [{
@@ -984,9 +1093,10 @@ function updateDevicesUi() {
   if (ratioEl) {
     ratioEl.textContent = `${devList.length} / ${maxDev}`;
   }
+  if (heroCurrent) heroCurrent.textContent = String(devList.length);
+  if (heroMax) heroMax.textContent = String(maxDev);
 
-  container.innerHTML = '';
-  devList.forEach(dev => {
+  const createDeviceRow = (dev) => {
     const row = document.createElement('div');
     row.className = 'glass-card device-item-row';
     row.dataset.deviceId = dev.id || '';
@@ -1018,9 +1128,18 @@ function updateDevicesUi() {
     if (disconnectBtn) {
       disconnectBtn.addEventListener('click', () => handleDeleteDevice(dev.id, model));
     }
+    return row;
+  };
 
-    container.appendChild(row);
-  });
+  if (container) {
+    container.innerHTML = '';
+    devList.forEach(dev => container.appendChild(createDeviceRow(dev)));
+  }
+
+  if (fullContainer) {
+    fullContainer.innerHTML = '';
+    devList.forEach(dev => fullContainer.appendChild(createDeviceRow(dev)));
+  }
 }
 
 async function handleDeleteDevice(deviceId, name) {
@@ -1128,14 +1247,14 @@ function filterServers(query) {
 
 // Payment & Trial
 async function handleActivateTrial() {
-  showToast('Активация пробного периода за 1 ₽...');
+  showToast('Активация 3 дней бесплатного доступа...');
   try {
     const res = await invoke('activate_trial');
     if (res) {
       state.subscription = res;
       updateSubscriptionUi();
     }
-    showToast('Пробный период на 3 дня успешно активирован!');
+    showToast('Пробный период на 3 дня успешно активирован (0 ₽)!');
     switchTab('tab-home');
   } catch (err) {
     showToast(typeof err === 'string' ? err : 'Не удалось активировать пробный период', true);

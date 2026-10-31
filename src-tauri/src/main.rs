@@ -7,6 +7,7 @@ mod tun_config;
 mod tunnel_runtime;
 
 use tauri::{Manager, RunEvent};
+#[cfg(all(debug_assertions, windows))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
 fn main() {

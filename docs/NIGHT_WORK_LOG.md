@@ -86,6 +86,30 @@
   - `cargo test` — 11 тестов пройдено, 0 ошибок.
   - Реальный TCP тест подключения к боевому серверу `2.27.120.247:443` выполнен успешно (`TcpTestSucceeded: True`).
 
+### Задача 9: 100% паритет экранов с Android-приложением, 3 дня бесплатного пробника и устранение сбоя TaskDialogIndirect
+- **Файлы:** `src-tauri/build.rs`, `src-tauri/src/main.rs`, `ui/index.html`, `ui/styles.css`, `ui/app.js`, `qa-preview/index.html`, `qa-preview/styles.css`, `qa-preview/app.js`
+- **Изменения:**
+  1. **Устранение сбоя Windows `TaskDialogIndirect`:**
+     - В манифест приложения (`src-tauri/build.rs`) добавлена секция совместимости с Windows (Windows 10/11, 8.1, 8, 7), поддержка PerMonitorV2 DPI awareness и гарантированное подключение Microsoft.Windows.Common-Controls 6.0.0.0 во всех режимах сборки (как `asInvoker` для тестов, так и `requireAdministrator` для продакшена).
+     - Устранено предупреждение неиспользуемого импорта `tauri_plugin_deep_link::DeepLinkExt` в релизных сборках.
+  2. **Реализация бесплатного 3-дневного пробника (0 ₽ / без карты):**
+     - Во всех экранах и текстах заменены старые формулировки «за 1 ₽» на честные «3 дня бесплатно», «0 ₽ к списанию • Без привязки карты».
+     - Привязан вызов `activate_trial` бэкенда (`POST /subscription/trial`).
+  3. **Добавление недостающих экранов по образцу Android (`ByMeVPN-app`):**
+     - **Home No Plan Screen (`tab-home`, состояние `home-state-no-plan`):** светящийся логотип, слоган, плашки преимуществ (До 1 Гбит/с, VLESS Reality, Без рекламы) и блок активации пробника.
+     - **Devices Screen (`tab-devices`):** экран «Мои устройства» (Mockup 15 / `DevicesScreen.kt`) с крупным счетчиком «X из Y», списком устройств (текущий ПК онлайн, кнопка отключения сторонних устройств).
+     - **Renewal Screen (`tab-renewal`):** управление автопродлением ЮKassa (`RenewalScreen.kt`).
+     - **Support & Help Screen (`tab-support`):** экран поддержки (`SupportScreen.kt`) с бонусом за баги, переходом в `@ByMeVPN_Support_bot`, официальный канал `@bymevpn_channel` и FAQ.
+     - **Advanced Settings Screen (`tab-advanced`):** параметры ядра Xray и драйвера Wintun (MTU 1500, WFP leak-block, Anti-recursion Rule #0, geoip:private LAN bypass).
+     - **Paywall Modal (`modal-paywall`):** модальное окно пейволла (`PaywallSheet.kt`), открывающееся при попытке подключения без активного тарифа.
+     - **Ручной ввод ключа:** аккордеон ввода `vless://` или ссылки подписки на экране входа.
+  4. **Сборка и контрольные суммы:**
+     - Пересобраны установщики NSIS (`ByMeVPN_1.2.0_x64-setup.exe` — SHA-256: `bdb5b9ef7f414cef875dbc72decb2d11dae0664c7cfa55c1edb56ce109f8338a`) и MSI (`ByMeVPN_1.2.0_x64_en-US.msi` — SHA-256: `e4d9d1040ae2249f841eb70d8577e890d86e8771ae6421da4b5ff24bc2dc33a7`).
+- **Проверка:**
+  - `cargo test` — 11 тестов пройдено, 0 ошибок.
+  - `cargo check --release` — 0 предупреждений, 0 ошибок.
+  - `npx @tauri-apps/cli build` — 2 бандла (.exe, .msi) собраны успешно.
+
 ---
 
 ## 4. Оставшиеся блокеры и внешние зависимости

@@ -134,6 +134,20 @@
                 <span data-i18n="tg_login_btn">Войти через Telegram</span>
                 <span class="btn-arrow">›</span>
               </button>
+
+              <!-- Manual Key / Subscription Link Accordion matching Android WelcomeScreen -->
+              <div class="auth-manual-key-toggle-box">
+                <button type="button" id="btn-toggle-manual-key" class="btn-link-key-toggle">
+                  <span id="manual-key-btn-text">Ввести ключ или ссылку вручную ▾</span>
+                </button>
+                <div id="auth-manual-key-pane" class="auth-manual-key-pane hidden">
+                  <textarea id="input-manual-key-url" class="textarea-manual-key" placeholder="Вставьте ссылку подписки или vless://..."></textarea>
+                  <button type="button" id="btn-submit-manual-key" class="btn-primary btn-submit-key">
+                    <span>Подключить по ссылке</span>
+                    <span class="btn-arrow">›</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="auth-switch-link">
@@ -271,8 +285,63 @@
           <!-- Tab Contents Container -->
           <div class="app-tab-pages">
 
-            <!-- TAB 1: HOME (Screen 3: No Plan / Screen 5: Connected) -->
+            <!-- TAB 1: HOME (Screen 3: No Plan / Screen 4: Disconnected / Screen 5: Connected) -->
             <div id="tab-home" class="tab-content active">
+
+              <!-- STATE 0: NO PLAN (Mockup 03_home_no_plan) -->
+              <div id="home-state-no-plan" class="home-state-box hidden">
+                <div class="glass-card hero-no-plan-card">
+                  <div class="no-plan-halo-center">
+                    <div class="no-plan-halo-ring"></div>
+                    <div class="no-plan-shield-circle">
+                      <svg width="86" height="96" viewBox="0 0 92 104" fill="none">
+                        <defs>
+                          <linearGradient id="npShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#00d2ff"/>
+                            <stop offset="0.55" stop-color="#00e5b0"/>
+                            <stop offset="1" stop-color="#00f5a0"/>
+                          </linearGradient>
+                        </defs>
+                        <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#npShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
+                        <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#npShieldGrad)"/>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <span class="no-plan-brand-pill">BYMEVPN</span>
+                  <h2 class="no-plan-headline">Свободный интернет.<br/>Одно касание.</h2>
+                  <p class="no-plan-desc">Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.</p>
+
+                  <div class="no-plan-perks-row">
+                    <div class="perk-pill">
+                      <span class="perk-icon">⚡</span>
+                      <span>До 1 Гбит/с</span>
+                    </div>
+                    <div class="perk-pill">
+                      <span class="perk-icon">🛡️</span>
+                      <span>VLESS Reality</span>
+                    </div>
+                    <div class="perk-pill">
+                      <span class="perk-icon">🚫</span>
+                      <span>Без рекламы</span>
+                    </div>
+                  </div>
+
+                  <div class="no-plan-trial-dock">
+                    <div class="dock-badge-gift">🎁 3 ДНЯ БЕСПЛАТНО</div>
+                    <h3>Попробуйте сервис перед покупкой</h3>
+                    <p>Пробный доступ на 3 дня ко всем серверам без ограничений скорости. Без привязки карты.</p>
+                    <button type="button" id="btn-no-plan-trial" class="btn-primary btn-glow btn-wide">
+                      <span>Попробовать бесплатно</span>
+                      <span class="btn-arrow">›</span>
+                    </button>
+                    <button type="button" id="btn-no-plan-pricing" class="btn-link-pricing">
+                      <span>Посмотреть все тарифы</span>
+                      <span>›</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <!-- STATE A: CONNECTED (Screen 5) -->
               <div id="home-state-connected" class="home-state-box hidden">
@@ -427,18 +496,19 @@
                   </div>
                 </div>
 
-                <!-- Trial Promo Box (Screen 3 Bottom) -->
+                <!-- Free Trial Promo Box -->
                 <div class="glass-card promo-trial-box">
                   <div class="promo-trial-content">
+                    <span class="dock-badge-gift">🎁 3 ДНЯ БЕСПЛАТНО</span>
                     <h3 class="promo-trial-title">
-                      <span data-i18n="try_bymevpn">Попробовать ByMeVPN за</span> <span class="neon-green">1 ₽</span>
+                      <span>Попробуйте ByMeVPN бесплатно</span>
                     </h3>
-                    <p class="promo-trial-desc" data-i18n="trial_perks">
-                      3 дня полного доступа ко всем серверам без ограничений скорости. Затем — 89 ₽ за 30 дней.
+                    <p class="promo-trial-desc">
+                      3 дня полного доступа ко всем серверам без ограничений скорости. Без привязки карты.
                     </p>
                     <div class="promo-buttons-row">
-                      <button type="button" id="btn-home-activate-trial" class="btn-primary">
-                        <span data-i18n="activate_1rub">Активировать за 1 ₽</span>
+                      <button type="button" id="btn-home-activate-trial" class="btn-primary btn-glow">
+                        <span>Активировать 3 дня бесплатно</span>
                         <span class="btn-arrow">›</span>
                       </button>
                       <button type="button" id="btn-home-all-tariffs" class="btn-secondary">
@@ -456,13 +526,14 @@
               <!-- Top Banner -->
               <div class="glass-card promo-trial-banner">
                 <div class="banner-texts">
+                  <span class="dock-badge-gift">🎁 БЕЗ ПРИВЯЗКИ КАРТЫ</span>
                   <h2 class="banner-headline">
-                    <span data-i18n="trial_access_headline">Пробный доступ за</span> <span class="neon-green">1 ₽</span>
+                    <span>Попробуйте 3 дня бесплатно</span>
                   </h2>
-                  <p class="banner-sub" data-i18n="trial_for_new">3 дня доступа для новых пользователей</p>
-                  <p class="banner-sub-note" data-i18n="trial_then_price">Затем — 89 ₽ за 30 дней при сохранённом способе оплаты</p>
-                  <button type="button" id="btn-pricing-activate-trial" class="btn-primary banner-cta-btn">
-                    <span data-i18n="activate_1rub">Активировать за 1 ₽</span>
+                  <p class="banner-sub">Полный доступ ко всем локациям для новых пользователей</p>
+                  <p class="banner-sub-note">Все серверы сразу • Отмена не требуется • Без скрытых списаний</p>
+                  <button type="button" id="btn-pricing-activate-trial" class="btn-primary btn-glow banner-cta-btn">
+                    <span>Активировать 3 дня бесплатно</span>
                     <span class="btn-arrow">›</span>
                   </button>
                 </div>
@@ -549,11 +620,50 @@
                 </div>
               </div>
 
-              <!-- Pay Button -->
-              <button type="button" id="btn-pay-yookassa" class="btn-primary btn-pay-large">
-                <span data-i18n="pay_via_yookassa">Оплатить через ЮKassa</span>
-                <span class="btn-arrow">›</span>
-              </button>
+              <!-- Features highlights list matching Android Paywall & Pricing -->
+              <div class="pricing-perks-summary">
+                <div class="pricing-perk-item">
+                  <span class="perk-bullet">⚡</span>
+                  <div>
+                    <strong>Скорость до 1 Гбит/с</strong>
+                    <span>YouTube 4K, Reels, игры и скачивание без задержек</span>
+                  </div>
+                </div>
+                <div class="pricing-perk-item">
+                  <span class="perk-bullet">🛡️</span>
+                  <div>
+                    <strong>VLESS Reality & Hysteria 2</strong>
+                    <span>Полная маскировка трафика от блокировок</span>
+                  </div>
+                </div>
+                <div class="pricing-perk-item">
+                  <span class="perk-bullet">🚫</span>
+                  <div>
+                    <strong>Блокировка рекламы</strong>
+                    <span>AdGuard DNS защищает от баннеров и трекеров</span>
+                  </div>
+                </div>
+                <div class="pricing-perk-item">
+                  <span class="perk-bullet">📱</span>
+                  <div>
+                    <strong>До 10 устройств на аккаунт</strong>
+                    <span>Телефон, ПК, планшет, Smart TV</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pay Buttons Stack -->
+              <div class="pricing-pay-actions">
+                <button type="button" id="btn-pay-yookassa" class="btn-primary btn-pay-large">
+                  <span data-i18n="pay_via_yookassa">Оплатить через ЮKassa</span>
+                  <span class="btn-arrow">›</span>
+                </button>
+                <button type="button" id="btn-pay-telegram-bot" class="btn-secondary btn-pay-tg-bot" style="width: 100%; margin-top: 10px; height: 50px;">
+                  <span class="tg-paperplane-icon">✈</span>
+                  <span>Оплатить через Telegram-бота</span>
+                  <span class="btn-arrow">›</span>
+                </button>
+              </div>
 
               <!-- Payment Footnote -->
               <div class="payment-footnotes">
@@ -646,13 +756,16 @@
               </div>
 
               <!-- Devices Section -->
-              <div class="account-devices-section">
+              <div class="account-devices-section" id="btn-acc-open-devices" style="cursor: pointer;">
                 <div class="devices-head-line">
                   <div class="devices-title-group">
                     <span class="devices-icon">💻</span>
-                    <strong data-i18n="devices">Устройства</strong>
+                    <strong data-i18n="devices">Мои устройства</strong>
                   </div>
-                  <span id="acc-devices-ratio" class="badge-devices-ratio">—</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="acc-devices-ratio" class="badge-devices-ratio">—</span>
+                    <span class="card-row-arrow">›</span>
+                  </div>
                 </div>
 
                 <div id="acc-devices-list" class="devices-cards-stack">
@@ -860,6 +973,167 @@
               </div>
             </div>
 
+            <!-- TAB 6: DEVICES (Mockup 15_devices / DevicesScreen.kt) -->
+            <div id="tab-devices" class="tab-content">
+              <div class="subpage-header-row">
+                <button type="button" class="btn-subpage-back" id="btn-back-from-devices">
+                  <span>‹</span> Назад к аккаунту
+                </button>
+                <h2 class="subpage-title">Мои устройства</h2>
+              </div>
+
+              <div class="glass-card devices-hero-card">
+                <div class="devices-big-stat-row">
+                  <strong id="devices-hero-current" class="devices-big-number">—</strong>
+                  <span class="devices-big-slash">из</span>
+                  <span id="devices-hero-max" class="devices-big-max">5</span>
+                </div>
+                <p class="devices-stat-label">Устройств подключено к аккаунту</p>
+                <p class="devices-stat-hint">Вы можете использовать ByMeVPN на компьютере, телефоне, планшете и Smart TV одновременно.</p>
+              </div>
+
+              <div class="section-micro-label">ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА</div>
+              <div id="devices-full-cards-list" class="devices-cards-stack">
+                <!-- Dynamically filled by JS -->
+              </div>
+            </div>
+
+            <!-- TAB 7: RENEWAL (RenewalScreen.kt) -->
+            <div id="tab-renewal" class="tab-content">
+              <div class="subpage-header-row">
+                <button type="button" class="btn-subpage-back" id="btn-back-from-renewal">
+                  <span>‹</span> Назад к аккаунту
+                </button>
+                <h2 class="subpage-title">Автопродление</h2>
+              </div>
+
+              <div class="glass-card renewal-hero-card">
+                <div class="renewal-head-group">
+                  <div class="renewal-circle-icon">🔄</div>
+                  <div>
+                    <h3 style="font-size: 18px; margin-bottom: 4px;">Автопродление подписки</h3>
+                    <span id="renewal-current-status-badge" class="badge-active-mini">Отключено</span>
+                  </div>
+                </div>
+                <div class="card-divider-line"></div>
+                <p class="renewal-explanation">
+                  Статус автопродления регулируется платёжным шлюзом ЮKassa. Если автопродление отключено, доступ завершится точно в указанный день без каких-либо неожиданных списаний.
+                </p>
+                <div class="renewal-actions">
+                  <button type="button" id="btn-renewal-switch-pricing" class="btn-primary" style="height: 46px;">
+                    <span>Выбрать или продлить тариф</span>
+                    <span class="btn-arrow">›</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 8: SUPPORT & HELP (SupportScreen.kt) -->
+            <div id="tab-support" class="tab-content">
+              <div class="subpage-header-row">
+                <button type="button" class="btn-subpage-back" id="btn-back-from-support">
+                  <span>‹</span> Назад
+                </button>
+                <h2 class="subpage-title">Помощь</h2>
+              </div>
+
+              <div class="glass-card support-hero-card">
+                <div class="support-heart-icon-badge">💬❤️</div>
+                <h2 class="support-hero-title">Мы рядом, если<br/>нужна помощь</h2>
+                <p class="support-hero-subtitle">
+                  Нашли ошибку или придумали улучшение? Напишите нам: за подтверждённые ошибки и принятые предложения добавим дни к подписке.
+                </p>
+                <button type="button" id="btn-open-telegram-support" class="btn-primary btn-glow btn-wide" style="height: 48px;">
+                  <span>✈ Написать в поддержку</span>
+                  <span class="btn-arrow">›</span>
+                </button>
+              </div>
+
+              <div class="section-micro-label">ПОЛЕЗНОЕ</div>
+              <div class="support-items-grid">
+                <div class="glass-card support-action-card" id="card-support-faq" style="cursor: pointer;">
+                  <div class="card-row-left">
+                    <span class="support-card-icon">❓</span>
+                    <div>
+                      <strong>Ответы на вопросы</strong>
+                      <span>Оплата, подключение и устройства</span>
+                    </div>
+                  </div>
+                  <span class="card-row-arrow">›</span>
+                </div>
+
+                <div class="glass-card support-action-card" id="card-support-channel" style="cursor: pointer;">
+                  <div class="card-row-left">
+                    <span class="support-card-icon">📢</span>
+                    <div>
+                      <strong>Новости ByMeVPN</strong>
+                      <span>Обновления и новые локации</span>
+                    </div>
+                  </div>
+                  <span class="card-row-arrow">›</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 9: ADVANCED SETTINGS (AdvancedSettingsScreen.kt) -->
+            <div id="tab-advanced" class="tab-content">
+              <div class="subpage-header-row">
+                <button type="button" class="btn-subpage-back" id="btn-back-from-advanced">
+                  <span>‹</span> Назад к настройкам
+                </button>
+                <h2 class="subpage-title">Дополнительные настройки</h2>
+              </div>
+
+              <div class="glass-card advanced-hero-card">
+                <div class="advanced-header-group">
+                  <span class="advanced-gear-icon">🛠</span>
+                  <div>
+                    <h3 style="font-size: 17px; margin-bottom: 4px;">Параметры ядра Xray & Wintun</h3>
+                    <span style="font-size: 12px; color: var(--text-secondary);">Низкоуровневая конфигурация системного туннеля</span>
+                  </div>
+                </div>
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong>Сетевой драйвер Wintun</strong>
+                    <span>Высокопроизводительный драйвер TUN для Windows x64</span>
+                  </div>
+                  <span class="badge-tech-pill">ByMeVPN (MTU 1500)</span>
+                </div>
+
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong>Защита от утечек DNS (WFP)</strong>
+                    <span>Блокировка трафика мимо туннеля через Windows Filtering Platform</span>
+                  </div>
+                  <span class="badge-tech-pill active">Активна (WFP leak-block)</span>
+                </div>
+
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong>Защита от рекурсии маршрутов</strong>
+                    <span>Безусловный прямой маршрут (direct) для собственного хоста сервера</span>
+                  </div>
+                  <span class="badge-tech-pill active">Anti-recursion Rule #0</span>
+                </div>
+
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong>Шлюз локальных сетей (Bypass LAN)</strong>
+                    <span>Локальные адреса RFC 1918 (192.168.x.x, 10.x.x.x) открываются напрямую</span>
+                  </div>
+                  <span class="badge-tech-pill active">geoip:private</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </main>
       </div>
@@ -869,6 +1143,123 @@
     <!-- ============================================== -->
     <!-- MODALS & DIALOGS                               -->
     <!-- ============================================== -->
+
+    <!-- Paywall Modal (PaywallSheet.kt) -->
+    <div id="modal-paywall" class="modal-backdrop hidden">
+      <div class="glass-card modal-window modal-paywall-window">
+        <div class="paywall-head-bar">
+          <div class="badge-premium-crown">👑 ПРЕМИУМ</div>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-paywall">×</button>
+        </div>
+
+        <div class="paywall-hero-center">
+          <div class="paywall-shield-box">
+            <svg width="68" height="78" viewBox="0 0 92 104" fill="none">
+              <defs>
+                <linearGradient id="pwShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#00d2ff"/>
+                  <stop offset="0.55" stop-color="#00e5b0"/>
+                  <stop offset="1" stop-color="#00f5a0"/>
+                </linearGradient>
+              </defs>
+              <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#pwShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
+              <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#pwShieldGrad)"/>
+            </svg>
+          </div>
+          <h2 class="paywall-title">Активируйте ByMeVPN</h2>
+          <p class="paywall-subtitle">Свободный интернет без ограничений и блокировок</p>
+        </div>
+
+        <!-- Features Bullets -->
+        <div class="paywall-features-card">
+          <div class="paywall-feature-row">
+            <span class="pf-icon">⚡</span>
+            <div>
+              <strong>Скорость до 1 Гбит/с</strong>
+              <span>YouTube 4K, Reels, игры и скачивание без задержек</span>
+            </div>
+          </div>
+          <div class="paywall-feature-row">
+            <span class="pf-icon">🛡️</span>
+            <div>
+              <strong>VLESS Reality & Hysteria 2</strong>
+              <span>Полная маскировка трафика от блокировок</span>
+            </div>
+          </div>
+          <div class="paywall-feature-row">
+            <span class="pf-icon">🚫</span>
+            <div>
+              <strong>Блокировка рекламы</strong>
+              <span>AdGuard DNS защищает от баннеров и слежки</span>
+            </div>
+          </div>
+          <div class="paywall-feature-row">
+            <span class="pf-icon">📱</span>
+            <div>
+              <strong>До 10 устройств на аккаунт</strong>
+              <span>Телефон, ПК, планшет, Smart TV</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3-Day Free Trial Highlight Box -->
+        <div class="paywall-trial-promo-card">
+          <div class="trial-promo-texts">
+            <span class="gift-icon">🎁</span>
+            <div>
+              <strong>Попробуйте 3 дня бесплатно</strong>
+              <span>Без привязки карты • Все серверы сразу</span>
+            </div>
+          </div>
+          <button type="button" id="btn-paywall-trial" class="btn-primary btn-glow btn-wide" style="height: 46px; margin-top: 10px;">
+            <span>Активировать 3 дня бесплатно</span>
+          </button>
+        </div>
+
+        <div class="paywall-or-divider" style="margin: 16px 0 10px 0; text-align: center; color: var(--text-muted); font-size: 12px; font-weight: 600;">
+          <span>Или выберите тариф:</span>
+        </div>
+
+        <!-- Mini Tariffs -->
+        <div class="paywall-mini-tariffs">
+          <div class="tariff-card selected" data-pw-plan="year">
+            <div class="tariff-left">
+              <div class="tariff-radio-ring"></div>
+              <div class="tariff-titles">
+                <div class="tariff-name-row">
+                  <strong>12 месяцев</strong>
+                  <span class="gift-badge">+ 3 в подарок</span>
+                </div>
+                <span class="tariff-subnote">59 ₽ / месяц</span>
+              </div>
+            </div>
+            <strong class="tariff-price-bold">885 ₽</strong>
+          </div>
+          <div class="tariff-card" data-pw-plan="month">
+            <div class="tariff-left">
+              <div class="tariff-radio-ring"></div>
+              <div class="tariff-titles">
+                <div class="tariff-name-row">
+                  <strong>1 месяц</strong>
+                </div>
+                <span class="tariff-subnote">30 дней</span>
+              </div>
+            </div>
+            <strong class="tariff-price-bold">89 ₽</strong>
+          </div>
+        </div>
+
+        <button type="button" id="btn-paywall-yookassa-action" class="btn-primary btn-wide" style="height: 48px; margin-top: 14px;">
+          <span>Оплатить через ЮKassa</span>
+          <span class="btn-arrow">›</span>
+        </button>
+
+        <button type="button" id="btn-paywall-tg-action" class="btn-secondary btn-wide" style="height: 44px; margin-top: 8px;">
+          <span>✈ Оплатить через Telegram-бота</span>
+          <span class="btn-arrow">›</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Telegram OAuth Modal -->
     <div id="modal-telegram" class="modal-backdrop hidden">

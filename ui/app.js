@@ -698,9 +698,9 @@ function setupEventListeners() {
   });
 
   // Tariff cards selection
-  document.querySelectorAll('.tariff-card').forEach(card => {
+  document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     card.addEventListener('click', () => {
-      document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
+      document.querySelectorAll('.tariff-card[data-plan]').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       state.selectedPlanCode = card.dataset.plan;
     });

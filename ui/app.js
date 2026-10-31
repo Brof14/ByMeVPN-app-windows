@@ -41,6 +41,9 @@ const state = {
   connectionBusy: false,
   catalogReady: false,
   devicesSupported: false,
+  availableDeviceCounts: [],
+  paymentBusy: false,
+  pendingCheckout: null,
   preferredServerCode: 'auto',
   settings: {
     autoStart: false,
@@ -376,46 +379,63 @@ async function loadAvailableServers() {
 
 async function loadPricingCatalog() {
   state.catalogReady = false;
+  state.availableDeviceCounts = [];
   try {
     const plans = await invoke('get_plans');
-    const codes = ['month', 'quarter', 'half_year', 'year'];
+    const aliases = { month: '1m', quarter: '3m', half_year: '6m', year: '12m' };
+    const codes = Object.keys(aliases);
     if (!Array.isArray(plans)) throw new Error('Missing plans');
+
+    // Fail closed on incomplete or invented prices. Older API responses may
+    // explicitly offer ONLY the 2-device variant, never estimated upgrades.
+    const catalog = { 2: {}, 5: {}, 10: {} };
+    let hasDeviceOptions = true;
     for (const code of codes) {
-      const plan = plans.find(p => p.code === code);
-      if (!plan) continue;
+      const plan = plans.find(p => p.code === aliases[code] || p.code === code ||
+        p.desktop_code === code);
+      if (!plan) throw new Error(`Missing plan ${code}`);
       if (Array.isArray(plan.device_options)) {
         for (const devices of [2, 5, 10]) {
-          const choice = plan.device_options.find(o => o.devices === devices);
-          if (!Number.isSafeInteger(choice?.price_rub) || choice.price_rub <= 0 ||
-              !Number.isSafeInteger(choice?.days) || choice.days <= 0) {
-            throw new Error('Incomplete price catalog');
+          const option = plan.device_options.find(item => item.devices === devices);
+          if (!Number.isSafeInteger(option?.price_rub) || option.price_rub <= 0 ||
+              !Number.isSafeInteger(option?.days) || option.days <= 0) {
+            throw new Error('Incomplete device price');
           }
-          PRICING_MATRIX[devices][code] = {
-            price: choice.price_rub,
-            days: choice.days,
-            note: code === 'month' ? `${choice.days} дней` :
-              `${Math.round(choice.price_rub / (choice.days / 30))} ₽ / месяц`
-          };
-        }
-      } else if (Number.isSafeInteger(plan.price_rub) && plan.price_rub > 0) {
-        const days = Number.isSafeInteger(plan.days) && plan.days > 0 ? plan.days : 30;
-        const mult = { 2: 1.0, 5: 1.34, 10: 1.68 };
-        for (const devices of [2, 5, 10]) {
-          const price = Math.round(plan.price_rub * mult[devices]);
-          PRICING_MATRIX[devices][code] = {
-            price,
-            days,
-            note: code === 'month' ? `${days} дней` :
-              `${Math.round(price / (days / 30))} ₽ / месяц`
+          catalog[devices][code] = {
+            price: option.price_rub, days: option.days,
+            note: code === 'month' ? `${option.days} дней` :
+              `${Math.round(option.price_rub / (option.days / 30))} ₽ / месяц`
           };
         }
       } else {
-        throw new Error('Incomplete price catalog');
+        hasDeviceOptions = false;
+        if (!Number.isSafeInteger(plan.price_rub) || plan.price_rub <= 0 ||
+            !Number.isSafeInteger(plan.days) || plan.days <= 0) {
+          throw new Error('Incomplete legacy plan');
+        }
+        catalog[2][code] = {
+          price: plan.price_rub, days: plan.days,
+          note: code === 'month' ? `${plan.days} дней` :
+            `${Math.round(plan.price_rub / (plan.days / 30))} ₽ / месяц`
+        };
       }
+    }
+    state.availableDeviceCounts = hasDeviceOptions ? [2, 5, 10] : [2];
+    for (const device of state.availableDeviceCounts) {
+      for (const code of codes) {
+        if (!catalog[device][code]) throw new Error('Incomplete price matrix');
+      }
+    }
+    for (const device of state.availableDeviceCounts) {
+      PRICING_MATRIX[device] = catalog[device];
+    }
+    if (!state.availableDeviceCounts.includes(state.selectedDevicesCount)) {
+      state.selectedDevicesCount = 2;
     }
     state.catalogReady = true;
   } catch (err) {
     state.catalogReady = false;
+    state.availableDeviceCounts = [];
     showToast('Тарифы сейчас недоступны: оплата временно заблокирована.', true);
   }
   updatePricingMatrixUi();
@@ -633,7 +653,7 @@ function setupEventListeners() {
   // Support subpage actions
   document.getElementById('btn-open-telegram-support')?.addEventListener('click', handleOpenTelegramSupport);
   document.getElementById('card-support-channel')?.addEventListener('click', () => {
-    const url = 'https://t.me/bymevpn_channel';
+    const url = 'https://t.me/ByMeVPN';
     invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
   });
   document.getElementById('card-support-faq')?.addEventListener('click', () => openModal('modal-faq'));
@@ -794,6 +814,8 @@ async function handleRegister(e) {
 }
 
 let tgPollingInterval = null;
+let tgPollingBusy = false;
+let tgPollingFailures = 0;
 
 function handleGoogleAuth() {
   openModal('modal-google');
@@ -824,9 +846,13 @@ async function startTelegramAuthFlow() {
     if (statusEl) statusEl.textContent = 'Ожидание подтверждения от Telegram...';
 
     if (tgPollingInterval) clearInterval(tgPollingInterval);
+    tgPollingFailures = 0;
     tgPollingInterval = setInterval(async () => {
+      if (tgPollingBusy) return;
+      tgPollingBusy = true;
       try {
         const check = await invoke('telegram_check_session', { sessionToken: res.session_token });
+        tgPollingFailures = 0;
         if (check && ['authenticated', 'approved', 'success'].includes(check.status) && check.auth) {
           clearInterval(tgPollingInterval);
           tgPollingInterval = null;
@@ -841,7 +867,14 @@ async function startTelegramAuthFlow() {
           tgPollingInterval = null;
           if (statusEl) statusEl.textContent = 'Время сессии истекло. Откройте бота ещё раз.';
         }
-      } catch (e) {}
+      } catch (e) {
+        tgPollingFailures++;
+        if (tgPollingFailures >= 3 && statusEl) {
+          statusEl.textContent = 'Сервер авторизации недоступен. Повторяем проверку...';
+        }
+      } finally {
+        tgPollingBusy = false;
+      }
     }, 1500);
 
   } catch (err) {
@@ -949,9 +982,9 @@ async function toggleVpn() {
       return;
     }
 
-    if (Array.isArray(state.servers) && state.servers.length === 0) {
-      showToast('У вашего аккаунта нет доступных серверов. Активируйте пробный доступ или обновите подписку.', true);
-      openModal('modal-paywall');
+    if (!state.servers.length) await loadAvailableServers();
+    if (!state.servers.some(server => server.supported !== false)) {
+      showToast('Не удалось получить совместимые серверы. Проверьте сеть и обновите список.', true);
       return;
     }
 
@@ -972,14 +1005,10 @@ async function toggleVpn() {
       state.vpnConnected = false;
       const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
       showToast(errMsg, true);
-      if (errMsg.includes('403') || errMsg.includes('подписки') || errMsg.includes('пробный период')) {
-        state.subscription = null;
-        updateSubscriptionUi();
-        updateVpnUi();
-        openModal('modal-paywall');
-      } else {
-        updateVpnUi();
-      }
+      // HTTP 403 may be caused by HWID or unavailable 3x-ui; never erase
+      // entitlement or advertise a new purchase solely because VPN failed.
+      updateVpnUi();
+      if (errMsg.includes('подписки')) void refreshAccountSnapshot();
     }
   }
   } finally {
@@ -1300,6 +1329,11 @@ function escapeHtml(str) {
 function updatePricingMatrixUi() {
   document.getElementById('btn-pay-yookassa')?.toggleAttribute('disabled', !state.catalogReady);
   document.getElementById('btn-paywall-yookassa-action')?.toggleAttribute('disabled', !state.catalogReady);
+  document.querySelectorAll('.dev-seg-btn').forEach(btn => {
+    const count = Number(btn.dataset.devices);
+    btn.disabled = !state.availableDeviceCounts.includes(count);
+    btn.classList.toggle('active', count === state.selectedDevicesCount);
+  });
   const dev = state.selectedDevicesCount || 2;
   const matrix = PRICING_MATRIX[dev] || PRICING_MATRIX[2];
   if (!state.catalogReady) {
@@ -1416,7 +1450,8 @@ async function handleActivateTrial() {
     state.subscription = res;
     updateSubscriptionUi();
     updateVpnUi();
-    void loadAvailableServers();
+    await loadAvailableServers();
+    closeModal('modal-paywall');
     showToast('Пробный период на 3 дня успешно активирован (0 ₽)!');
     switchTab('tab-home');
   } catch (err) {
@@ -1425,44 +1460,67 @@ async function handleActivateTrial() {
 }
 
 async function handlePayYooKassa() {
+  if (state.paymentBusy) return;
   if (!state.catalogReady) {
     showToast('Тарифы сейчас недоступны. Повторите загрузку позже.', true);
     return;
   }
   const plan = state.selectedPlanCode || 'year';
   const devices = state.selectedDevicesCount || 2;
+  if (!state.availableDeviceCounts.includes(devices)) {
+    showToast('Выбранное число устройств недоступно. Обновите тарифы.', true);
+    return;
+  }
   const selected = PRICING_MATRIX[devices]?.[plan];
-  if (!selected || !selected.days) return;
-  showToast('Формирование счёта ЮKassa...');
-  const previousExpiry = state.subscription?.expires_at ?? null;
-  const previousStatus = state.subscription?.status ?? 'none';
+  if (!Number.isSafeInteger(selected?.price) || !Number.isSafeInteger(selected?.days)) {
+    showToast('Цена тарифа не подтверждена сервером.', true);
+    return;
+  }
+  state.paymentBusy = true;
+  document.getElementById('btn-pay-yookassa')?.setAttribute('disabled', '');
+  document.getElementById('btn-paywall-yookassa-action')?.setAttribute('disabled', '');
   try {
-    const res = await invoke('create_payment', {
-      planCode: plan, devices, amountRub: selected.price, days: selected.days
+    const matches = state.pendingCheckout?.plan === plan && state.pendingCheckout?.devices === devices;
+    if (!matches) {
+      const requestId = `checkout_${window.crypto?.randomUUID?.() ||
+        `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+      state.pendingCheckout = { plan, devices, requestId, invoiceId: null };
+    }
+    showToast('Формирование счёта ЮKassa...');
+    const response = await invoke('create_payment', {
+      planCode: plan, devices, amountRub: selected.price, days: selected.days,
+      requestId: state.pendingCheckout.requestId
     });
-    const url = res?.confirmation_url || res?.payment_url;
-    if (!url || !url.startsWith('https://')) throw new Error('Сервер не вернул защищённую ссылку оплаты');
+    const invoiceId = response?.invoice_id;
+    const url = response?.confirmation_url || response?.payment_url;
+    if (!invoiceId || !/^[a-zA-Z0-9_-]{1,128}$/.test(invoiceId) ||
+        typeof url !== 'string' || !url.startsWith('https://')) {
+      throw new Error('Сервер не вернул подтверждённые данные счёта');
+    }
+    state.pendingCheckout.invoiceId = invoiceId;
     await invoke('open_external_url', { url });
-    showToast('Ожидаем подтверждение оплаты от сервера');
-    // A browser opening is not a successful payment. The server is authoritative.
+    showToast('Ожидаем подтверждение конкретного счёта от сервера');
     for (let attempt = 0; attempt < 24; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000));
-      const result = await invoke('check_payment');
-      if (result?.subscription) {
-        const updated = result.subscription;
-        const changed = updated.expires_at !== previousExpiry ||
-          (!['active', 'trial', 'grace'].includes(previousStatus) &&
-           ['active', 'trial', 'grace'].includes(updated.status));
-        if (changed) {
-          await refreshAccountSnapshot();
-          showToast('Статус подписки обновлён. Проверьте срок действия.');
-          return;
-        }
+      const status = await invoke('check_payment', { invoiceId });
+      if (status?.status === 'failed' || status?.status === 'canceled') {
+        state.pendingCheckout = null;
+        showToast('Счёт отменён. Можно создать новый платёж.', true);
+        return;
+      }
+      if (status?.status === 'succeeded' && status.is_active === true) {
+        state.pendingCheckout = null;
+        await refreshAccountSnapshot();
+        showToast('Оплата подтверждена, подписка обновлена.');
+        return;
       }
     }
-    showToast('Оплата пока не подтверждена. Проверить статус можно в аккаунте.');
+    showToast('Счёт ожидает подтверждения. Повторное открытие продолжит его проверку.');
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Не удалось проверить платёж.', true);
+    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось проверить счёт.', true);
+  } finally {
+    state.paymentBusy = false;
+    updatePricingMatrixUi();
   }
 }
 

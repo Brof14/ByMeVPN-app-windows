@@ -100,8 +100,18 @@ pub struct AuthResult {
     pub subscription: Option<Subscription>,
 }
 
-fn http() -> Result<Client, String> {
+fn http(app: &AppHandle) -> Result<Client, String> {
+    // Match the 3x-ui HWID gate used by the mobile app and subscription API.
+    // One random installation ID is stable across sign-ins on this machine.
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("X-HWID", reqwest::header::HeaderValue::from_str(&install_id(app)?)
+        .map_err(|_| "Некорректный идентификатор устройства.")?);
+    headers.insert("X-Device-OS", reqwest::header::HeaderValue::from_static("Windows"));
+    headers.insert("X-Ver-OS", reqwest::header::HeaderValue::from_static("10+"));
+    headers.insert("X-Device-Model", reqwest::header::HeaderValue::from_static("Windows PC"));
     Client::builder()
+        .default_headers(headers)
+        .user_agent(concat!("ByMeVPN-Windows/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
@@ -254,7 +264,7 @@ async fn request(
     auth: bool,
     retried: bool,
 ) -> Result<Value, String> {
-    let client = http()?;
+    let client = http(app)?;
     let token = if auth {
         Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?)
     } else {
@@ -623,12 +633,13 @@ pub async fn auth_logout(app: AppHandle) -> Result<(), String> {
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     let me = request(app, Method::GET, "/me", None, true, false).await?;
     let sub = request(app, Method::GET, "/subscription/status", None, true, false).await?;
-    let devices = request(app, Method::GET, "/devices", None, true, false).await?;
+    // Device-management downtime must never break login or session recovery.
+    let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
     let user = me.get("user").unwrap_or(&me).clone();
     let subscription = sub.get("subscription").unwrap_or(&sub).clone();
     let current_install_id = install_id(app)?;
-    let mut device_list = devices
-        .get("devices")
+    let mut device_list = devices.as_ref()
+        .and_then(|response| response.get("devices"))
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
@@ -642,19 +653,19 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
         }
     }
     Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
-        "devices_supported": devices.get("supported").and_then(Value::as_bool).unwrap_or(true)}))
+        "devices_supported": devices.is_some()}))
 }
 
 #[tauri::command]
 pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, String> {
     if read_secret(ACCESS_KEY).is_none() {
-        if let Some(session) = restore_telegram_session() {
-            return Ok(Some(session));
-        }
+        // Legacy URL import never issued API credentials. Do not restore it as a
+        // misleading authenticated user with a fictitious active subscription.
+        clear_telegram_session();
         if read_secret(REFRESH_KEY).is_none() {
             return Ok(None);
         }
-        match refresh(&http()?).await {
+        match refresh(&http(&app)?).await {
             Ok(()) => {}
             Err(RefreshError::InvalidSession) => {
                 clear_secrets();
@@ -672,16 +683,6 @@ pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, Strin
 
 #[tauri::command]
 pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
-    if read_secret(ACCESS_KEY).is_none() {
-        if let Some(session) = restore_telegram_session() {
-            return Ok(json!({
-                "user": session.user,
-                "subscription": session.subscription,
-                "devices": [],
-                "devices_supported": false
-            }));
-        }
-    }
     snapshot(&app).await
 }
 
@@ -991,7 +992,7 @@ pub async fn vpn_start(
         Err(_) => false,
     };
 
-    if !has_active_sub && read_secret(TELEGRAM_SUBSCRIPTION_KEY).is_none() {
+    if !has_active_sub {
         return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте 3 дня бесплатного доступа или выберите тариф.".into());
     }
 
@@ -1024,10 +1025,10 @@ pub async fn vpn_start(
     let server_name = session.get("display_name").or_else(|| session.get("name"))
         .and_then(Value::as_str).unwrap_or(host).to_string();
     let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Egress must be independently confirmed before reporting a protected tunnel.
-    let expected_ip: std::net::IpAddr = host.parse().map_err(|_| {
-        "Проверка выхода VPN пока поддерживает только IP-адрес сервера. Подключение отменено.".to_string()
-    })?;
+    // Baseline is observed before installing the route. Server inbound and
+    // public egress IP often differ (NAT, reverse proxies, relay topology).
+    let baseline_ip = crate::egress::public_egress_ip().await
+        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
     let xray_config = build_tun_config_ext(session, bypass_ru, ad_block)?;
 
@@ -1073,7 +1074,7 @@ pub async fn vpn_start(
             }
         };
 
-    let mut verified = false;
+    let mut verified_ip = None;
     let mut last_error = "Проверка VPN не завершилась.".to_string();
     for _ in 0..3 {
         tokio::time::sleep(Duration::from_millis(750)).await;
@@ -1088,15 +1089,15 @@ pub async fn vpn_start(
             }
             Ok(None) => {}
         }
-        match verify_egress(expected_ip).await {
-            Ok(()) => {
-                verified = true;
+        match verify_egress(baseline_ip).await {
+            Ok(ip) => {
+                verified_ip = Some(ip);
                 break;
             }
             Err(message) => last_error = message,
         }
     }
-    if !verified {
+    if verified_ip.is_none() {
         let _ = child.kill();
         let _ = child.wait();
         let _ = fs::remove_file(&config_path);
@@ -1118,7 +1119,7 @@ pub async fn vpn_start(
         _node_code: chosen_node,
         server_name: server_name.clone(),
         country: country.clone(),
-        server_ip: host.to_string(),
+        server_ip: verified_ip.expect("verified before storing").to_string(),
     });
 
     Ok(TunnelMetrics {
@@ -1129,7 +1130,7 @@ pub async fn vpn_start(
         ping_ms: ping,
         server_name,
         country,
-        ip: host.to_string(),
+        ip: verified_ip.expect("verified before publishing").to_string(),
     })
 }
 

@@ -17,16 +17,7 @@ fn parse_ip(body: &str) -> Result<IpAddr, String> {
         .map_err(|_| "Сервис проверки вернул некорректный IP-адрес.".into())
 }
 
-pub async fn verify_egress(expected: IpAddr) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .https_only(true)
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(4))
-        .timeout(Duration::from_secs(7))
-        .build()
-        .map_err(|_| "Не удалось подготовить проверку выхода VPN.".to_string())?;
-    let mut observed_other = false;
+async fn probe_egress(client: &reqwest::Client) -> Result<IpAddr, String> {
     for endpoint in PROBES {
         let mut response = match client.get(endpoint).send().await {
             Ok(response) if response.status().is_success() => response,
@@ -39,31 +30,46 @@ pub async fn verify_egress(expected: IpAddr) -> Result<(), String> {
         let mut valid = true;
         loop {
             match response.chunk().await {
-                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 128 => {
-                    bytes.extend_from_slice(&chunk)
-                }
+                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 128 => bytes.extend_from_slice(&chunk),
                 Ok(None) => break,
-                _ => {
-                    valid = false;
-                    break;
-                }
+                _ => { valid = false; break; }
             }
         }
-        let body = match std::str::from_utf8(&bytes) {
-            Ok(body) if valid => body,
-            _ => continue,
-        };
-        if let Ok(ip) = parse_ip(body) {
-            if ip == expected {
-                return Ok(());
+        if valid {
+            if let Ok(body) = std::str::from_utf8(&bytes) {
+                if let Ok(ip) = parse_ip(body) {
+                    return Ok(ip);
+                }
             }
-            observed_other = true;
         }
     }
-    if observed_other {
-        Err("Проверка показала другой внешний IP. Защита VPN не подтверждена.".into())
+    Err("Публичные сервисы проверки IP недоступны.".into())
+}
+
+fn probe_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .https_only(true)
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(4))
+        .timeout(Duration::from_secs(7))
+        .build()
+        .map_err(|_| "Не удалось подготовить проверку выхода VPN.".to_string())
+}
+
+/// Capture the public network address before changing system routes.
+pub async fn public_egress_ip() -> Result<IpAddr, String> {
+    probe_egress(&probe_client()?).await
+}
+
+/// Require an independently observed public IP different from the original
+/// address. A matching server inbound IP is NOT mandatory.
+pub async fn verify_egress(baseline: IpAddr) -> Result<IpAddr, String> {
+    let observed = probe_egress(&probe_client()?).await?;
+    if observed == baseline {
+        Err("Внешний IP не изменился: трафик не подтверждён через VPN.".into())
     } else {
-        Err("Не удалось проверить внешний IP. Защита VPN не подтверждена.".into())
+        Ok(observed)
     }
 }
 

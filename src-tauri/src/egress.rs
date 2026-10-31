@@ -3,8 +3,8 @@ use std::time::Duration;
 
 // Public probes explicitly approved by the project owner.
 const PROBES: [&str; 3] = [
-    "https://api.ipify.org",
-    "https://icanhazip.com",
+    "https://api4.ipify.org",
+    "https://ipv4.icanhazip.com",
     "https://ifconfig.me/ip",
 ];
 
@@ -38,7 +38,9 @@ async fn probe_egress(client: &reqwest::Client) -> Result<IpAddr, String> {
         if valid {
             if let Ok(body) = std::str::from_utf8(&bytes) {
                 if let Ok(ip) = parse_ip(body) {
-                    return Ok(ip);
+                    // Compare IPv4 before/after: inconsistent IPv4/IPv6 DNS
+                    // preferences could otherwise pass without any IPv4 tunnel.
+                    if ip.is_ipv4() { return Ok(ip); }
                 }
             }
         }

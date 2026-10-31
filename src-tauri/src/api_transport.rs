@@ -1,10 +1,9 @@
 use reqwest::{Client, Method, Response};
 use serde_json::Value;
 
-// Change both entries here when the API is moved to HTTPS.
-pub const API_BASES: [&str; 2] = [
-    "http://2.27.120.247:8080/api/v1",
-    "http://bymevpn.duckdns.org:8080/api/v1",
+// Production API endpoint with TLS/HTTPS encryption.
+pub const API_BASES: [&str; 1] = [
+    "https://bymevpn.duckdns.org/api/v1",
 ];
 
 #[tauri::command]
@@ -97,5 +96,10 @@ mod tests {
         .unwrap();
         assert_eq!(response.status(), 500);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn transport_is_strictly_encrypted() {
+        assert!(api_transport_encrypted());
     }
 }

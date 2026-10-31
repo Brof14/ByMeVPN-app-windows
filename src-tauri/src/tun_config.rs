@@ -63,13 +63,29 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str) ->
         return Err("Сервер использует неподдерживаемый режим VLESS.".into());
     }
 
-    let mut rules = vec![
-        json!({
+    let mut rules = Vec::new();
+
+    // 1. Anti-recursion: exclude VPN server host from tunnel to prevent routing loops
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        rules.push(json!({
             "type": "field",
-            "ip": ["geoip:private"],
+            "ip": [format!("{ip}/32")],
             "outboundTag": "direct"
-        })
-    ];
+        }));
+    } else {
+        rules.push(json!({
+            "type": "field",
+            "domain": [format!("full:{host}")],
+            "outboundTag": "direct"
+        }));
+    }
+
+    // 2. Local/private network bypass
+    rules.push(json!({
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "direct"
+    }));
 
     if ad_block == "basic" || ad_block == "recommended" {
         rules.push(json!({

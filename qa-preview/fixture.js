@@ -1,2 +1,12 @@
-// Local visual QA fixture; not used by the application.
-window.__TAURI__={core:{invoke:async(command)=>{const user={name:'Тестовый пользователь',email:'test@example.invalid'}; const subscription={status:'active',plan_name:'Тестовая подписка',max_devices:2,active_devices:1}; if(command==='api_transport_encrypted')return false;if(command==='restore_session')return {user,subscription};if(command==='account_snapshot')return {user,subscription,devices:[]};if(command==='get_servers')return [{code:'test',country:'Тестовый сервер',city:'Тест'}];if(command==='startup_enabled')return false;throw Error('Демонстрационный режим');}}};
+// Local visual QA fixture for Login screen
+window.__TAURI__ = {
+  core: {
+    invoke: async (command) => {
+      if (command === 'api_transport_encrypted') return true;
+      if (command === 'restore_session') return null;
+      if (command === 'get_settings') return { language: 'ru', bypassRu: true, adBlock: 'recommended', autoStartup: false, minimizeToTray: true, killSwitch: true };
+      if (command === 'startup_enabled') return false;
+      throw Error('QA auth mode');
+    }
+  }
+};

@@ -32,6 +32,8 @@ pub struct ActiveTunnel {
     pub server_name: String,
     pub country: String,
     pub server_ip: String,
+    pub server_host: String,
+    pub server_port: u16,
 }
 
 #[derive(Default)]
@@ -1143,9 +1145,11 @@ pub async fn vpn_start(
         return Err(format!("VPN не подтверждён: {last_error}"));
     }
 
+    let server_port = session.get("port").and_then(Value::as_u64)
+        .filter(|port| (1..=65535).contains(port)).unwrap_or(443) as u16;
     let ping = tokio::task::spawn_blocking({
         let host = host.to_string();
-        move || measure_real_ping(&host, 443)
+        move || measure_real_ping(&host, server_port)
     }).await.unwrap_or(0);
 
     let started_at = std::time::Instant::now();
@@ -1158,6 +1162,8 @@ pub async fn vpn_start(
         server_name: server_name.clone(),
         country: country.clone(),
         server_ip: verified_ip.expect("verified before storing").to_string(),
+        server_host: host.to_string(),
+        server_port,
     });
 
     Ok(TunnelMetrics {
@@ -1207,12 +1213,13 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.started_at.elapsed().as_secs(),
             active.server_name.clone(),
             active.country.clone(),
-            active.server_ip.clone()
+            active.server_ip.clone(),
+            active.server_host.clone(),
+            active.server_port
         ))
     };
-    if let Some((elapsed, server_name, country, ip)) = active_info {
-        let ping_ip = ip.clone();
-        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&ping_ip, 443))
+    if let Some((elapsed, server_name, country, ip, host, port)) = active_info {
+        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
             .await.unwrap_or(0);
         return Ok(TunnelMetrics {
             connected: true, connected_seconds: elapsed,

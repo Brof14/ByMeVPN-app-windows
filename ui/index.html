@@ -136,7 +136,7 @@
               </button>
 
               <!-- Manual Key / Subscription Link Accordion matching Android WelcomeScreen -->
-              <div class="auth-manual-key-toggle-box">
+              <div class="auth-manual-key-toggle-box hidden">
                 <button type="button" id="btn-toggle-manual-key" class="btn-link-key-toggle">
                   <span id="manual-key-btn-text">Ввести ссылку подписки вручную ▾</span>
                 </button>
@@ -278,7 +278,7 @@
             </div>
             <div class="header-right-actions">
               <button type="button" id="btn-top-help" class="header-circle-btn" title="Помощь">?</button>
-              <button type="button" id="btn-top-menu" class="header-circle-btn" title="Меню">⋯</button>
+              
             </div>
           </div>
 
@@ -937,6 +937,10 @@
                   </div>
                 </div>
 
+                <button type="button" id="row-open-advanced-settings" class="btn-secondary btn-wide">
+                  Дополнительные настройки ›
+                </button>
+
                 <!-- Settings Bottom Footer Bar -->
                 <div class="settings-bottom-bar">
                   <div class="lang-selector-block">
@@ -1292,7 +1296,7 @@
         </div>
 
         <!-- Optional fallback toggle -->
-        <div class="tg-fallback-accordion">
+        <div class="tg-fallback-accordion hidden">
           <button type="button" id="btn-toggle-manual-tg" class="text-link-subtle">
             Вход по ссылке конфигурации (альтернативный способ) ▾
           </button>

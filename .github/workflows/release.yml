@@ -64,10 +64,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "dist" -Force | Out-Null
           
-          # Copy installers and standalone binary using robust PowerShell discovery
+          # Installers include the configured Tauri resources.
           Get-ChildItem -Path "src-tauri\target\release\bundle" -Include *.exe, *.msi -Recurse | Copy-Item -Destination "dist" -Force
-          if (Test-Path "src-tauri\target\release\bymevpn.exe") {
-            Copy-Item "src-tauri\target\release\bymevpn.exe" "dist\bymevpn-standalone.exe" -Force
+          # A bare .exe does NOT include Xray/Wintun, so publish a complete ZIP.
+          $binary = "src-tauri\target\release\bymevpn.exe"
+          if (Test-Path $binary) {
+            $portable = "dist\ByMeVPN-portable"
+            $runtimeTarget = Join-Path $portable "vendor\runtime\windows-x64"
+            New-Item -ItemType Directory -Path $runtimeTarget -Force | Out-Null
+            Copy-Item $binary (Join-Path $portable "bymevpn.exe") -Force
+            Copy-Item "vendor\runtime\windows-x64\*" $runtimeTarget -Recurse -Force
+            Compress-Archive -Path "$portable\*" -DestinationPath "dist\ByMeVPN-portable-win-x64.zip" -Force
+            Remove-Item $portable -Recurse -Force
           }
           
           # Compute SHA-256 hashes
@@ -95,9 +103,9 @@ jobs:
             ## ByMeVPN Windows Client Release
             
             ### Файлы установки:
-            * **`ByMeVPN_1.2.0_x64-setup.exe`** — Рекомендуемый инсталлятор Windows (NSIS). Полная поддержка UAC, интеграция в систему, автоматическое удаление и обновление.
-            * **`ByMeVPN_1.2.0_x64_en-US.msi`** — MSI-пакет для корпоративного развёртывания (GPO / Active Directory / Intune).
-            * **`bymevpn-standalone.exe`** — Портативный бинарник.
+            * **`ByMeVPN_*_x64-setup.exe`** — Рекомендуемый инсталлятор Windows (NSIS). Полная поддержка UAC, интеграция в систему, автоматическое удаление и обновление.
+            * **`ByMeVPN_*_x64_en-US.msi`** — MSI-пакет для корпоративного развёртывания (GPO / Active Directory / Intune).
+            * **`ByMeVPN-portable-win-x64.zip`** — Полная портативная версия с проверенными Xray, Wintun и базами маршрутизации. Распакуйте архив перед запуском.
             
             ### Основные возможности:
             * Экспериментальный клиент Xray/Wintun: запуск и проверка конфигурации реализованы, реальные сетевые сценарии требуют проверки.

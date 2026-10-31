@@ -32,6 +32,8 @@ pub struct ActiveTunnel {
     pub server_name: String,
     pub country: String,
     pub server_ip: String,
+    pub server_host: String,
+    pub server_port: u16,
 }
 
 #[derive(Default)]
@@ -100,8 +102,18 @@ pub struct AuthResult {
     pub subscription: Option<Subscription>,
 }
 
-fn http() -> Result<Client, String> {
+fn http(app: &AppHandle) -> Result<Client, String> {
+    // Match the 3x-ui HWID gate used by the mobile app and subscription API.
+    // One random installation ID is stable across sign-ins on this machine.
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("X-HWID", reqwest::header::HeaderValue::from_str(&install_id(app)?)
+        .map_err(|_| "Некорректный идентификатор устройства.")?);
+    headers.insert("X-Device-OS", reqwest::header::HeaderValue::from_static("Windows"));
+    headers.insert("X-Ver-OS", reqwest::header::HeaderValue::from_static("10+"));
+    headers.insert("X-Device-Model", reqwest::header::HeaderValue::from_static("Windows PC"));
     Client::builder()
+        .default_headers(headers)
+        .user_agent(concat!("ByMeVPN-Windows/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
@@ -254,7 +266,7 @@ async fn request(
     auth: bool,
     retried: bool,
 ) -> Result<Value, String> {
-    let client = http()?;
+    let client = http(app)?;
     let token = if auth {
         Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?)
     } else {
@@ -518,8 +530,15 @@ pub async fn telegram_check_session(
     app: AppHandle,
     session_token: String,
 ) -> Result<TelegramCheckResult, String> {
-    let path = format!("/auth/telegram/check-session?token={}", session_token.trim());
-    let res = request(&app, Method::GET, &path, None, false, false).await?;
+    let token = session_token.trim();
+    if token.len() > 256 || token.is_empty() {
+        return Err("Некорректный токен Telegram.".into());
+    }
+    // Avoid exposing one-time session tickets in URL/proxy access logs.
+    let res = request(
+        &app, Method::POST, "/auth/telegram/check-session",
+        Some(json!({"token": token})), false, false,
+    ).await?;
     let status = res
         .get("status")
         .and_then(Value::as_str)
@@ -622,13 +641,21 @@ pub async fn auth_logout(app: AppHandle) -> Result<(), String> {
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     let me = request(app, Method::GET, "/me", None, true, false).await?;
-    let sub = request(app, Method::GET, "/subscription/status", None, true, false).await?;
-    let devices = request(app, Method::GET, "/devices", None, true, false).await?;
+    // An outage in the subscription panel must not look like invalid login.
+    // Unknown is different from "none" and must not trigger a purchase prompt.
+    let sub = request(app, Method::GET, "/subscription/status", None, true, false)
+        .await.unwrap_or_else(|_| json!({
+            "status": "unknown",
+            "plan_name": "Не удалось проверить подписку",
+            "trial_available": false
+        }));
+    // Device-management downtime must never break login or session recovery.
+    let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
     let user = me.get("user").unwrap_or(&me).clone();
     let subscription = sub.get("subscription").unwrap_or(&sub).clone();
     let current_install_id = install_id(app)?;
-    let mut device_list = devices
-        .get("devices")
+    let mut device_list = devices.as_ref()
+        .and_then(|response| response.get("devices"))
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
@@ -642,19 +669,19 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
         }
     }
     Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
-        "devices_supported": devices.get("supported").and_then(Value::as_bool).unwrap_or(true)}))
+        "devices_supported": devices.is_some()}))
 }
 
 #[tauri::command]
 pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, String> {
     if read_secret(ACCESS_KEY).is_none() {
-        if let Some(session) = restore_telegram_session() {
-            return Ok(Some(session));
-        }
+        // Legacy URL import never issued API credentials. Do not restore it as a
+        // misleading authenticated user with a fictitious active subscription.
+        clear_telegram_session();
         if read_secret(REFRESH_KEY).is_none() {
             return Ok(None);
         }
-        match refresh(&http()?).await {
+        match refresh(&http(&app)?).await {
             Ok(()) => {}
             Err(RefreshError::InvalidSession) => {
                 clear_secrets();
@@ -672,16 +699,6 @@ pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, Strin
 
 #[tauri::command]
 pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
-    if read_secret(ACCESS_KEY).is_none() {
-        if let Some(session) = restore_telegram_session() {
-            return Ok(json!({
-                "user": session.user,
-                "subscription": session.subscription,
-                "devices": [],
-                "devices_supported": false
-            }));
-        }
-    }
     snapshot(&app).await
 }
 
@@ -839,19 +856,22 @@ pub async fn create_payment(
     devices: Option<i64>,
     amount_rub: Option<i64>,
     days: Option<i64>,
+    request_id: Option<String>,
 ) -> Result<Value, String> {
     let id = install_id(&app)?;
     let dev = devices.unwrap_or(2);
-    let (computed_days, computed_amount) = match plan_code.as_str() {
-        "month" => (30, match dev { 5 => 109, 10 => 129, _ => 89 }),
-        "quarter" => (90, match dev { 5 => 396, 10 => 476, _ => 316 }),
-        "half_year" => (180, match dev { 5 => 712, 10 => 872, _ => 552 }),
-        "year" => (365, match dev { 5 => 1185, 10 => 1485, _ => 885 }),
-        _ => (30, 89),
-    };
-    let final_days = days.unwrap_or(computed_days);
-    let final_amount = amount_rub.unwrap_or(computed_amount);
-    let request_id = format!("req_{}", uuid::Uuid::new_v4().simple());
+    if !matches!(dev, 2 | 5 | 10) {
+        return Err("Недопустимое количество устройств.".into());
+    }
+    // The UI only submits values received from GET /plans. The API verifies
+    // them again; never fall back to historical hard-coded prices or durations.
+    let final_days = days.filter(|d| *d > 0).ok_or("Не загружен срок тарифа.")?;
+    let final_amount = amount_rub.filter(|a| *a > 0).ok_or("Не загружена цена тарифа.")?;
+    let request_id = request_id.unwrap_or_else(|| format!("req_{}", Uuid::new_v4().simple()));
+    if request_id.len() < 8 || request_id.len() > 128 ||
+        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Некорректный идентификатор платежа.".into());
+    }
 
     request(
         &app,
@@ -870,6 +890,20 @@ pub async fn create_payment(
         false,
     )
     .await
+}
+
+/// Check only a payment invoice owned by the signed-in user.
+/// The server verifies webhook fulfillment before reporting success.
+#[tauri::command]
+pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
+    if invoice_id.is_empty() || invoice_id.len() > 128 ||
+        !invoice_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Некорректный номер счёта.".into());
+    }
+    request(
+        &app, Method::GET, &format!("/payment/check?invoice_id={invoice_id}&provider=yookassa"),
+        None, true, false,
+    ).await
 }
 
 #[tauri::command]
@@ -991,7 +1025,7 @@ pub async fn vpn_start(
         Err(_) => false,
     };
 
-    if !has_active_sub && read_secret(TELEGRAM_SUBSCRIPTION_KEY).is_none() {
+    if !has_active_sub {
         return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте 3 дня бесплатного доступа или выберите тариф.".into());
     }
 
@@ -1024,10 +1058,10 @@ pub async fn vpn_start(
     let server_name = session.get("display_name").or_else(|| session.get("name"))
         .and_then(Value::as_str).unwrap_or(host).to_string();
     let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Egress must be independently confirmed before reporting a protected tunnel.
-    let expected_ip: std::net::IpAddr = host.parse().map_err(|_| {
-        "Проверка выхода VPN пока поддерживает только IP-адрес сервера. Подключение отменено.".to_string()
-    })?;
+    // Baseline is observed before installing the route. Server inbound and
+    // public egress IP often differ (NAT, reverse proxies, relay topology).
+    let baseline_ip = crate::egress::public_egress_ip().await
+        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
     let xray_config = build_tun_config_ext(session, bypass_ru, ad_block)?;
 
@@ -1056,7 +1090,14 @@ pub async fn vpn_start(
 
     if !test_res.status.success() {
         let _ = fs::remove_file(&config_path);
-        return Err("Конфигурация туннеля не прошла проверку Xray.".into());
+        // Xray emits actionable parser/config diagnostics on stderr.
+        let cause = String::from_utf8_lossy(&test_res.stderr);
+        let detail: String = cause.trim().chars().take(500).collect();
+        return Err(if detail.is_empty() {
+            format!("Конфигурация Xray отклонена (код {:?}).", test_res.status.code())
+        } else {
+            format!("Ошибка конфигурации Xray: {detail}")
+        });
     }
 
     let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
@@ -1073,7 +1114,7 @@ pub async fn vpn_start(
             }
         };
 
-    let mut verified = false;
+    let mut verified_ip = None;
     let mut last_error = "Проверка VPN не завершилась.".to_string();
     for _ in 0..3 {
         tokio::time::sleep(Duration::from_millis(750)).await;
@@ -1088,15 +1129,15 @@ pub async fn vpn_start(
             }
             Ok(None) => {}
         }
-        match verify_egress(expected_ip).await {
-            Ok(()) => {
-                verified = true;
+        match verify_egress(baseline_ip).await {
+            Ok(ip) => {
+                verified_ip = Some(ip);
                 break;
             }
             Err(message) => last_error = message,
         }
     }
-    if !verified {
+    if verified_ip.is_none() {
         let _ = child.kill();
         let _ = child.wait();
         let _ = fs::remove_file(&config_path);
@@ -1104,9 +1145,11 @@ pub async fn vpn_start(
         return Err(format!("VPN не подтверждён: {last_error}"));
     }
 
+    let server_port = session.get("port").and_then(Value::as_u64)
+        .filter(|port| (1..=65535).contains(port)).unwrap_or(443) as u16;
     let ping = tokio::task::spawn_blocking({
         let host = host.to_string();
-        move || measure_real_ping(&host, 443)
+        move || measure_real_ping(&host, server_port)
     }).await.unwrap_or(0);
 
     let started_at = std::time::Instant::now();
@@ -1118,7 +1161,9 @@ pub async fn vpn_start(
         _node_code: chosen_node,
         server_name: server_name.clone(),
         country: country.clone(),
-        server_ip: host.to_string(),
+        server_ip: verified_ip.expect("verified before storing").to_string(),
+        server_host: host.to_string(),
+        server_port,
     });
 
     Ok(TunnelMetrics {
@@ -1129,7 +1174,7 @@ pub async fn vpn_start(
         ping_ms: ping,
         server_name,
         country,
-        ip: host.to_string(),
+        ip: verified_ip.expect("verified before publishing").to_string(),
     })
 }
 
@@ -1168,12 +1213,13 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.started_at.elapsed().as_secs(),
             active.server_name.clone(),
             active.country.clone(),
-            active.server_ip.clone()
+            active.server_ip.clone(),
+            active.server_host.clone(),
+            active.server_port
         ))
     };
-    if let Some((elapsed, server_name, country, ip)) = active_info {
-        let ping_ip = ip.clone();
-        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&ping_ip, 443))
+    if let Some((elapsed, server_name, country, ip, host, port)) = active_info {
+        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
             .await.unwrap_or(0);
         return Ok(TunnelMetrics {
             connected: true, connected_seconds: elapsed,

@@ -68,6 +68,36 @@ test('checkout prices parse correctly from live production flat catalog', async 
   assert.deepEqual(result, { ready: true, monthPrice: 149, yearPrice: 983, quarterDays: 90 });
 });
 
+
+test('real Android API plan aliases are accepted without fabricating prices for device upgrades', async () => {
+  const oldApi = [
+    { code: '1m', price_rub: 89, days: 30 },
+    { code: '3m', price_rub: 316, days: 120 },
+    { code: '6m', price_rub: 552, days: 240 },
+    { code: '12m', price_rub: 885, days: 450 }
+  ];
+  const app = harness(async () => oldApi);
+  await app.eval('loadPricingCatalog()');
+  const state = JSON.parse(app.eval(`JSON.stringify({
+    ready: state.catalogReady,
+    available: state.availableDeviceCounts,
+    price: PRICING_MATRIX[2].quarter.price
+  })`));
+  assert.deepEqual(state, { ready: true, available: [2], price: 316 });
+});
+
+test('missing server plans block checkout, even if cached defaults exist', async () => {
+  const app = harness(async () => [{ code: '1m', price_rub: 89, days: 30 }]);
+  await app.eval('loadPricingCatalog()');
+  assert.equal(app.eval('state.catalogReady'), false);
+});
+
+test('new server catalog exposes three exact device variants', async () => {
+  const app = harness();
+  await app.eval('loadPricingCatalog()');
+  assert.deepEqual(JSON.parse(app.eval('JSON.stringify(state.availableDeviceCounts)')), [2, 5, 10]);
+});
+
 test('failed catalog fetch blocks payment rather than selling old prices', async () => {
   const app = harness(async () => { throw new Error('offline'); });
   await app.eval('loadPricingCatalog()');

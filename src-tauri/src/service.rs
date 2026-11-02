@@ -693,6 +693,13 @@ pub async fn auth_logout(
     Ok(())
 }
 
+fn device_is_current(object: &serde_json::Map<String, Value>, install_id: &str) -> bool {
+    object.get("is_current").and_then(Value::as_bool).unwrap_or_else(|| {
+        object.get("install_id").and_then(Value::as_str)
+            .is_some_and(|id| id == install_id)
+    })
+}
+
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     let me = request(app, Method::GET, "/me", None, true, false).await?;
     // An outage in the subscription panel must not look like invalid login.
@@ -715,11 +722,11 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
         .unwrap_or_default();
     for device in &mut device_list {
         if let Some(object) = device.as_object_mut() {
-            let is_current = object
-                .get("install_id")
-                .and_then(Value::as_str)
-                .is_some_and(|id| id == current_install_id);
-            object.insert("is_current".into(), json!(is_current));
+            // 3x-ui identifies the current device through X-HWID on the
+            // backend. Preserve its canonical boolean, not a fabricated
+            // comparison with an install_id that the API never returns.
+            let current = device_is_current(object, &current_install_id);
+            object.insert("is_current".into(), json!(current));
         }
     }
     Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
@@ -1509,6 +1516,19 @@ mod tests {
         }}))
         .unwrap();
         assert_eq!(auth.user.name, "tester");
+    }
+
+    #[test]
+    fn server_device_identity_is_preserved_without_a_raw_hwid_or_install_id() {
+        let confirmed = json!({"id":"42","is_current":true,"device_model":"Desktop"});
+        let obj = confirmed.as_object().unwrap();
+        assert!(device_is_current(obj, "local-install-uuid"));
+        let others = json!({"id":"43","is_current":false,"install_id":"local-install-uuid"});
+        assert!(!device_is_current(others.as_object().unwrap(), "local-install-uuid"));
+        let legacy = json!({"id":"44","install_id":"local-install-uuid"});
+        assert!(device_is_current(legacy.as_object().unwrap(), "local-install-uuid"));
+        let unknown = json!({"id":"45"});
+        assert!(!device_is_current(unknown.as_object().unwrap(), "local-install-uuid"));
     }
 
     #[test]

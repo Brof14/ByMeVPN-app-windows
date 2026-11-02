@@ -135,6 +135,17 @@ test('cancelling Telegram login invalidates the outstanding session generation',
   assert.equal(app.eval('tgPollingGeneration'), old + 1);
 });
 
+test('a canceled Telegram ticket is revoked at the native IPC boundary', () => {
+  const app = harness();
+  app.eval("tgActiveToken = 'auth_test_token'");
+  app.eval('cancelTelegramPolling()');
+  assert.equal(app.eval('tgActiveToken'), null);
+  assert.equal(app.eval('tgPollingInterval'), null);
+  // Assert the user-visible handler cannot restore a canceled auth token.
+  assert.match(readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8'),
+    /ticket\.as_deref\(\) != Some\(token\)/);
+});
+
 test('pricing matrix has no purchasable prices before live API validation', () => {
   const app = harness(async () => { throw new Error('offline'); });
   assert.equal(app.eval('PRICING_MATRIX[2].month'), undefined);

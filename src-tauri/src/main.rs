@@ -30,7 +30,6 @@ fn main() {
             service::auth_login,
             service::auth_register,
             service::auth_google,
-            service::telegram_login,
             service::telegram_create_session,
             service::telegram_check_session,
             service::telegram_cancel_session,

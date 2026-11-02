@@ -168,7 +168,7 @@ const I18N = {
     support_desc: 'Если у вас возникли вопросы или нужна помощь — мы всегда рядом.',
     write_support: 'Написать в поддержку',
     logout: 'Выйти из аккаунта',
-    delete_account: 'Удалить аккаунт',
+    delete_account: 'Запросить удаление аккаунта',
     set_general_title: 'Основное',
     set_general_desc: 'Удобная работа с ByMeVPN',
     autostart_title: 'Запускать вместе с системой',
@@ -301,7 +301,7 @@ const I18N = {
     support_desc: 'Need help or have questions? Our support team is always ready.',
     write_support: 'Contact Support',
     logout: 'Log Out',
-    delete_account: 'Delete Account',
+    delete_account: 'Request Account Deletion',
     set_general_title: 'General',
     set_general_desc: 'Comfortable experience with ByMeVPN',
     autostart_title: 'Launch on Windows startup',
@@ -858,6 +858,7 @@ async function handleLogin(e) {
   try {
     const res = await invoke('auth_login', { email, password });
     if (!res?.user?.id) throw new Error('Сервер не подтвердил вход в аккаунт');
+    state.sessionEpoch += 1;
     state.user = res.user;
     state.subscription = res.subscription;
     showAppShell();
@@ -884,6 +885,7 @@ async function handleRegister(e) {
   try {
     const res = await invoke('auth_register', { email, password, name });
     if (!res?.user?.id) throw new Error('Сервер не подтвердил регистрацию');
+    state.sessionEpoch += 1;
     state.user = res.user;
     state.subscription = res.subscription;
     showAppShell();
@@ -955,6 +957,7 @@ async function startTelegramAuthFlow() {
         if (check && ['authenticated', 'approved', 'success'].includes(check.status)) {
           if (!check.auth?.user?.id) throw new Error('Telegram не вернул профиль пользователя');
           cancelTelegramPolling();
+          state.sessionEpoch += 1;
           state.user = check.auth.user;
           state.subscription = check.auth.subscription;
           closeModal('modal-telegram');
@@ -1010,25 +1013,35 @@ async function handleTelegramLogin() {
 
 async function handleLogout() {
   showConfirm(
-    'Выход из аккаунта',
-    'Вы уверены, что хотите выйти из учётной записи ByMeVPN?',
+    uiText('Выход из аккаунта', 'Sign out'),
+    uiText('Вы уверены, что хотите выйти из ByMeVPN?', 'Sign out of ByMeVPN?'),
     async () => {
-      if (state.connectionBusy) return showToast('Дождитесь завершения подключения или отключения', true);
-      if (state.vpnConnected) {
-        try {
-          await invoke('vpn_stop');
-        } catch (err) {
-          showToast('Не удалось остановить VPN перед выходом.', true);
-          return;
-        }
-        state.vpnConnected = false;
+      if (state.connectionBusy) {
+        showToast(uiText('Дождитесь завершения работы VPN', 'Wait for the VPN operation to finish.'), true);
+        return;
       }
-      await invoke('auth_logout');
+      try {
+        // The Rust command also stops any tunnel the UI may have missed.
+        await invoke('auth_logout');
+      } catch (err) {
+        showToast(uiText('Не удалось выйти. Проверьте, остановлен ли VPN.', 'Sign-out failed. Check whether VPN has stopped.'), true);
+        return;
+      }
       state.sessionEpoch += 1;
+      cancelTelegramPolling();
+      for (const interval of ['pollInterval', 'timerInterval']) {
+        if (state[interval]) clearInterval(state[interval]);
+        state[interval] = null;
+      }
+      state.vpnConnected = false;
+      state.vpnVerified = false;
+      state.vpnPhase = 'idle';
+      state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
       state.servers = [];
       state.devices = [];
       state.user = null;
       state.subscription = null;
+      state.pendingCheckout = null;
       showAuthScreen('login');
       showToast('Вы вышли из системы');
     }
@@ -1036,24 +1049,16 @@ async function handleLogout() {
 }
 
 async function handleDeleteAccount() {
+  // DELETE /me currently returns 501. Never imply that the account is gone.
   showConfirm(
-    'Удаление аккаунта',
-    'Это действие необратимо. Все активные подписки и данные аккаунта будут удалены навсегда.',
+    uiText('Запросить удаление аккаунта', 'Request account deletion'),
+    uiText('Автоматическое удаление пока недоступно. Открыть поддержку для подачи запроса?',
+      'Automatic account deletion is not available yet. Open support to request deletion?'),
     async () => {
-      if (state.connectionBusy) return showToast('Дождитесь завершения работы VPN', true);
       try {
-        if (state.vpnConnected) await invoke('vpn_stop');
-        await invoke('delete_account');
-        state.sessionEpoch += 1;
-        state.vpnConnected = false;
-        state.servers = [];
-        state.devices = [];
-        state.user = null;
-        state.subscription = null;
-        showAuthScreen('login');
-        showToast('Аккаунт удалён');
+        await handleOpenTelegramSupport();
       } catch (err) {
-        showToast(typeof err === 'string' ? err : 'Не удалось удалить аккаунт', true);
+        showToast(uiText('Не удалось открыть поддержку.', 'Could not open support.'), true);
       }
     }
   );
@@ -1140,8 +1145,10 @@ async function toggleVpn() {
 }
 
 async function checkVpnStatus() {
+  const epoch = state.sessionEpoch;
   try {
     const status = await invoke('vpn_status');
+    if (epoch !== state.sessionEpoch) return;
     if (status && status.connected) {
       state.vpnVerified = true;
       state.vpnConnected = true;
@@ -1169,11 +1176,18 @@ async function checkVpnStatus() {
 
 function startStatusPolling() {
   if (state.pollInterval) clearInterval(state.pollInterval);
+  const epoch = state.sessionEpoch;
   state.pollInterval = setInterval(async () => {
+    if (epoch !== state.sessionEpoch) {
+      clearInterval(state.pollInterval);
+      state.pollInterval = null;
+      return;
+    }
     if (state.vpnConnected && !document.hidden && !state.pollBusy) {
       state.pollBusy = true;
       try {
         const status = await invoke('vpn_status');
+        if (epoch !== state.sessionEpoch) return;
         state.pollFailures = 0;
         state.vpnVerified = status?.connected === true;
         if (status) {

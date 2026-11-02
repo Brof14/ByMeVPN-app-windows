@@ -144,3 +144,16 @@ test('autoconnect is opt-in; never start a tunnel before session restoration', (
   assert.equal(app.eval('state.settings.autoConnect'), false);
   assert.equal(app.eval('state.settings.bypassRu'), true);
 });
+
+test('legal terms and privacy anchors remain clickable after translation', () => {
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="link-pricing-terms"[^>]*data-i18n="terms_link"/);
+  assert.match(html, /id="link-pricing-privacy"[^>]*data-i18n="privacy_link"/);
+  assert.doesNotMatch(html, /data-i18n="terms_agreement"/);
+});
+
+test('language resources cover server search and authentication field placeholders', () => {
+  const app = harness();
+  assert.equal(app.eval("I18N.en.email_placeholder"), "Email address");
+  assert.equal(app.eval("I18N.en.server_search_placeholder"), "Search servers or countries...");
+});

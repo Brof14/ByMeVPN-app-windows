@@ -72,6 +72,16 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    terms_prefix: "Нажимая «Оплатить», вы соглашаетесь с ",
+    terms_link: "Условиями использования",
+    terms_and: " и ",
+    privacy_link: "Политикой конфиденциальности",
+    email_placeholder: "Адрес эл. почты",
+    password_placeholder: "Пароль",
+    new_password_placeholder: "Придумайте пароль",
+    repeat_password_placeholder: "Повторите пароль",
+    name_placeholder: "Имя пользователя",
+    server_search_placeholder: "Поиск сервера или страны...",
     dns_title: 'DNS-провайдер',
     dns_desc: 'Изменения применятся при следующем подключении VPN',
     autoconnect_title: 'Подключаться при запуске',
@@ -195,6 +205,16 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    terms_prefix: "By selecting Pay, you accept the ",
+    terms_link: "Terms of Service",
+    terms_and: " and ",
+    privacy_link: "Privacy Policy",
+    email_placeholder: "Email address",
+    password_placeholder: "Password",
+    new_password_placeholder: "Create password",
+    repeat_password_placeholder: "Confirm password",
+    name_placeholder: "Display name",
+    server_search_placeholder: "Search servers or countries...",
     dns_title: 'DNS provider',
     dns_desc: 'Changes take effect the next time you connect to VPN',
     autoconnect_title: 'Connect when app opens',
@@ -1683,11 +1703,14 @@ function applyLanguage(lang) {
   });
 
   const dict = I18N[lang] || I18N.ru;
+  document.documentElement.lang = lang === 'en' ? 'en' : 'ru';
   document.querySelectorAll('[data-i18n]').forEach(el => {
-    const key = el.dataset.i18n;
-    if (dict[key]) {
-      el.textContent = dict[key];
-    }
+    const value = dict[el.dataset.i18n];
+    if (typeof value === 'string') el.textContent = value;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const value = dict[el.dataset.i18nPlaceholder];
+    if (typeof value === 'string') el.placeholder = value;
   });
 
   // Re-run tab title update

@@ -103,11 +103,11 @@
             <form id="form-login" class="auth-form-fields">
               <div class="input-field-box">
                 <span class="field-icon">✉</span>
-                <input type="email" id="login-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+                <input type="email" id="login-email" data-i18n-placeholder="email_placeholder" placeholder="Адрес эл. почты" required autocomplete="email" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="login-password" placeholder="Пароль" required autocomplete="current-password" />
+                <input type="password" id="login-password" data-i18n-placeholder="password_placeholder" placeholder="Пароль" required autocomplete="current-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <button type="submit" id="btn-submit-login" class="btn-primary auth-submit-btn">
@@ -177,20 +177,20 @@
             <form id="form-register" class="auth-form-fields">
               <div class="input-field-box">
                 <span class="field-icon">👤</span>
-                <input type="text" id="register-name" placeholder="Имя пользователя" autocomplete="name" />
+                <input type="text" id="register-name" data-i18n-placeholder="name_placeholder" placeholder="Имя пользователя" autocomplete="name" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">✉</span>
-                <input type="email" id="register-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+                <input type="email" id="register-email" data-i18n-placeholder="email_placeholder" placeholder="Адрес эл. почты" required autocomplete="email" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="register-password" placeholder="Придумайте пароль" required autocomplete="new-password" />
+                <input type="password" id="register-password" data-i18n-placeholder="new_password_placeholder" placeholder="Придумайте пароль" required autocomplete="new-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="register-password-confirm" placeholder="Повторите пароль" required autocomplete="new-password" />
+                <input type="password" id="register-password-confirm" data-i18n-placeholder="repeat_password_placeholder" placeholder="Повторите пароль" required autocomplete="new-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <button type="submit" id="btn-submit-register" class="btn-primary auth-submit-btn">
@@ -675,7 +675,7 @@
                   <span data-i18n="payment_methods_text">СБП, карты, SberPay, T-Pay</span>
                 </div>
                 <p data-i18n="auto_renew_note">Проверьте условия продления и списаний перед оплатой. Управление автопродлением доступно через поддержку.</p>
-                <p data-i18n="terms_agreement">Нажимая «Оплатить», вы соглашаетесь с <a href="#" id="link-pricing-terms" class="cyan-link">Условиями использования</a> и <a href="#" id="link-pricing-privacy" class="cyan-link">Политикой конфиденциальности</a>.</p>
+                <p class="terms-agreement"><span data-i18n="terms_prefix">Нажимая «Оплатить», вы соглашаетесь с </span><a href="#" id="link-pricing-terms" class="cyan-link" data-i18n="terms_link">Условиями использования</a><span data-i18n="terms_and"> и </span><a href="#" id="link-pricing-privacy" class="cyan-link" data-i18n="privacy_link">Политикой конфиденциальности</a>.</p>
               </div>
             </div>
 
@@ -689,7 +689,7 @@
                   </button>
                   <div class="search-input-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="server-search-input" placeholder="Поиск сервера или страны..." />
+                    <input type="text" id="server-search-input" data-i18n-placeholder="server_search_placeholder" placeholder="Поиск сервера или страны..." />
                   </div>
                 </div>
 

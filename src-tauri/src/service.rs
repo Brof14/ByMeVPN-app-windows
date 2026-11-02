@@ -23,6 +23,7 @@ const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
 static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
@@ -942,20 +943,71 @@ pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Err("Не найден проверенный компонент Xray (xray.exe / wintun.dll).".into())
 }
 
+fn default_settings() -> Value {
+    json!({
+        "autoStart": false,
+        "autoConnect": false,
+        "stayConnectedInBackground": false,
+        "bypassRu": true,
+        "adBlock": "none",
+        "killSwitch": false,
+        "language": "ru",
+        "selectedServerCode": "auto"
+    })
+}
+
+fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
+    match key {
+        "autoStart" | "autoConnect" | "bypassRu" => {
+            if !value.is_boolean() {
+                return Err("Эта настройка должна иметь значение вкл./выкл.".into());
+            }
+        }
+        "stayConnectedInBackground" | "killSwitch" => {
+            if value != &Value::Bool(false) {
+                return Err("Функция будет доступна после проверки безопасности Windows.".into());
+            }
+        }
+        "adBlock" => {
+            if !matches!(value.as_str(), Some("none" | "basic" | "recommended")) {
+                return Err("Неизвестный режим блокировки рекламы.".into());
+            }
+        }
+        "language" => {
+            if !matches!(value.as_str(), Some("ru" | "en")) {
+                return Err("Приложение поддерживает языки RU и EN.".into());
+            }
+        }
+        "selectedServerCode" => {
+            let code = value.as_str().ok_or("Некорректный код сервера.")?;
+            if code.is_empty() || code.len() > 128 ||
+                !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+                return Err("Некорректный код сервера.".into());
+            }
+        }
+        _ => return Err("Неизвестная настройка.".into()),
+    }
+    Ok(())
+}
+
 pub fn load_settings(app: &AppHandle) -> Value {
-    let dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut settings = default_settings();
+    let dir = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return settings,
+    };
     let path = dir.join("settings.json");
-    fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_else(|| json!({
-            "autoStart": false,
-            "stayConnectedInBackground": false,
-            "bypassRu": true,
-            "adBlock": "recommended",
-            "killSwitch": false,
-            "language": "ru"
-        }))
+    if let Ok(saved) = fs::read(&path) {
+        if let Ok(Value::Object(saved)) = serde_json::from_slice::<Value>(&saved) {
+            for (key, val) in saved {
+                // Ignore stale, invalid and unsupported settings during migration.
+                if validate_setting(&key, &val).is_ok() {
+                    settings[&key] = val;
+                }
+            }
+        }
+    }
+    settings
 }
 
 #[tauri::command]
@@ -965,39 +1017,21 @@ pub fn get_settings(app: AppHandle) -> Value {
 
 #[tauri::command]
 pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(), String> {
-    let allowed = [
-        "autoStart",
-        "autoConnect",
-        "selectedServerCode",
-        "stayConnectedInBackground",
-        "bypassRu",
-        "adBlock",
-        "killSwitch",
-        "language",
-    ];
-    if !allowed.contains(&key.as_str()) {
-        return Err("Неизвестная настройка.".into());
-    }
-    if matches!(key.as_str(), "stayConnectedInBackground" | "killSwitch") && value == Value::Bool(true) {
-        return Err("Эта функция недоступна, пока не пройдёт проверку безопасности.".into());
-    }
-    if key == "selectedServerCode" {
-        let code = value.as_str().ok_or("Неверный код сервера.")?;
-        if code.len() > 128 || code.is_empty() ||
-            !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
-            return Err("Неверный код сервера.".into());
-        }
-    }
+    validate_setting(&key, &value)?;
+    let _guard = SETTINGS_LOCK.lock().await;
     let dir: PathBuf = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join("settings.json");
+    let tmp = dir.join(format!("settings.{}.tmp", Uuid::new_v4()));
     let mut settings = load_settings(&app);
     settings[&key] = value;
-    fs::write(
-        path,
-        serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    let serialized = serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
+    if let Err(error) = fs::rename(&tmp, &path) {
+        let _ = fs::remove_file(tmp);
+        return Err(format!("Не удалось сохранить настройки: {error}"));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1357,6 +1391,21 @@ pub fn open_external_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {
+        assert!(validate_setting("bypassRu", &json!(true)).is_ok());
+        assert!(validate_setting("bypassRu", &json!("true")).is_err());
+        assert!(validate_setting("selectedServerCode", &json!("node_de-1")).is_ok());
+        assert!(validate_setting("selectedServerCode", &json!("../settings")).is_err());
+        assert!(validate_setting("killSwitch", &json!(true)).is_err());
+        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
+        assert!(validate_setting("adBlock", &json!("unknown")).is_err());
+        assert!(validate_setting("language", &json!("fr")).is_err());
+        assert_eq!(default_settings()["bypassRu"], true);
+        assert_eq!(default_settings()["adBlock"], "none");
+    }
+
 
     #[test]
     fn login_accepts_null_name_and_uses_email_as_display_name() {

@@ -170,6 +170,37 @@ test('language resources cover server search and authentication field placeholde
   assert.equal(app.eval("I18N.en.server_search_placeholder"), "Search servers or countries...");
 });
 
+test('unknown subscription never incorrectly claims the account is unpaid', () => {
+  const app = harness();
+  const result = app.eval(`(() => {
+    const elements = new Map();
+    document.getElementById = (id) => {
+      if (!elements.has(id)) elements.set(id, { textContent: '', className: '', querySelector() { return null; } });
+      return elements.get(id);
+    };
+    state.settings.language = 'en';
+    state.subscription = { status: 'unknown' };
+    updateSubscriptionUi();
+    return {
+      title: elements.get('home-sub-title').textContent,
+      badge: elements.get('home-sub-badge').textContent,
+      expiry: elements.get('home-sub-expiry').textContent
+    };
+  })()`);
+  assert.equal(result.title, 'Checking subscription');
+  assert.equal(result.badge, 'Unknown');
+  assert.equal(result.expiry, 'Subscription status unavailable');
+});
+
+test('English messaging never promises unsupported account auto-renew controls', () => {
+  const app = harness();
+  assert.match(app.eval('I18N.en.auto_renew_note'), /Contact support/);
+  assert.doesNotMatch(app.eval('I18N.en.auto_renew_note'), /cancel at any time in account settings/i);
+  app.eval("state.settings.language = 'en'");
+  assert.equal(app.eval("localizedToast('VPN отключён')"), 'VPN disconnected.');
+  assert.equal(app.eval("localizedToast('Выбран сервер: Germany')"), 'Server selected: Germany');
+});
+
 test('the Windows shield is byte-for-byte the approved Android V2 drawable', () => {
   const image = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
   const sha = createHash('sha1')

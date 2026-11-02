@@ -1115,18 +1115,15 @@ pub async fn vpn_start(
     }
 
     // Check that user has an active or trial subscription before launching tunnel
-    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false).await;
-    let has_active_sub = match sub_status {
-        Ok(ref d) => {
-            let subscription = d.get("subscription").unwrap_or(d);
-            let status = subscription.get("status").and_then(Value::as_str).unwrap_or("none");
-            matches!(status, "active" | "trial" | "grace")
-        }
-        Err(_) => false,
-    };
-
-    if !has_active_sub {
-        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте 3 дня бесплатного доступа или выберите тариф.".into());
+    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
+        .await.map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
+    let subscription = sub_status.get("subscription").unwrap_or(&sub_status);
+    let status = subscription.get("status").and_then(Value::as_str).unwrap_or("unknown");
+    if status == "unknown" {
+        return Err("Статус подписки пока неизвестен. Повторите проверку при доступной сети.".into());
+    }
+    if !matches!(status, "active" | "trial" | "grace") {
+        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте пробный доступ или выберите тариф.".into());
     }
 
     let runtime_dir = get_runtime_dir(&app)?;
@@ -1285,17 +1282,25 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let _connection_guard = state.connection_gate.lock().await;
     let maybe_active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            let already_stopped = active.child.try_wait()
+                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?.is_some();
+            if !already_stopped {
+                // Do not clear connected state until the OS confirms termination.
+                active.child.kill().map_err(|e|
+                    format!("Не удалось остановить VPN-процесс: {e}"))?;
+                active.child.wait().map_err(|e|
+                    format!("Не удалось дождаться остановки Xray: {e}"))?;
+            }
+        }
         lock.take()
     };
-    if let Some(mut active) = maybe_active {
-        let _ = active.child.kill();
-        let _ = active.child.wait();
+    if let Some(active) = maybe_active {
         let _ = fs::remove_file(&active.config_path);
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-        Ok(())
-    } else {
-        Err("Активный туннель не найден.".into())
     }
+    // Idempotent even if the tunnel was already stopped or crashed.
+    Ok(())
 }
 
 #[tauri::command]

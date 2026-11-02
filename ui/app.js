@@ -12,8 +12,9 @@ const invoke = async (cmd, args = {}) => {
   if (invoker) {
     return await invoker(cmd, args);
   }
-  // Standalone browser / preview simulation fallback
-  return mockIpc(cmd, args);
+  // Production must never silently simulate auth, settings or VPN connection.
+  // The dedicated qa-preview/ build has its own fixtures and does not ship.
+  throw new Error('Приложение ByMeVPN должно быть открыто через Windows-клиент.');
 };
 
 // State Store
@@ -1910,33 +1911,3 @@ function showToast(text, isError = false) {
   }, 3200);
 }
 
-// Standalone Fallback: Safe offline/unauthenticated state (Zero fake accounts/subscriptions)
-function mockIpc(cmd, _args) {
-  switch (cmd) {
-    case 'get_settings':
-      return { autoStart: true, stayConnectedInBackground: true, bypassRu: true, adBlock: 'recommended', killSwitch: true, language: 'ru' };
-    case 'get_servers':
-      return [];
-    case 'get_plans':
-      return [];
-    case 'restore_session':
-      return null;
-    case 'account_snapshot':
-      return { user: null, subscription: null, devices: [] };
-    case 'vpn_status':
-      return {
-        connected: false,
-        connected_seconds: 0,
-        download_mbps: null,
-        upload_mbps: null,
-        ping_ms: null,
-        server_name: '',
-        country: '',
-        ip: ''
-      };
-    case 'vpn_stop':
-      return true;
-    default:
-      return null;
-  }
-}

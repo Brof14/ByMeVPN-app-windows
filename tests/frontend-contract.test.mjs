@@ -38,6 +38,20 @@ function harness(getPlans = async () => canonical) {
   return { eval: code => runInContext(code, sandbox) };
 }
 
+test('production UI fails closed without Tauri rather than pretending to use a VPN', async () => {
+  const context = createContext({
+    console,
+    document: { addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; } },
+    window: {},
+    setTimeout, clearTimeout, setInterval, clearInterval
+  });
+  runInContext(source, context);
+  await assert.rejects(runInContext("invoke('vpn_start')", context),
+    /должно быть открыто через Windows-клиент/);
+  await assert.rejects(runInContext("invoke('auth_login')", context),
+    /должно быть открыто через Windows-клиент/);
+});
+
 test('checkout prices and gift durations come from server catalog', async () => {
   const app = harness();
   await app.eval('loadPricingCatalog()');

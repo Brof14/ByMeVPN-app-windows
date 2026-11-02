@@ -281,7 +281,7 @@ const I18N = {
     best_price: 'Best Value',
     pay_via_yookassa: 'Pay with YooKassa',
     payment_methods_text: 'SBP, Cards, SberPay, T-Pay',
-    auto_renew_note: 'Subscription auto-renews. You can cancel at any time in account settings.',
+    auto_renew_note: 'Review recurring payment terms before checkout. Contact support to manage renewal until account controls are available.',
     terms_agreement: 'By clicking "Pay", you agree to Terms of Service and Privacy Policy.',
     back: 'Back',
     server_auto: 'Automatic',
@@ -1234,6 +1234,11 @@ function formatTime(seconds) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+// Runtime strings must use the same locale as the Android app.
+function uiText(ru, en) {
+  return state.settings.language === 'en' ? en : ru;
+}
+
 // UI Updaters
 function updateVpnUi() {
   const isConn = state.vpnConnected;
@@ -1251,7 +1256,9 @@ function updateVpnUi() {
     disconnectedBox?.classList.add('hidden');
     activePill?.classList.toggle('hidden', !state.vpnVerified);
     const heading = document.querySelector('#home-state-connected .status-title-text');
-    if (heading) heading.textContent = state.vpnVerified ? 'VPN подключён' : 'Проверяем состояние VPN';
+    if (heading) heading.textContent = state.vpnVerified ?
+      uiText('VPN подключён', 'VPN connected') :
+      uiText('Проверяем состояние VPN', 'Checking VPN connection');
   } else if (!hasPlan) {
     // Parity with Android Mockup 03_home_no_plan
     noPlanBox?.classList.remove('hidden');
@@ -1270,8 +1277,11 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (desc) desc.textContent = state.vpnPhase === 'connecting' ? 'Запуск и проверка VPN...' : 'Нажмите, чтобы подключиться';
-    if (btn) btn.textContent = state.vpnPhase === 'connecting' ? 'Подключаемся...' : 'Подключиться';
+    if (desc) desc.textContent = state.vpnPhase === 'connecting' ?
+      uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
+      uiText('Нажмите, чтобы подключиться', 'Click to connect');
+    if (btn) btn.textContent = state.vpnPhase === 'connecting' ?
+      uiText('Подключаемся...', 'Connecting...') : uiText('Подключиться', 'Connect');
     ringOff?.classList.remove('ring-off');
     ringOff?.classList.add('ring-ready');
     promoBox?.classList.add('hidden');
@@ -1292,8 +1302,10 @@ function updateVpnUi() {
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
-  if (homeCountry) homeCountry.textContent = s.code === 'auto' ? 'Автоматически' : s.name.split('•')[0].trim();
-  if (homeCity) homeCity.textContent = s.name.includes('•') ? s.name.split('•')[1].trim() : 'Автовыбор';
+  if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
+    uiText('Автоматически', 'Automatic') : s.name.split('•')[0].trim();
+  if (homeCity) homeCity.textContent = s.name.includes('•') ?
+    s.name.split('•')[1].trim() : uiText('Автовыбор', 'Auto select');
 
   updateMetricsUi();
 }
@@ -1311,9 +1323,9 @@ function updateMetricsUi() {
     return;
   }
 
-  if (downEl) downEl.textContent = m.download_mbps > 0 ? `${m.download_mbps.toFixed(1)} Мбит/с` : '—';
-  if (upEl) upEl.textContent = m.upload_mbps > 0 ? `${m.upload_mbps.toFixed(1)} Мбит/с` : '—';
-  if (pingEl) pingEl.textContent = m.ping_ms > 0 ? `${m.ping_ms} мс` : '—';
+  if (downEl) downEl.textContent = m.download_mbps > 0 ? `${m.download_mbps.toFixed(1)} Mbps` : '—';
+  if (upEl) upEl.textContent = m.upload_mbps > 0 ? `${m.upload_mbps.toFixed(1)} Mbps` : '—';
+  if (pingEl) pingEl.textContent = m.ping_ms > 0 ? `${m.ping_ms} ms` : '—';
 }
 
 function updateUserUi() {
@@ -1321,21 +1333,25 @@ function updateUserUi() {
   const nameEl = document.getElementById('acc-user-name');
   const emailEl = document.getElementById('acc-user-email');
 
-  if (nameEl) nameEl.textContent = state.user.name || 'Пользователь';
+  if (nameEl) nameEl.textContent = state.user.name || uiText('Пользователь', 'User');
   if (emailEl) emailEl.textContent = state.user.email || 'ByMeVPN User';
 }
 
 function updateSubscriptionUi() {
   const sub = state.subscription;
   const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
+  const isUnknown = !sub || sub.status === 'unknown';
 
   const title = hasPlan
-    ? (sub.plan_name || 'Подписка ByMeVPN')
-    : 'Нет активной подписки';
+    ? (sub.plan_name || uiText('Подписка ByMeVPN', 'ByMeVPN subscription'))
+    : isUnknown ? uiText('Проверяем подписку', 'Checking subscription')
+      : uiText('Нет активной подписки', 'No active subscription');
 
   const expiry = hasPlan
-    ? (sub.expires_at ? `Действует до ${sub.expires_at}` : 'Подписка активна')
-    : 'Подписка не оформлена';
+    ? (sub.expires_at ? `${uiText('Действует до', 'Valid until')} ${sub.expires_at}` :
+      uiText('Подписка активна', 'Subscription active'))
+    : isUnknown ? uiText('Данные временно недоступны', 'Subscription status unavailable')
+      : uiText('Подписка не оформлена', 'No subscription');
 
   const homeSubTitle = document.getElementById('home-sub-title');
   const homeSubExpiry = document.getElementById('home-sub-expiry');
@@ -1348,27 +1364,32 @@ function updateSubscriptionUi() {
   if (homeSubTitle) homeSubTitle.textContent = title;
   if (homeSubExpiry) homeSubExpiry.textContent = expiry;
   if (homeSubBadge) {
-    homeSubBadge.textContent = hasPlan ? 'Активна' : 'Не активна';
+    homeSubBadge.textContent = hasPlan ? uiText('Активна', 'Active') :
+      isUnknown ? uiText('Неизвестно', 'Unknown') : uiText('Не активна', 'Inactive');
     homeSubBadge.className = hasPlan ? 'badge-active-mini' : 'badge-inactive';
   }
 
   if (accPlanName) accPlanName.textContent = title;
   if (accPlanValidity) accPlanValidity.textContent = expiry;
   if (accPlanBadge) {
-    accPlanBadge.textContent = sub?.auto_renew === true ? 'Автопродление включено' :
-      sub?.auto_renew === false ? 'Автопродление выключено' : 'Статус автопродления неизвестен';
+    accPlanBadge.textContent = sub?.auto_renew === true ?
+      uiText('Автопродление включено', 'Auto-renewal on') :
+      sub?.auto_renew === false ? uiText('Автопродление выключено', 'Auto-renewal off') :
+      uiText('Статус автопродления неизвестен', 'Auto-renewal status unknown');
     accPlanBadge.className = sub?.auto_renew === true ? 'badge-auto-renew' : 'badge-inactive';
   }
 
   if (accRenewBtn) {
     const renewText = accRenewBtn.querySelector('[data-i18n="renew"]') || accRenewBtn;
-    renewText.textContent = hasPlan ? 'Продлить' : 'Оформить подписку';
+    renewText.textContent = hasPlan ? uiText('Продлить', 'Renew') :
+      uiText('Оформить подписку', 'Subscribe');
   }
 
   const renewalBadge = document.getElementById('renewal-current-status-badge');
   if (renewalBadge) {
-    renewalBadge.textContent = sub?.auto_renew === true ? 'Включено' :
-      sub?.auto_renew === false ? 'Отключено' : 'Неизвестно';
+    renewalBadge.textContent = sub?.auto_renew === true ? uiText('Включено', 'Enabled') :
+      sub?.auto_renew === false ? uiText('Отключено', 'Disabled') :
+      uiText('Неизвестно', 'Unknown');
     renewalBadge.className = sub?.auto_renew === true ? 'badge-active-mini' : 'badge-inactive';
   }
 }
@@ -1385,7 +1406,8 @@ function updateDevicesUi() {
   const devList = Array.isArray(state.devices) ? state.devices : [];
 
   if (ratioEl) {
-    ratioEl.textContent = state.devicesSupported ? `${devList.length} / ${maxDev ?? '—'}` : 'Недоступно';
+    ratioEl.textContent = state.devicesSupported ? `${devList.length} / ${maxDev ?? '—'}` :
+      uiText('Недоступно', 'Unavailable');
   }
   if (heroCurrent) heroCurrent.textContent = state.devicesSupported ? String(devList.length) : '—';
   if (heroMax) heroMax.textContent = state.devicesSupported ? String(maxDev ?? '—') : '—';
@@ -1396,7 +1418,7 @@ function updateDevicesUi() {
     row.dataset.deviceId = dev.id || '';
 
     const isCurrent = dev.is_current === true;
-    const model = dev.device_model || dev.platform || 'Устройство';
+    const model = dev.device_model || dev.platform || uiText('Устройство', 'Device');
     const platform = (dev.platform || '').toLowerCase();
     const icon = platform.includes('android') || platform.includes('phone') || platform.includes('ios')
       ? '📱'
@@ -1409,12 +1431,12 @@ function updateDevicesUi() {
       <div class="device-info-col">
         <strong>${escapeHtml(model)}</strong>
         <span class="${isCurrent ? 'device-status-online' : 'device-last-seen'}">
-          ${isCurrent ? '<span class="dot-green">●</span> Онлайн' : escapeHtml(dev.last_active || 'Недавно')}
+          ${isCurrent ? `<span class="dot-green">●</span> ${uiText('Онлайн', 'Online')}` : escapeHtml(dev.last_active || uiText('Недавно', 'Recently'))}
         </span>
       </div>
       ${isCurrent
-        ? '<span class="badge-current-device">Текущее устройство</span>'
-        : `<button type="button" class="btn-disconnect-device" data-dev-id="${escapeHtml(dev.id)}"><span>⊘</span> Отключить</button>`
+        ? `<span class="badge-current-device">${uiText('Текущее устройство', 'Current device')}</span>`
+        : `<button type="button" class="btn-disconnect-device" data-dev-id="${escapeHtml(dev.id)}"><span>⊘</span> ${uiText('Отключить', 'Disconnect')}</button>`
       }
     `;
 
@@ -1436,7 +1458,7 @@ function updateDevicesUi() {
   }
   if (!state.devicesSupported) {
     for (const element of [container, fullContainer]) {
-      if (element) element.textContent = 'Управление устройствами пока недоступно на сервере.';
+      if (element) element.textContent = uiText('Управление устройствами пока недоступно на сервере.', 'Device management is currently unavailable.');
     }
   }
 }
@@ -1720,8 +1742,11 @@ function applyLanguage(lang) {
     if (typeof value === 'string') el.placeholder = value;
   });
 
-  // Re-run tab title update
+  // Recompute dynamic server/account/status labels as well as static titles.
   switchTab(state.currentTab);
+  updateVpnUi();
+  updateSubscriptionUi();
+  updateDevicesUi();
 }
 
 // Refresh Account Snapshot

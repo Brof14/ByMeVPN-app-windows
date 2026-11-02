@@ -9,6 +9,21 @@ on:
       - main
 
 jobs:
+  frontend:
+    name: Frontend syntax, catalog and state contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate JavaScript
+        run: node --check ui/app.js
+      - name: Frontend regressions
+        run: node --test tests/frontend-contract.test.mjs
+
   test:
     name: Test & Verify Backend
     runs-on: windows-latest

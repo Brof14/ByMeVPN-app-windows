@@ -138,3 +138,9 @@ test('pricing matrix has no purchasable prices before live API validation', () =
   const app = harness(async () => { throw new Error('offline'); });
   assert.equal(app.eval('PRICING_MATRIX[2].month'), undefined);
 });
+
+test('autoconnect is opt-in; never start a tunnel before session restoration', () => {
+  const app = harness();
+  assert.equal(app.eval('state.settings.autoConnect'), false);
+  assert.equal(app.eval('state.settings.bypassRu'), true);
+});

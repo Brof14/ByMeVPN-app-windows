@@ -52,6 +52,7 @@ const state = {
   preferredServerCode: 'auto',
   settings: {
     autoStart: false,
+    autoConnect: false,
     stayConnectedInBackground: false,
     bypassRu: true,
     adBlock: 'none',
@@ -69,6 +70,8 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    autoconnect_title: 'Подключаться при запуске',
+    autoconnect_desc: 'Автоматически запускать VPN после входа при активной подписке',
     account_settings_title: 'Настройки аккаунта',
     account_refresh: 'Обновить данные',
     account_copy_id: 'Скопировать ID',
@@ -188,6 +191,8 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    autoconnect_title: 'Connect when app opens',
+    autoconnect_desc: 'Connect automatically after sign-in when the subscription is active',
     account_settings_title: 'Account settings',
     account_refresh: 'Refresh account',
     account_copy_id: 'Copy account ID',
@@ -353,6 +358,13 @@ async function loadInitialData() {
     if (restoreFailed) showToast('Сервер недоступен. Вы можете повторить проверку сеанса.', true);
   }
   await checkVpnStatus();
+  if (state.user && state.settings.autoConnect && !state.vpnConnected) {
+    await loadAvailableServers();
+    if (state.servers.some(s => s.supported !== false) &&
+        ['active', 'trial', 'grace'].includes(state.subscription?.status)) {
+      await toggleVpn();
+    }
+  }
 }
 
 async function loadAvailableServers() {
@@ -754,6 +766,7 @@ function setupEventListeners() {
 
   // Settings switches
   document.getElementById('set-autostart')?.addEventListener('change', (e) => handleSettingChange('autoStart', e.target.checked));
+  document.getElementById('set-autoconnect')?.addEventListener('change', e => handleSettingChange('autoConnect', e.target.checked));
   document.getElementById('set-background')?.addEventListener('change', (e) => handleSettingChange('stayConnectedInBackground', e.target.checked));
   document.getElementById('set-bypass')?.addEventListener('change', (e) => handleSettingChange('bypassRu', e.target.checked));
   document.getElementById('set-killswitch')?.addEventListener('change', (e) => handleSettingChange('killSwitch', e.target.checked));
@@ -1623,11 +1636,13 @@ async function handleSettingChange(key, value) {
 function applySettingsToUi() {
   const s = state.settings;
   const setAuto = document.getElementById('set-autostart');
+  const setAutoConnect = document.getElementById('set-autoconnect');
   const setBg = document.getElementById('set-background');
   const setBypass = document.getElementById('set-bypass');
   const setKill = document.getElementById('set-killswitch');
 
   if (setAuto) setAuto.checked = !!s.autoStart;
+  if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
   if (setBg) setBg.checked = false;
   if (setBypass) setBypass.checked = !!s.bypassRu;
   if (setKill) setKill.checked = false;

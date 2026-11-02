@@ -38,6 +38,11 @@ function harness(getPlans = async () => canonical) {
   return { eval: code => runInContext(code, sandbox) };
 }
 
+test('all external links pass through the validated native Tauri broker', () => {
+  assert.doesNotMatch(source, /window\.open\s*\(/);
+  assert.match(source, /invoke\('open_external_url'/);
+});
+
 test('production UI fails closed without Tauri rather than pretending to use a VPN', async () => {
   const context = createContext({
     console,

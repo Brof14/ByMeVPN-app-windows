@@ -1890,24 +1890,40 @@ function openLegalModal(type) {
   const modal = document.getElementById('modal-legal');
   const title = document.getElementById('legal-modal-title');
   const body = document.getElementById('legal-modal-body');
+  if (!modal || !title || !body) return;
+  const en = state.settings.language === 'en';
 
+  // This is a concise in-app explanation, not a fabricated audited privacy
+  // policy or a substitute for formally published terms.
   if (type === 'privacy') {
-    title.textContent = 'Политика конфиденциальности';
-    body.innerHTML = `
-      <p><strong>1. Общие положения</strong><br>ByMeVPN обеспечивает защиту персональных данных пользователей в соответствии с законодательством. Мы придерживаемся строгой политики приватности и минимального сбора данных.</p>
-      <br>
-      <p><strong>2. Обработка сетевого трафика</strong><br>Полная политика обработки данных должна быть опубликована отдельно и подтверждена аудитом серверной инфраструктуры. До её публикации приложение не заявляет гарантию Zero Logs.</p>
-      <br>
-      <p><strong>3. Безопасность данных</strong><br>Токены авторизации хранятся в Windows Credential Manager. Временная конфигурация VPN может создаваться локально для запуска Xray. Защита всех сетевых сценариев ещё проходит проверку.</p>
+    title.textContent = uiText('Конфиденциальность и обработка данных', 'Privacy and data handling');
+    body.innerHTML = en ? `
+      <p><strong>About this notice</strong> This is an in-app summary, not a replacement for the full published privacy policy.</p>
+      <p><strong>Account</strong> Login tokens are stored in Windows Credential Manager. Your account, subscription and device details are provided by the ByMeVPN backend.</p>
+      <p><strong>VPN traffic</strong> Xray routes eligible traffic through the selected VPN endpoint. Local routing exceptions may send supported Russian services directly, if enabled.</p>
+      <p><strong>Verification</strong> Comprehensive DNS, IPv6 and server logging claims have not been independently verified. No unqualified zero-logs or total anonymity guarantee is made.</p>
+      <p><strong>Contact</strong> Use ByMeVPN Support in Telegram for privacy or data requests.</p>
+    ` : `
+      <p><strong>Об этом уведомлении</strong> Это краткое описание, не заменяющее полную опубликованную политику конфиденциальности.</p>
+      <p><strong>Аккаунт</strong> Токены входа хранятся в Windows Credential Manager. Данные аккаунта, подписки и устройств поступают с сервера ByMeVPN.</p>
+      <p><strong>VPN-трафик</strong> Xray направляет подходящий трафик через выбранный VPN-сервер. При включённом обходе поддерживаемые российские сервисы могут открываться напрямую.</p>
+      <p><strong>Проверка</strong> Полная защита DNS/IPv6 и серверная политика логирования ещё не прошли независимую проверку. Гарантии абсолютной анонимности или Zero Logs не заявляются.</p>
+      <p><strong>Обращения</strong> По вопросам персональных данных используйте поддержку ByMeVPN в Telegram.</p>
     `;
   } else {
-    title.textContent = 'Условия использования';
-    body.innerHTML = `
-      <p><strong>1. Предмет соглашения</strong><br>ByMeVPN предоставляет услуги защищённого шифрованного туннелирования интернет-трафика на основе протокола VLESS + XTLS Reality.</p>
-      <br>
-      <p><strong>2. Подписка и оплата</strong><br>Тариф, сумма и срок действия определяются сервером и показываются перед оплатой. Факт оплаты проверяется сервером. Для изменения автопродления до появления управления в приложении обратитесь в поддержку.</p>
-      <br>
-      <p><strong>3. Правила использования</strong><br>Запрещается использовать сервис для распространения вредоносного ПО, спама и незаконной деятельности.</p>
+    title.textContent = uiText('Условия использования — кратко', 'Terms of service — summary');
+    body.innerHTML = en ? `
+      <p><strong>About this notice</strong> This in-app summary is informational and does not replace the formally published service terms.</p>
+      <p><strong>Service</strong> ByMeVPN provides encrypted VPN tunneling where supported by the selected network and server; availability and security depend on the real connection.</p>
+      <p><strong>Plans and payment</strong> The backend sets the exact total price, access duration and number of devices before checkout. Payment is confirmed only by the provider and server.</p>
+      <p><strong>Renewal and refunds</strong> Review the actual checkout conditions. Until account controls are implemented, contact support about renewal, cancellation or refund requests.</p>
+      <p><strong>Acceptable use</strong> Do not use this service for illegal activities, spam, malware or network attacks.</p>
+    ` : `
+      <p><strong>Об этом уведомлении</strong> Информация носит справочный характер и не заменяет опубликованные условия использования сервиса.</p>
+      <p><strong>Услуга</strong> ByMeVPN предоставляет шифрованное VPN-подключение при поддержке выбранной сети и сервера; доступность зависит от фактического соединения.</p>
+      <p><strong>Тарифы и оплата</strong> Сервер сообщает полную цену, срок доступа и число устройств до оплаты. Оплата подтверждается платёжным провайдером и сервером.</p>
+      <p><strong>Продление и возвраты</strong> Ознакомьтесь с условиями оплаты. Пока управление не реализовано, обратитесь в поддержку по вопросам продления, отмены и возвратов.</p>
+      <p><strong>Использование</strong> Запрещены незаконная деятельность, спам, вредоносное ПО и сетевые атаки.</p>
     `;
   }
   modal.classList.remove('hidden');

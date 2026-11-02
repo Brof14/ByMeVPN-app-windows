@@ -13,7 +13,8 @@ if (-not (Test-Path $downloadsDir)) {
 $xrayExe = Join-Path $runtimeDir "xray.exe"
 $wintunDll = Join-Path $runtimeDir "wintun.dll"
 
-$expectedXrayHash = "07a332b714a3c0eee047a22a9c0ea749b64df33e4e1ff6d28a8c7f9ef943ce10"
+# Official GitHub release asset SHA256, pinned from the XTLS release metadata.
+$expectedXrayArchiveHash = "2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a"
 $expectedWintunHash = "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"
 
 function Verify-FileHash($path, $expected) {
@@ -22,15 +23,20 @@ function Verify-FileHash($path, $expected) {
     return $hash -eq $expected.ToLower()
 }
 
-$needXray = -not (Verify-FileHash $xrayExe $expectedXrayHash)
+# The old v26.10.31 release is no longer available. Always assemble from
+# the pinned official v26.10.31 archive before a build.
+$needXray = $true
 $needWintun = -not (Verify-FileHash $wintunDll $expectedWintunHash)
 
 if ($needXray) {
-    Write-Host "Downloading Xray-core v26.10.29..."
-    $xrayZip = Join-Path $downloadsDir "xray-v26.10.29.zip"
-    $xrayUrl = "https://github.com/XTLS/Xray-core/releases/download/v26.10.29/Xray-windows-64.zip"
+    Write-Host "Downloading Xray-core v26.10.31..."
+    $xrayZip = Join-Path $downloadsDir "xray-v26.10.31.zip"
+    $xrayUrl = "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/Xray-windows-64.zip"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
     Invoke-WebRequest -Uri $xrayUrl -OutFile $xrayZip -UseBasicParsing
+    if (-not (Verify-FileHash $xrayZip $expectedXrayArchiveHash)) {
+        throw "Xray release archive SHA256 does not match the pinned official asset. Build aborted."
+    }
     
     $tempExtract = Join-Path $downloadsDir "xray_temp"
     if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
@@ -67,8 +73,8 @@ if ($needWintun) {
     Remove-Item $tempExtract -Recurse -Force
 }
 
-if (-not (Verify-FileHash $xrayExe $expectedXrayHash)) {
-    throw "xray.exe SHA256 checksum verification failed!"
+if (-not (Test-Path $xrayExe)) {
+    throw "Official Xray release did not contain xray.exe!"
 }
 if (-not (Verify-FileHash $wintunDll $expectedWintunHash)) {
     throw "wintun.dll SHA256 checksum verification failed!"

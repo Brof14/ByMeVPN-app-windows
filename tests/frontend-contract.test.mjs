@@ -110,3 +110,31 @@ test('default state contains neither imaginary countries nor fake measured bandw
   assert.equal(app.eval('state.metrics.download_mbps'), 0);
   assert.equal(app.eval('state.selectedServer.code'), 'auto');
 });
+
+test('desktop defaults match Android V2: direct RU traffic, no unimplemented protection', () => {
+  const app = harness();
+  const snapshot = JSON.parse(app.eval(`JSON.stringify({
+    bypassRu: state.settings.bypassRu,
+    background: state.settings.stayConnectedInBackground,
+    killSwitch: state.settings.killSwitch,
+    adBlock: state.settings.adBlock,
+    authBusy: state.authBusy,
+    verified: state.vpnVerified
+  })`));
+  assert.deepEqual(snapshot, {
+    bypassRu: true, background: false, killSwitch: false,
+    adBlock: 'none', authBusy: false, verified: false
+  });
+});
+
+test('cancelling Telegram login invalidates the outstanding session generation', () => {
+  const app = harness();
+  const old = app.eval('tgPollingGeneration');
+  app.eval('cancelTelegramPolling()');
+  assert.equal(app.eval('tgPollingGeneration'), old + 1);
+});
+
+test('pricing matrix has no purchasable prices before live API validation', () => {
+  const app = harness(async () => { throw new Error('offline'); });
+  assert.equal(app.eval('PRICING_MATRIX[2].month'), undefined);
+});

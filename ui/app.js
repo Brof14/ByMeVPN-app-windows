@@ -63,27 +63,8 @@ const state = {
   pollInterval: null
 };
 
-// Pricing Matrix strictly matching upstream constants (devices 2 / 5 / 10)
-const PRICING_MATRIX = {
-  2: {
-    month: { price: 89, note: '30 дней' },
-    quarter: { price: 316, note: '79 ₽ / месяц' },
-    half_year: { price: 552, note: '69 ₽ / месяц' },
-    year: { price: 885, note: '59 ₽ / месяц' }
-  },
-  5: {
-    month: { price: 109, note: '30 дней' },
-    quarter: { price: 396, note: '99 ₽ / месяц' },
-    half_year: { price: 712, note: '89 ₽ / месяц' },
-    year: { price: 1185, note: '79 ₽ / месяц' }
-  },
-  10: {
-    month: { price: 129, note: '30 дней' },
-    quarter: { price: 476, note: '119 ₽ / месяц' },
-    half_year: { price: 872, note: '109 ₽ / месяц' },
-    year: { price: 1485, note: '99 ₽ / месяц' }
-  }
-};
+// Prices are strictly hydrated from the authenticated API. No local fake offers.
+const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 
 // Translations Dictionary (RU / EN)
 const I18N = {
@@ -150,7 +131,7 @@ const I18N = {
     best_price: 'Лучшая цена',
     pay_via_yookassa: 'Оплатить через ЮKassa',
     payment_methods_text: 'СБП, карты, SberPay, T-Pay',
-    auto_renew_note: 'Подписка продлевается автоматически. Вы можете отменить продление в любой момент в настройках аккаунта.',
+    auto_renew_note: 'Проверьте условия продления перед оплатой. Управление автопродлением доступно через поддержку.',
     terms_agreement: 'Нажимая «Оплатить», вы соглашаетесь с Условиями использования и Политикой конфиденциальности.',
     back: 'Назад',
     server_auto: 'Автоматически',
@@ -904,7 +885,8 @@ async function startTelegramAuthFlow() {
     const openTelegram = () => invoke('open_external_url', { url: res.bot_url }).catch(() => {
       if (typeof window.open === 'function') window.open(res.bot_url, '_blank');
     });
-    document.getElementById('btn-tg-reopen')?.addEventListener('click', openTelegram, { once: true });
+    const reopenButton = document.getElementById('btn-tg-reopen');
+    if (reopenButton) reopenButton.onclick = openTelegram;
     await openTelegram();
     if (generation !== tgPollingGeneration) return;
 

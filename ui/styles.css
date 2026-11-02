@@ -3004,3 +3004,23 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .app-tab-pages { overflow-y: auto; }
   .auth-card { padding-block: 20px; }
 }
+
+/* Desktop account controls: aligned with Android account settings action list. */
+.account-settings-actions { margin-top: 16px; padding: 20px 22px; }
+.account-settings-button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.account-settings-button-grid .btn-secondary {
+  min-width: 0;
+  width: 100%;
+  padding-inline: 12px;
+  min-height: 44px;
+  white-space: normal;
+  line-height: 1.35;
+  font-size: 13px;
+}
+@media (max-width: 980px) {
+  .account-settings-button-grid { grid-template-columns: 1fr; }
+}

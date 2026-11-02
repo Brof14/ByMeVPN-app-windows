@@ -220,6 +220,28 @@ test('English messaging never promises unsupported account auto-renew controls',
   assert.equal(app.eval("localizedToast('Выбран сервер: Germany')"), 'Server selected: Germany');
 });
 
+test('privacy and service summaries are bilingual and never promise unaudited zero logs', () => {
+  const app = harness();
+  const content = app.eval(`(() => {
+    const elements = new Map();
+    document.getElementById = (id) => {
+      if (!elements.has(id)) elements.set(id, {
+        textContent: '', innerHTML: '', classList: { remove() {} }
+      });
+      return elements.get(id);
+    };
+    state.settings.language = 'en';
+    openLegalModal('privacy');
+    const english = elements.get('legal-modal-body').innerHTML;
+    state.settings.language = 'ru';
+    openLegalModal('privacy');
+    return { english, russian: elements.get('legal-modal-body').innerHTML };
+  })()`);
+  assert.match(content.english, /independently verified/);
+  assert.match(content.russian, /независимую проверку/);
+  assert.doesNotMatch(content.english, /We NEVER log/);
+});
+
 test('the Windows shield is byte-for-byte the approved Android V2 drawable', () => {
   const image = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
   const sha = createHash('sha1')

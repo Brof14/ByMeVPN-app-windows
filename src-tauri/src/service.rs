@@ -35,6 +35,7 @@ pub struct ActiveTunnel {
     pub server_ip: String,
     pub server_host: String,
     pub server_port: u16,
+    pub last_egress_verified: std::time::Instant,
 }
 
 #[derive(Default)]
@@ -42,6 +43,8 @@ pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
     // Serialize connect/disconnect across network requests and Xray startup.
     pub connection_gate: tokio::sync::Mutex<()>,
+    // One Telegram session is allowed to authorize this desktop process at a time.
+    pub telegram_ticket: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -350,20 +353,14 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
 
 async fn store_auth(value: Value) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
-    save_secret(
-        ACCESS_KEY,
-        value["access"]
-            .as_str()
-            .or_else(|| value["access_token"].as_str())
-            .unwrap_or(""),
-    )?;
-    save_secret(
-        REFRESH_KEY,
-        value["refresh"]
-            .as_str()
-            .or_else(|| value["refresh_token"].as_str())
-            .unwrap_or(""),
-    )?;
+    // Fail closed on partial Credential Manager failures: a new access token
+    // must never be paired with the previous account's refresh token.
+    let access = value["access"].as_str().or_else(|| value["access_token"].as_str()).unwrap_or("");
+    let refresh = value["refresh"].as_str().or_else(|| value["refresh_token"].as_str()).unwrap_or("");
+    if let Err(error) = save_secret(REFRESH_KEY, refresh).and_then(|_| save_secret(ACCESS_KEY, access)) {
+        clear_secrets();
+        return Err(error);
+    }
     clear_telegram_session();
     Ok(parsed)
 }
@@ -502,7 +499,10 @@ pub struct TelegramCheckResult {
 }
 
 #[tauri::command]
-pub async fn telegram_create_session(app: AppHandle) -> Result<TelegramSessionInit, String> {
+pub async fn telegram_create_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TelegramSessionInit, String> {
     let res = request(
         &app,
         Method::POST,
@@ -520,20 +520,41 @@ pub async fn telegram_create_session(app: AppHandle) -> Result<TelegramSessionIn
         .get("bot_url")
         .and_then(Value::as_str)
         .ok_or("Сервер не вернул ссылку на бота.")?;
+    *state.telegram_ticket.lock().map_err(|e| e.to_string())? = Some(token.to_string());
     Ok(TelegramSessionInit {
         session_token: token.to_string(),
         bot_url: bot_url.to_string(),
     })
 }
 
+/// Invalidate only the ticket being cancelled: a late IPC call must not
+/// revoke a newer Telegram login attempt.
+#[tauri::command]
+pub fn telegram_cancel_session(
+    state: State<'_, AppState>, session_token: String,
+) -> Result<(), String> {
+    let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+    if ticket.as_deref() == Some(session_token.as_str()) {
+        *ticket = None;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn telegram_check_session(
     app: AppHandle,
+    state: State<'_, AppState>,
     session_token: String,
 ) -> Result<TelegramCheckResult, String> {
     let token = session_token.trim();
     if token.len() > 256 || token.is_empty() {
         return Err("Некорректный токен Telegram.".into());
+    }
+    {
+        let current = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+        if current.as_deref() != Some(token) {
+            return Err("Этот сеанс Telegram уже отменён.".into());
+        }
     }
     // Avoid exposing one-time session tickets in URL/proxy access logs.
     let res = request(
@@ -546,14 +567,27 @@ pub async fn telegram_check_session(
         .unwrap_or("pending");
     if status == "authenticated" || status == "approved" || status == "success" {
         if let Some(access_token) = res.get("access_token").and_then(Value::as_str) {
-            save_secret(ACCESS_KEY, access_token)?;
-            if let Some(refresh_token) = res.get("refresh_token").and_then(Value::as_str) {
-                save_secret(REFRESH_KEY, refresh_token)?;
-            } else if let Ok(entry) = entry(REFRESH_KEY) {
-                // Telegram currently issues access-only credentials; never retain a
-                // refresh token belonging to the previous account.
-                let _ = entry.delete_credential();
+            // A user may cancel while the HTTP request is in flight. Hold the
+            // ticket lock while persisting credentials so cancellation wins
+            // deterministically before or after token storage, not midway.
+            let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+            if ticket.as_deref() != Some(token) {
+                return Err("Вход через Telegram отменён.".into());
             }
+            let refresh_token = res.get("refresh_token").and_then(Value::as_str);
+            if let Some(refresh_token) = refresh_token {
+                if let Err(err) = save_secret(REFRESH_KEY, refresh_token) {
+                    clear_secrets();
+                    return Err(err);
+                }
+            } else if let Ok(previous) = entry(REFRESH_KEY) {
+                let _ = previous.delete_credential();
+            }
+            if let Err(err) = save_secret(ACCESS_KEY, access_token) {
+                clear_secrets();
+                return Err(err);
+            }
+            *ticket = None;
             clear_telegram_session();
             let mut user: UserProfile = res
                 .get("user")
@@ -626,17 +660,36 @@ pub async fn auth_register(
 }
 
 #[tauri::command]
-pub async fn auth_logout(app: AppHandle) -> Result<(), String> {
+pub async fn auth_logout(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let _connection_guard = state.connection_gate.lock().await;
+    // Logout must not leave the privileged VPN running under a different
+    // account. Refuse logout if the OS cannot terminate the tunnel.
+    {
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            let already_exited = active.child.try_wait()
+                .map_err(|e| format!("Не удалось проверить VPN перед выходом: {e}"))?
+                .is_some();
+            if !already_exited {
+                active.child.kill().map_err(|e|
+                    format!("Не удалось остановить VPN перед выходом: {e}"))?;
+                active.child.wait().map_err(|e|
+                    format!("Не удалось дождаться остановки VPN: {e}"))?;
+            }
+        }
+        if let Some(active) = lock.take() {
+            let _ = fs::remove_file(active.config_path);
+        }
+    }
+    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     let _ = request(
-        &app,
-        Method::POST,
-        "/auth/logout",
-        Some(json!({})),
-        true,
-        false,
-    )
-    .await;
+        &app, Method::POST, "/auth/logout", Some(json!({})), true, false,
+    ).await;
     clear_secrets();
+    *state.telegram_ticket.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }
 
@@ -1205,6 +1258,7 @@ pub async fn vpn_start(
         server_ip: verified_ip.expect("verified before storing").to_string(),
         server_host: host.to_string(),
         server_port,
+        last_egress_verified: std::time::Instant::now(),
     });
 
     Ok(TunnelMetrics {
@@ -1239,6 +1293,38 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+    // Process liveness is not network liveness. Recheck the same public exit
+    // address periodically, and remove a tunnel if route/egress changed.
+    // The poll runs outside the native tunnel lock to keep disconnect responsive.
+    let probe = {
+        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        lock.as_ref().and_then(|active| {
+            (active.last_egress_verified.elapsed() >= Duration::from_secs(20))
+                .then(|| (active.started_at, active.server_ip.clone()))
+        })
+    };
+    if let Some((started_at, expected_ip)) = probe {
+        let result = tokio::time::timeout(
+            Duration::from_secs(9), crate::egress::public_egress_ip(),
+        ).await;
+        let observed_ok = matches!(result, Ok(Ok(ref ip)) if ip.to_string() == expected_ip);
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            if active.started_at == started_at {
+                if observed_ok {
+                    active.last_egress_verified = std::time::Instant::now();
+                } else {
+                    // Fail closed in the UI. Xray termination owns TUN cleanup.
+                    // This does NOT replace a genuine kernel WFP Kill Switch.
+                    let _ = active.child.kill();
+                    let _ = active.child.wait();
+                    if let Some(active) = lock.take() {
+                        let _ = fs::remove_file(active.config_path);
+                    }
+                }
+            }
+        }
+    }
     let active_info = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let exited = match lock.as_mut() {

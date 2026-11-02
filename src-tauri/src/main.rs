@@ -33,6 +33,7 @@ fn main() {
             service::telegram_login,
             service::telegram_create_session,
             service::telegram_check_session,
+            service::telegram_cancel_session,
             service::auth_logout,
             service::restore_session,
             service::account_snapshot,

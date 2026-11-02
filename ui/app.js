@@ -897,12 +897,18 @@ async function handleRegister(e) {
 }
 
 let tgPollingInterval = null;
+let tgActiveToken = null;
 let tgPollingGeneration = 0;
 let tgPollingBusy = false;
 let tgStarting = false;
 let tgPollingFailures = 0;
 
 function cancelTelegramPolling() {
+  const previousToken = tgActiveToken;
+  tgActiveToken = null;
+  if (previousToken) {
+    void invoke('telegram_cancel_session', { sessionToken: previousToken }).catch(() => {});
+  }
   tgPollingGeneration += 1;
   if (tgPollingInterval) clearInterval(tgPollingInterval);
   tgPollingInterval = null;
@@ -925,6 +931,7 @@ async function startTelegramAuthFlow() {
     if (!res?.session_token || !res?.bot_url) {
       throw new Error('Сервер не вернул сеанс Telegram');
     }
+    tgActiveToken = res.session_token;
     openModal('modal-telegram');
     const statusEl = document.getElementById('tg-polling-status');
     if (statusEl) statusEl.textContent = 'Ожидаем подтверждение в Telegram...';

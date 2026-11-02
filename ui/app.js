@@ -1239,6 +1239,71 @@ function uiText(ru, en) {
   return state.settings.language === 'en' ? en : ru;
 }
 
+// Dynamic notifications use the same locale as static data-i18n labels.
+// Backend-provided diagnostics are intentionally left intact until the API
+// offers machine-readable error codes for reliable localization.
+const TOAST_EN = Object.freeze({
+  "Сервер недоступен. Вы можете повторить проверку сеанса.": "Server unavailable. You can retry session recovery.",
+  "Не удалось загрузить реальные серверы. Проверьте соединение.": "Could not load VPN servers. Check your connection.",
+  "Тарифы сейчас недоступны: оплата временно заблокирована.": "Plans are unavailable. Checkout is temporarily disabled.",
+  "ID аккаунта пока не загружен": "Your account ID has not loaded yet.",
+  "ID аккаунта скопирован": "Account ID copied.",
+  "Не удалось скопировать ID": "Could not copy the account ID.",
+  "Копирование недоступно на этом устройстве": "Copy is unavailable on this device.",
+  "Введите email и пароль": "Enter your email and password.",
+  "Вход выполнен": "Signed in successfully.",
+  "Не удалось войти": "Sign-in failed.",
+  "Заполните обязательные поля": "Complete the required fields.",
+  "Минимальная длина пароля — 6 символов": "Use a password of at least 6 characters.",
+  "Пароли не совпадают": "Passwords do not match.",
+  "Аккаунт создан": "Account created.",
+  "Не удалось зарегистрироваться": "Could not create your account.",
+  "Google-вход пока недоступен. Используйте Telegram или Email.": "Google sign-in is unavailable. Use Telegram or email.",
+  "Вход через Telegram подтверждён": "Telegram sign-in confirmed.",
+  "Не удалось начать вход через Telegram": "Could not start Telegram sign-in.",
+  "Дождитесь завершения подключения или отключения": "Wait for VPN connection or disconnection to finish.",
+  "Не удалось остановить VPN перед выходом.": "Could not disconnect VPN before signing out.",
+  "Вы вышли из системы": "Signed out.",
+  "Дождитесь завершения работы VPN": "Wait for the VPN operation to finish.",
+  "Аккаунт удалён": "Account deleted.",
+  "Не удалось удалить аккаунт": "Could not delete your account.",
+  "Отключение VPN...": "Disconnecting VPN...",
+  "VPN отключён": "VPN disconnected.",
+  "Ошибка отключения": "Could not disconnect VPN.",
+  "Не удалось проверить подписку. Обновите аккаунт и повторите попытку.": "Could not verify your subscription. Refresh the account and retry.",
+  "Для подключения требуется активный доступ (3 дня бесплатно или тариф).": "You need an active subscription or free trial to connect.",
+  "Не удалось получить совместимые серверы. Проверьте сеть и обновите список.": "No compatible servers available. Check your network and refresh.",
+  "Запуск туннеля Xray + Wintun...": "Starting Xray + Wintun tunnel...",
+  "Подключение проверено и установлено": "VPN connection established and verified.",
+  "Соединение VPN прервано. Защита не подтверждена.": "VPN disconnected. Protection is not verified.",
+  "Устройство успешно отключено": "Device disconnected.",
+  "Не удалось отключить устройство": "Could not disconnect device.",
+  "Активация 3 дней бесплатного доступа...": "Activating 3 days of free access...",
+  "Пробный период на 3 дня успешно активирован (0 ₽)!": "3-day free trial activated (0 RUB).",
+  "Не удалось активировать пробный период": "Could not activate free trial.",
+  "Тарифы сейчас недоступны. Повторите загрузку позже.": "Plans unavailable. Retry later.",
+  "Выбранное число устройств недоступно. Обновите тарифы.": "Selected device count is unavailable. Refresh plans.",
+  "Цена тарифа не подтверждена сервером.": "The plan price has not been verified by the server.",
+  "Формирование счёта ЮKassa...": "Creating a YooKassa invoice...",
+  "Ожидаем подтверждение конкретного счёта от сервера": "Waiting for confirmation of this invoice.",
+  "Счёт отменён. Можно создать новый платёж.": "Invoice canceled. You can create a new payment.",
+  "Оплата подтверждена, подписка обновлена.": "Payment confirmed. Subscription updated.",
+  "Счёт ожидает подтверждения. Повторное открытие продолжит его проверку.": "Payment is pending. Reopening will resume verification.",
+  "Не удалось проверить счёт.": "Could not verify invoice.",
+  "Настройки сохранены": "Settings saved.",
+  "Не удалось сохранить настройку. Изменение отменено.": "Could not save settings. Change reverted.",
+  "Данные аккаунта обновлены": "Account refreshed.",
+  "Не удалось обновить аккаунт": "Could not refresh account.",
+  "Не удалось сохранить выбор сервера": "Could not save the selected server."
+});
+function localizedToast(text) {
+  const original = String(text || '');
+  if (state.settings.language !== 'en') return original;
+  if (TOAST_EN[original]) return TOAST_EN[original];
+  if (original.startsWith('Выбран сервер: ')) return 'Server selected: ' + original.slice('Выбран сервер: '.length);
+  return original;
+}
+
 // UI Updaters
 function updateVpnUi() {
   const isConn = state.vpnConnected;
@@ -1834,6 +1899,7 @@ function openLegalModal(type) {
 }
 
 function showToast(text, isError = false) {
+  text = localizedToast(text);
   const toast = document.getElementById('toast-notify');
   if (!toast) return;
   toast.textContent = text;

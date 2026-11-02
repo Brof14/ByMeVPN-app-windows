@@ -1,7 +1,8 @@
 use sha2::{Digest, Sha256};
 use std::{fs::File, io::Read, path::Path};
 
-const XRAY_SHA256: &str = "07a332b714a3c0eee047a22a9c0ea749b64df33e4e1ff6d28a8c7f9ef943ce10";
+// Embedded at build time from the SHA256-verified upstream Xray archive.
+const XRAY_SHA256: &str = env!("BYMEVPN_XRAY_SHA256");
 const WINTUN_SHA256: &str = "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce";
 
 fn verify_file(path: &Path, expected: &str) -> Result<(), String> {

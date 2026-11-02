@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createContext, runInContext } from 'node:vm';
 
 const source = readFileSync(new URL('../ui/app.js', import.meta.url), 'utf8');
@@ -36,6 +37,25 @@ function harness(getPlans = async () => canonical) {
   runInContext(source, sandbox);
   return { eval: code => runInContext(code, sandbox) };
 }
+
+test('all external links pass through the validated native Tauri broker', () => {
+  assert.doesNotMatch(source, /window\.open\s*\(/);
+  assert.match(source, /invoke\('open_external_url'/);
+});
+
+test('production UI fails closed without Tauri rather than pretending to use a VPN', async () => {
+  const context = createContext({
+    console,
+    document: { addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; } },
+    window: {},
+    setTimeout, clearTimeout, setInterval, clearInterval
+  });
+  runInContext(source, context);
+  await assert.rejects(runInContext("invoke('vpn_start')", context),
+    /должно быть открыто через Windows-клиент/);
+  await assert.rejects(runInContext("invoke('auth_login')", context),
+    /должно быть открыто через Windows-клиент/);
+});
 
 test('checkout prices and gift durations come from server catalog', async () => {
   const app = harness();
@@ -109,4 +129,124 @@ test('default state contains neither imaginary countries nor fake measured bandw
   assert.equal(app.eval('state.servers.length'), 0);
   assert.equal(app.eval('state.metrics.download_mbps'), 0);
   assert.equal(app.eval('state.selectedServer.code'), 'auto');
+});
+
+test('desktop defaults match Android V2: direct RU traffic, no unimplemented protection', () => {
+  const app = harness();
+  const snapshot = JSON.parse(app.eval(`JSON.stringify({
+    bypassRu: state.settings.bypassRu,
+    background: state.settings.stayConnectedInBackground,
+    killSwitch: state.settings.killSwitch,
+    adBlock: state.settings.adBlock,
+    authBusy: state.authBusy,
+    verified: state.vpnVerified
+  })`));
+  assert.deepEqual(snapshot, {
+    bypassRu: true, background: false, killSwitch: false,
+    adBlock: 'none', authBusy: false, verified: false
+  });
+});
+
+test('cancelling Telegram login invalidates the outstanding session generation', () => {
+  const app = harness();
+  const old = app.eval('tgPollingGeneration');
+  app.eval('cancelTelegramPolling()');
+  assert.equal(app.eval('tgPollingGeneration'), old + 1);
+});
+
+test('a canceled Telegram ticket is revoked at the native IPC boundary', () => {
+  const app = harness();
+  app.eval("tgActiveToken = 'auth_test_token'");
+  app.eval('cancelTelegramPolling()');
+  assert.equal(app.eval('tgActiveToken'), null);
+  assert.equal(app.eval('tgPollingInterval'), null);
+  // Assert the user-visible handler cannot restore a canceled auth token.
+  assert.match(readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8'),
+    /ticket\.as_deref\(\) != Some\(token\)/);
+});
+
+test('pricing matrix has no purchasable prices before live API validation', () => {
+  const app = harness(async () => { throw new Error('offline'); });
+  assert.equal(app.eval('PRICING_MATRIX[2].month'), undefined);
+});
+
+test('autoconnect is opt-in; never start a tunnel before session restoration', () => {
+  const app = harness();
+  assert.equal(app.eval('state.settings.autoConnect'), false);
+  assert.equal(app.eval('state.settings.bypassRu'), true);
+});
+
+test('legal terms and privacy anchors remain clickable after translation', () => {
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="link-pricing-terms"[^>]*data-i18n="terms_link"/);
+  assert.match(html, /id="link-pricing-privacy"[^>]*data-i18n="privacy_link"/);
+  assert.doesNotMatch(html, /data-i18n="terms_agreement"/);
+});
+
+test('language resources cover server search and authentication field placeholders', () => {
+  const app = harness();
+  assert.equal(app.eval("I18N.en.email_placeholder"), "Email address");
+  assert.equal(app.eval("I18N.en.server_search_placeholder"), "Search servers or countries...");
+});
+
+test('unknown subscription never incorrectly claims the account is unpaid', () => {
+  const app = harness();
+  const result = app.eval(`(() => {
+    const elements = new Map();
+    document.getElementById = (id) => {
+      if (!elements.has(id)) elements.set(id, { textContent: '', className: '', querySelector() { return null; } });
+      return elements.get(id);
+    };
+    state.settings.language = 'en';
+    state.subscription = { status: 'unknown' };
+    updateSubscriptionUi();
+    return {
+      title: elements.get('home-sub-title').textContent,
+      badge: elements.get('home-sub-badge').textContent,
+      expiry: elements.get('home-sub-expiry').textContent
+    };
+  })()`);
+  assert.equal(result.title, 'Checking subscription');
+  assert.equal(result.badge, 'Unknown');
+  assert.equal(result.expiry, 'Subscription status unavailable');
+});
+
+test('English messaging never promises unsupported account auto-renew controls', () => {
+  const app = harness();
+  assert.match(app.eval('I18N.en.auto_renew_note'), /Contact support/);
+  assert.doesNotMatch(app.eval('I18N.en.auto_renew_note'), /cancel at any time in account settings/i);
+  app.eval("state.settings.language = 'en'");
+  assert.equal(app.eval("localizedToast('VPN отключён')"), 'VPN disconnected.');
+  assert.equal(app.eval("localizedToast('Выбран сервер: Germany')"), 'Server selected: Germany');
+});
+
+test('privacy and service summaries are bilingual and never promise unaudited zero logs', () => {
+  const app = harness();
+  const content = app.eval(`(() => {
+    const elements = new Map();
+    document.getElementById = (id) => {
+      if (!elements.has(id)) elements.set(id, {
+        textContent: '', innerHTML: '', classList: { remove() {} }
+      });
+      return elements.get(id);
+    };
+    state.settings.language = 'en';
+    openLegalModal('privacy');
+    const english = elements.get('legal-modal-body').innerHTML;
+    state.settings.language = 'ru';
+    openLegalModal('privacy');
+    return { english, russian: elements.get('legal-modal-body').innerHTML };
+  })()`);
+  assert.match(content.english, /independently verified/);
+  assert.match(content.russian, /независимую проверку/);
+  assert.doesNotMatch(content.english, /We NEVER log/);
+});
+
+test('the Windows shield is byte-for-byte the approved Android V2 drawable', () => {
+  const image = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
+  const sha = createHash('sha1')
+    .update(Buffer.from(`blob ${image.length}\0`))
+    .update(image)
+    .digest('hex');
+  assert.equal(sha, 'b1b269246a75c21742ebc968cb2c3ad6893a73d8');
 });

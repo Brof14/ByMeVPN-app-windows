@@ -23,6 +23,7 @@ const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
 static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
@@ -34,6 +35,7 @@ pub struct ActiveTunnel {
     pub server_ip: String,
     pub server_host: String,
     pub server_port: u16,
+    pub last_egress_verified: std::time::Instant,
 }
 
 #[derive(Default)]
@@ -41,6 +43,8 @@ pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
     // Serialize connect/disconnect across network requests and Xray startup.
     pub connection_gate: tokio::sync::Mutex<()>,
+    // One Telegram session is allowed to authorize this desktop process at a time.
+    pub telegram_ticket: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -349,20 +353,14 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
 
 async fn store_auth(value: Value) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
-    save_secret(
-        ACCESS_KEY,
-        value["access"]
-            .as_str()
-            .or_else(|| value["access_token"].as_str())
-            .unwrap_or(""),
-    )?;
-    save_secret(
-        REFRESH_KEY,
-        value["refresh"]
-            .as_str()
-            .or_else(|| value["refresh_token"].as_str())
-            .unwrap_or(""),
-    )?;
+    // Fail closed on partial Credential Manager failures: a new access token
+    // must never be paired with the previous account's refresh token.
+    let access = value["access"].as_str().or_else(|| value["access_token"].as_str()).unwrap_or("");
+    let refresh = value["refresh"].as_str().or_else(|| value["refresh_token"].as_str()).unwrap_or("");
+    if let Err(error) = save_secret(REFRESH_KEY, refresh).and_then(|_| save_secret(ACCESS_KEY, access)) {
+        clear_secrets();
+        return Err(error);
+    }
     clear_telegram_session();
     Ok(parsed)
 }
@@ -501,7 +499,10 @@ pub struct TelegramCheckResult {
 }
 
 #[tauri::command]
-pub async fn telegram_create_session(app: AppHandle) -> Result<TelegramSessionInit, String> {
+pub async fn telegram_create_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TelegramSessionInit, String> {
     let res = request(
         &app,
         Method::POST,
@@ -519,20 +520,41 @@ pub async fn telegram_create_session(app: AppHandle) -> Result<TelegramSessionIn
         .get("bot_url")
         .and_then(Value::as_str)
         .ok_or("Сервер не вернул ссылку на бота.")?;
+    *state.telegram_ticket.lock().map_err(|e| e.to_string())? = Some(token.to_string());
     Ok(TelegramSessionInit {
         session_token: token.to_string(),
         bot_url: bot_url.to_string(),
     })
 }
 
+/// Invalidate only the ticket being cancelled: a late IPC call must not
+/// revoke a newer Telegram login attempt.
+#[tauri::command]
+pub fn telegram_cancel_session(
+    state: State<'_, AppState>, session_token: String,
+) -> Result<(), String> {
+    let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+    if ticket.as_deref() == Some(session_token.as_str()) {
+        *ticket = None;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn telegram_check_session(
     app: AppHandle,
+    state: State<'_, AppState>,
     session_token: String,
 ) -> Result<TelegramCheckResult, String> {
     let token = session_token.trim();
     if token.len() > 256 || token.is_empty() {
         return Err("Некорректный токен Telegram.".into());
+    }
+    {
+        let current = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+        if current.as_deref() != Some(token) {
+            return Err("Этот сеанс Telegram уже отменён.".into());
+        }
     }
     // Avoid exposing one-time session tickets in URL/proxy access logs.
     let res = request(
@@ -545,14 +567,27 @@ pub async fn telegram_check_session(
         .unwrap_or("pending");
     if status == "authenticated" || status == "approved" || status == "success" {
         if let Some(access_token) = res.get("access_token").and_then(Value::as_str) {
-            save_secret(ACCESS_KEY, access_token)?;
-            if let Some(refresh_token) = res.get("refresh_token").and_then(Value::as_str) {
-                save_secret(REFRESH_KEY, refresh_token)?;
-            } else if let Ok(entry) = entry(REFRESH_KEY) {
-                // Telegram currently issues access-only credentials; never retain a
-                // refresh token belonging to the previous account.
-                let _ = entry.delete_credential();
+            // A user may cancel while the HTTP request is in flight. Hold the
+            // ticket lock while persisting credentials so cancellation wins
+            // deterministically before or after token storage, not midway.
+            let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+            if ticket.as_deref() != Some(token) {
+                return Err("Вход через Telegram отменён.".into());
             }
+            let refresh_token = res.get("refresh_token").and_then(Value::as_str);
+            if let Some(refresh_token) = refresh_token {
+                if let Err(err) = save_secret(REFRESH_KEY, refresh_token) {
+                    clear_secrets();
+                    return Err(err);
+                }
+            } else if let Ok(previous) = entry(REFRESH_KEY) {
+                let _ = previous.delete_credential();
+            }
+            if let Err(err) = save_secret(ACCESS_KEY, access_token) {
+                clear_secrets();
+                return Err(err);
+            }
+            *ticket = None;
             clear_telegram_session();
             let mut user: UserProfile = res
                 .get("user")
@@ -625,18 +660,44 @@ pub async fn auth_register(
 }
 
 #[tauri::command]
-pub async fn auth_logout(app: AppHandle) -> Result<(), String> {
+pub async fn auth_logout(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let _connection_guard = state.connection_gate.lock().await;
+    // Logout must not leave the privileged VPN running under a different
+    // account. Refuse logout if the OS cannot terminate the tunnel.
+    {
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            let already_exited = active.child.try_wait()
+                .map_err(|e| format!("Не удалось проверить VPN перед выходом: {e}"))?
+                .is_some();
+            if !already_exited {
+                active.child.kill().map_err(|e|
+                    format!("Не удалось остановить VPN перед выходом: {e}"))?;
+                active.child.wait().map_err(|e|
+                    format!("Не удалось дождаться остановки VPN: {e}"))?;
+            }
+        }
+        if let Some(active) = lock.take() {
+            let _ = fs::remove_file(active.config_path);
+        }
+    }
+    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     let _ = request(
-        &app,
-        Method::POST,
-        "/auth/logout",
-        Some(json!({})),
-        true,
-        false,
-    )
-    .await;
+        &app, Method::POST, "/auth/logout", Some(json!({})), true, false,
+    ).await;
     clear_secrets();
+    *state.telegram_ticket.lock().map_err(|e| e.to_string())? = None;
     Ok(())
+}
+
+fn device_is_current(object: &serde_json::Map<String, Value>, install_id: &str) -> bool {
+    object.get("is_current").and_then(Value::as_bool).unwrap_or_else(|| {
+        object.get("install_id").and_then(Value::as_str)
+            .is_some_and(|id| id == install_id)
+    })
 }
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
@@ -661,11 +722,11 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
         .unwrap_or_default();
     for device in &mut device_list {
         if let Some(object) = device.as_object_mut() {
-            let is_current = object
-                .get("install_id")
-                .and_then(Value::as_str)
-                .is_some_and(|id| id == current_install_id);
-            object.insert("is_current".into(), json!(is_current));
+            // 3x-ui identifies the current device through X-HWID on the
+            // backend. Preserve its canonical boolean, not a fabricated
+            // comparison with an install_id that the API never returns.
+            let current = device_is_current(object, &current_install_id);
+            object.insert("is_current".into(), json!(current));
         }
     }
     Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
@@ -942,20 +1003,77 @@ pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Err("Не найден проверенный компонент Xray (xray.exe / wintun.dll).".into())
 }
 
+fn default_settings() -> Value {
+    json!({
+        "autoStart": false,
+        "autoConnect": false,
+        "stayConnectedInBackground": false,
+        "bypassRu": true,
+        "adBlock": "none",
+        "dnsMode": "cloudflare",
+        "killSwitch": false,
+        "language": "ru",
+        "selectedServerCode": "auto"
+    })
+}
+
+fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
+    match key {
+        "autoStart" | "autoConnect" | "bypassRu" => {
+            if !value.is_boolean() {
+                return Err("Эта настройка должна иметь значение вкл./выкл.".into());
+            }
+        }
+        "stayConnectedInBackground" | "killSwitch" => {
+            if value != &Value::Bool(false) {
+                return Err("Функция будет доступна после проверки безопасности Windows.".into());
+            }
+        }
+        "adBlock" => {
+            if !matches!(value.as_str(), Some("none" | "basic" | "recommended")) {
+                return Err("Неизвестный режим блокировки рекламы.".into());
+            }
+        }
+        "dnsMode" => {
+            if !matches!(value.as_str(), Some("cloudflare" | "adguard" | "google")) {
+                return Err("Неизвестный DNS-провайдер.".into());
+            }
+        }
+        "language" => {
+            if !matches!(value.as_str(), Some("ru" | "en")) {
+                return Err("Приложение поддерживает языки RU и EN.".into());
+            }
+        }
+        "selectedServerCode" => {
+            let code = value.as_str().ok_or("Некорректный код сервера.")?;
+            if code.is_empty() || code.len() > 128 ||
+                !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+                return Err("Некорректный код сервера.".into());
+            }
+        }
+        _ => return Err("Неизвестная настройка.".into()),
+    }
+    Ok(())
+}
+
 pub fn load_settings(app: &AppHandle) -> Value {
-    let dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut settings = default_settings();
+    let dir = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return settings,
+    };
     let path = dir.join("settings.json");
-    fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_else(|| json!({
-            "autoStart": false,
-            "stayConnectedInBackground": false,
-            "bypassRu": true,
-            "adBlock": "recommended",
-            "killSwitch": false,
-            "language": "ru"
-        }))
+    if let Ok(saved) = fs::read(&path) {
+        if let Ok(Value::Object(saved)) = serde_json::from_slice::<Value>(&saved) {
+            for (key, val) in saved {
+                // Ignore stale, invalid and unsupported settings during migration.
+                if validate_setting(&key, &val).is_ok() {
+                    settings[&key] = val;
+                }
+            }
+        }
+    }
+    settings
 }
 
 #[tauri::command]
@@ -965,39 +1083,21 @@ pub fn get_settings(app: AppHandle) -> Value {
 
 #[tauri::command]
 pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(), String> {
-    let allowed = [
-        "autoStart",
-        "autoConnect",
-        "selectedServerCode",
-        "stayConnectedInBackground",
-        "bypassRu",
-        "adBlock",
-        "killSwitch",
-        "language",
-    ];
-    if !allowed.contains(&key.as_str()) {
-        return Err("Неизвестная настройка.".into());
-    }
-    if matches!(key.as_str(), "stayConnectedInBackground" | "killSwitch") && value == Value::Bool(true) {
-        return Err("Эта функция недоступна, пока не пройдёт проверку безопасности.".into());
-    }
-    if key == "selectedServerCode" {
-        let code = value.as_str().ok_or("Неверный код сервера.")?;
-        if code.len() > 128 || code.is_empty() ||
-            !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
-            return Err("Неверный код сервера.".into());
-        }
-    }
+    validate_setting(&key, &value)?;
+    let _guard = SETTINGS_LOCK.lock().await;
     let dir: PathBuf = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join("settings.json");
+    let tmp = dir.join(format!("settings.{}.tmp", Uuid::new_v4()));
     let mut settings = load_settings(&app);
     settings[&key] = value;
-    fs::write(
-        path,
-        serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    let serialized = serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
+    if let Err(error) = fs::rename(&tmp, &path) {
+        let _ = fs::remove_file(tmp);
+        return Err(format!("Не удалось сохранить настройки: {error}"));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1015,25 +1115,23 @@ pub async fn vpn_start(
     }
 
     // Check that user has an active or trial subscription before launching tunnel
-    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false).await;
-    let has_active_sub = match sub_status {
-        Ok(ref d) => {
-            let subscription = d.get("subscription").unwrap_or(d);
-            let status = subscription.get("status").and_then(Value::as_str).unwrap_or("none");
-            matches!(status, "active" | "trial" | "grace")
-        }
-        Err(_) => false,
-    };
-
-    if !has_active_sub {
-        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте 3 дня бесплатного доступа или выберите тариф.".into());
+    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
+        .await.map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
+    let subscription = sub_status.get("subscription").unwrap_or(&sub_status);
+    let status = subscription.get("status").and_then(Value::as_str).unwrap_or("unknown");
+    if status == "unknown" {
+        return Err("Статус подписки пока неизвестен. Повторите проверку при доступной сети.".into());
+    }
+    if !matches!(status, "active" | "trial" | "grace") {
+        return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте пробный доступ или выберите тариф.".into());
     }
 
     let runtime_dir = get_runtime_dir(&app)?;
 
     let settings = load_settings(&app);
     let bypass_ru = settings.get("bypassRu").and_then(Value::as_bool).unwrap_or(true);
-    let ad_block = settings.get("adBlock").and_then(Value::as_str).unwrap_or("recommended");
+    let ad_block = settings.get("adBlock").and_then(Value::as_str).unwrap_or("none");
+    let dns_mode = settings.get("dnsMode").and_then(Value::as_str).unwrap_or("cloudflare");
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
@@ -1063,7 +1161,7 @@ pub async fn vpn_start(
     let baseline_ip = crate::egress::public_egress_ip().await
         .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
-    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block)?;
+    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
@@ -1164,6 +1262,7 @@ pub async fn vpn_start(
         server_ip: verified_ip.expect("verified before storing").to_string(),
         server_host: host.to_string(),
         server_port,
+        last_egress_verified: std::time::Instant::now(),
     });
 
     Ok(TunnelMetrics {
@@ -1183,21 +1282,61 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let _connection_guard = state.connection_gate.lock().await;
     let maybe_active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            let already_stopped = active.child.try_wait()
+                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?.is_some();
+            if !already_stopped {
+                // Do not clear connected state until the OS confirms termination.
+                active.child.kill().map_err(|e|
+                    format!("Не удалось остановить VPN-процесс: {e}"))?;
+                active.child.wait().map_err(|e|
+                    format!("Не удалось дождаться остановки Xray: {e}"))?;
+            }
+        }
         lock.take()
     };
-    if let Some(mut active) = maybe_active {
-        let _ = active.child.kill();
-        let _ = active.child.wait();
+    if let Some(active) = maybe_active {
         let _ = fs::remove_file(&active.config_path);
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-        Ok(())
-    } else {
-        Err("Активный туннель не найден.".into())
     }
+    // Idempotent even if the tunnel was already stopped or crashed.
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+    // Process liveness is not network liveness. Recheck the same public exit
+    // address periodically, and remove a tunnel if route/egress changed.
+    // The poll runs outside the native tunnel lock to keep disconnect responsive.
+    let probe = {
+        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        lock.as_ref().and_then(|active| {
+            (active.last_egress_verified.elapsed() >= Duration::from_secs(20))
+                .then(|| (active.started_at, active.server_ip.clone()))
+        })
+    };
+    if let Some((started_at, expected_ip)) = probe {
+        let result = tokio::time::timeout(
+            Duration::from_secs(9), crate::egress::public_egress_ip(),
+        ).await;
+        let observed_ok = matches!(result, Ok(Ok(ref ip)) if ip.to_string() == expected_ip);
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            if active.started_at == started_at {
+                if observed_ok {
+                    active.last_egress_verified = std::time::Instant::now();
+                } else {
+                    // Fail closed in the UI. Xray termination owns TUN cleanup.
+                    // This does NOT replace a genuine kernel WFP Kill Switch.
+                    let _ = active.child.kill();
+                    let _ = active.child.wait();
+                    if let Some(active) = lock.take() {
+                        let _ = fs::remove_file(active.config_path);
+                    }
+                }
+            }
+        }
+    }
     let active_info = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let exited = match lock.as_mut() {
@@ -1359,12 +1498,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {
+        assert!(validate_setting("bypassRu", &json!(true)).is_ok());
+        assert!(validate_setting("bypassRu", &json!("true")).is_err());
+        assert!(validate_setting("selectedServerCode", &json!("node_de-1")).is_ok());
+        assert!(validate_setting("selectedServerCode", &json!("../settings")).is_err());
+        assert!(validate_setting("killSwitch", &json!(true)).is_err());
+        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
+        assert!(validate_setting("adBlock", &json!("unknown")).is_err());
+        assert!(validate_setting("language", &json!("fr")).is_err());
+        assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
+        assert!(validate_setting("dnsMode", &json!("fake")).is_err());
+        assert_eq!(default_settings()["bypassRu"], true);
+        assert_eq!(default_settings()["adBlock"], "none");
+    }
+
+
+    #[test]
     fn login_accepts_null_name_and_uses_email_as_display_name() {
         let auth = parse_auth(&json!({"access":"access", "refresh":"refresh", "user":{
             "id":"1", "email":"tester@example.com", "name":null
         }}))
         .unwrap();
         assert_eq!(auth.user.name, "tester");
+    }
+
+    #[test]
+    fn server_device_identity_is_preserved_without_a_raw_hwid_or_install_id() {
+        let confirmed = json!({"id":"42","is_current":true,"device_model":"Desktop"});
+        let obj = confirmed.as_object().unwrap();
+        assert!(device_is_current(obj, "local-install-uuid"));
+        let others = json!({"id":"43","is_current":false,"install_id":"local-install-uuid"});
+        assert!(!device_is_current(others.as_object().unwrap(), "local-install-uuid"));
+        let legacy = json!({"id":"44","install_id":"local-install-uuid"});
+        assert!(device_is_current(legacy.as_object().unwrap(), "local-install-uuid"));
+        let unknown = json!({"id":"45"});
+        assert!(!device_is_current(unknown.as_object().unwrap(), "local-install-uuid"));
     }
 
     #[test]

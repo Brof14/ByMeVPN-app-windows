@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#060d13">
+  <meta name="theme-color" content="#090f1d">
   <title>ByMeVPN</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -17,9 +17,9 @@
           <svg width="22" height="24" viewBox="0 0 92 104" fill="none">
             <defs>
               <linearGradient id="tbShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#00d2ff"/>
-                <stop offset="0.55" stop-color="#00e5b0"/>
-                <stop offset="1" stop-color="#00f5a0"/>
+                <stop stop-color="#468ff0"/>
+                <stop offset="0.55" stop-color="#53bfcf"/>
+                <stop offset="1" stop-color="#79d9bc"/>
               </linearGradient>
             </defs>
             <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#tbShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
@@ -56,9 +56,9 @@
               <svg width="110" height="124" viewBox="0 0 92 104" fill="none" class="auth-shield-svg">
                 <defs>
                   <linearGradient id="authShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                    <stop stop-color="#00d2ff"/>
-                    <stop offset="0.55" stop-color="#00e5b0"/>
-                    <stop offset="1" stop-color="#00f5a0"/>
+                    <stop stop-color="#468ff0"/>
+                    <stop offset="0.55" stop-color="#53bfcf"/>
+                    <stop offset="1" stop-color="#79d9bc"/>
                   </linearGradient>
                   <filter id="authGlow" x="-20%" y="-20%" width="140%" height="140%">
                     <feGaussianBlur stdDeviation="4" result="blur" />
@@ -103,11 +103,11 @@
             <form id="form-login" class="auth-form-fields">
               <div class="input-field-box">
                 <span class="field-icon">✉</span>
-                <input type="email" id="login-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+                <input type="email" id="login-email" data-i18n-placeholder="email_placeholder" placeholder="Адрес эл. почты" required autocomplete="email" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="login-password" placeholder="Пароль" required autocomplete="current-password" />
+                <input type="password" id="login-password" data-i18n-placeholder="password_placeholder" placeholder="Пароль" required autocomplete="current-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <button type="submit" id="btn-submit-login" class="btn-primary auth-submit-btn">
@@ -150,6 +150,9 @@
               </div>
             </div>
 
+            <button type="button" id="btn-retry-session" class="btn-secondary hidden" style="width:100%;margin-top:8px;">
+              Повторить проверку аккаунта
+            </button>
             <div class="auth-switch-link">
               <span data-i18n="no_account">Нет аккаунта?</span>
               <a href="#" id="link-goto-register" class="neon-link" data-i18n="register_link">Зарегистрироваться ›</a>
@@ -174,20 +177,20 @@
             <form id="form-register" class="auth-form-fields">
               <div class="input-field-box">
                 <span class="field-icon">👤</span>
-                <input type="text" id="register-name" placeholder="Имя пользователя" autocomplete="name" />
+                <input type="text" id="register-name" data-i18n-placeholder="name_placeholder" placeholder="Имя пользователя" autocomplete="name" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">✉</span>
-                <input type="email" id="register-email" placeholder="Адрес эл. почты" required autocomplete="email" />
+                <input type="email" id="register-email" data-i18n-placeholder="email_placeholder" placeholder="Адрес эл. почты" required autocomplete="email" />
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="register-password" placeholder="Придумайте пароль" required autocomplete="new-password" />
+                <input type="password" id="register-password" data-i18n-placeholder="new_password_placeholder" placeholder="Придумайте пароль" required autocomplete="new-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
-                <input type="password" id="register-password-confirm" placeholder="Повторите пароль" required autocomplete="new-password" />
+                <input type="password" id="register-password-confirm" data-i18n-placeholder="repeat_password_placeholder" placeholder="Повторите пароль" required autocomplete="new-password" />
                 <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
               </div>
               <button type="submit" id="btn-submit-register" class="btn-primary auth-submit-btn">
@@ -236,9 +239,9 @@
               <svg width="26" height="29" viewBox="0 0 92 104" fill="none">
                 <defs>
                   <linearGradient id="sbShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                    <stop stop-color="#00d2ff"/>
-                    <stop offset="0.55" stop-color="#00e5b0"/>
-                    <stop offset="1" stop-color="#00f5a0"/>
+                    <stop stop-color="#468ff0"/>
+                    <stop offset="0.55" stop-color="#53bfcf"/>
+                    <stop offset="1" stop-color="#79d9bc"/>
                   </linearGradient>
                 </defs>
                 <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#sbShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
@@ -297,9 +300,9 @@
                       <svg width="86" height="96" viewBox="0 0 92 104" fill="none">
                         <defs>
                           <linearGradient id="npShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                            <stop stop-color="#00d2ff"/>
-                            <stop offset="0.55" stop-color="#00e5b0"/>
-                            <stop offset="1" stop-color="#00f5a0"/>
+                            <stop stop-color="#468ff0"/>
+                            <stop offset="0.55" stop-color="#53bfcf"/>
+                            <stop offset="1" stop-color="#79d9bc"/>
                           </linearGradient>
                         </defs>
                         <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#npShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
@@ -348,15 +351,15 @@
                 <div class="glass-card hero-connection-card">
                   <div class="hero-card-globe-art"></div>
                   <div class="connection-hero-inner">
-                    <div id="vpn-power-ring" class="pulse-power-ring ring-connected">
+                    <div id="vpn-power-ring" role="button" tabindex="0" aria-label="Переключить VPN" aria-busy="false" class="pulse-power-ring ring-connected">
                       <div class="outer-glow-pulsar"></div>
                       <div class="inner-shield-circle">
                         <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
                           <defs>
                             <linearGradient id="connShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                              <stop stop-color="#00d2ff"/>
-                              <stop offset="0.55" stop-color="#00e5b0"/>
-                              <stop offset="1" stop-color="#00f5a0"/>
+                              <stop stop-color="#468ff0"/>
+                              <stop offset="0.55" stop-color="#53bfcf"/>
+                              <stop offset="1" stop-color="#79d9bc"/>
                             </linearGradient>
                           </defs>
                           <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#connShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
@@ -372,12 +375,12 @@
                     <div class="connection-substatus">
                       <span data-i18n="conn_secured">Соединение защищено</span>
                       <span class="substatus-sep">•</span>
-                      <span id="vpn-live-timer" class="neon-green">00:42:18</span>
+                      <span id="vpn-live-timer" class="neon-green">00:00:00</span>
                     </div>
 
                     <div id="btn-active-location-pill" class="location-chip-pill">
-                      <span id="conn-flag-chip" class="chip-flag">🇩🇪</span>
-                      <span id="conn-location-name">Германия • Франкфурт</span>
+                      <span id="conn-flag-chip" class="chip-flag">🌐</span>
+                      <span id="conn-location-name">Автоматически</span>
                     </div>
 
                     <div class="metrics-triad-row">
@@ -445,8 +448,8 @@
                     <div class="card-interactive-row" id="row-sub-info">
                       <div class="card-row-left">
                         <div class="card-row-texts">
-                          <strong id="home-sub-title">Годовой</strong>
-                          <span id="home-sub-expiry">Действует до 24.11.2026</span>
+                          <strong id="home-sub-title">—</strong>
+                          <span id="home-sub-expiry">Проверяем подписку…</span>
                         </div>
                       </div>
                       <span id="home-sub-badge" class="badge-active-mini" data-i18n="active">Активна</span>
@@ -477,7 +480,7 @@
                 <div class="glass-card hero-connection-card">
                   <div class="hero-card-globe-art"></div>
                   <div class="connection-hero-inner">
-                    <div id="vpn-power-ring-off" class="pulse-power-ring ring-off">
+                    <div id="vpn-power-ring-off" role="button" tabindex="0" aria-label="Переключить VPN" aria-busy="false" class="pulse-power-ring ring-off">
                       <div class="inner-shield-circle">
                         <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
                           <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="#4a6572" stroke-width="5" stroke-linejoin="round"/>
@@ -541,9 +544,9 @@
                   <svg width="100" height="110" viewBox="0 0 92 104" fill="none">
                     <defs>
                       <linearGradient id="banShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#00d2ff"/>
-                        <stop offset="0.55" stop-color="#00e5b0"/>
-                        <stop offset="1" stop-color="#00f5a0"/>
+                        <stop stop-color="#468ff0"/>
+                        <stop offset="0.55" stop-color="#53bfcf"/>
+                        <stop offset="1" stop-color="#79d9bc"/>
                       </linearGradient>
                     </defs>
                     <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#banShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
@@ -671,8 +674,8 @@
                   <span class="sbp-icon-stars">❖</span>
                   <span data-i18n="payment_methods_text">СБП, карты, SberPay, T-Pay</span>
                 </div>
-                <p data-i18n="auto_renew_note">Подписка продлевается автоматически. Вы можете отменить продление в любой момент в настройках аккаунта.</p>
-                <p data-i18n="terms_agreement">Нажимая «Оплатить», вы соглашаетесь с <a href="#" id="link-pricing-terms" class="cyan-link">Условиями использования</a> и <a href="#" id="link-pricing-privacy" class="cyan-link">Политикой конфиденциальности</a>.</p>
+                <p data-i18n="auto_renew_note">Проверьте условия продления и списаний перед оплатой. Управление автопродлением доступно через поддержку.</p>
+                <p class="terms-agreement"><span data-i18n="terms_prefix">Нажимая «Оплатить», вы соглашаетесь с </span><a href="#" id="link-pricing-terms" class="cyan-link" data-i18n="terms_link">Условиями использования</a><span data-i18n="terms_and"> и </span><a href="#" id="link-pricing-privacy" class="cyan-link" data-i18n="privacy_link">Политикой конфиденциальности</a>.</p>
               </div>
             </div>
 
@@ -686,7 +689,7 @@
                   </button>
                   <div class="search-input-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="server-search-input" placeholder="Поиск сервера или страны..." />
+                    <input type="text" id="server-search-input" data-i18n-placeholder="server_search_placeholder" placeholder="Поиск сервера или страны..." />
                   </div>
                 </div>
 
@@ -720,8 +723,8 @@
                     <span class="avatar-user-icon">👤</span>
                   </div>
                   <div class="profile-details-column">
-                    <h2 id="acc-user-name" class="profile-name-text">Arseniy</h2>
-                    <span id="acc-user-email" class="profile-email-text">arseniy@example.com</span>
+                    <h2 id="acc-user-name" class="profile-name-text">—</h2>
+                    <span id="acc-user-email" class="profile-email-text">—</span>
                     <span id="acc-user-status-pill" class="badge-active-mini">
                       <span class="dot-green">●</span>
                       <span data-i18n="active">Активна</span>
@@ -739,7 +742,7 @@
                     <h3 id="acc-plan-name" class="acc-plan-title">Годовой</h3>
                     <span id="acc-autorenew-badge" class="badge-active-pill" data-i18n="autorenew_on">Статус автопродления</span>
                   </div>
-                  <p id="acc-plan-validity" class="acc-validity-text">Действует до 24.11.2026</p>
+                  <p id="acc-plan-validity" class="acc-validity-text">—</p>
                   
                   <div class="acc-sub-actions-row">
                     <button type="button" id="btn-acc-renew" class="btn-primary btn-acc-renew">
@@ -789,6 +792,17 @@
                 </button>
               </div>
 
+              <!-- Account settings parity with Android -->
+              <div class="glass-card settings-group-card account-settings-actions">
+                <h3 style="margin-bottom:14px;" data-i18n="account_settings_title">Настройки аккаунта</h3>
+                <div class="account-settings-button-grid">
+                  <button type="button" id="btn-account-refresh" class="btn-secondary" data-i18n="account_refresh">Обновить данные</button>
+                  <button type="button" id="btn-account-copy-id" class="btn-secondary" data-i18n="account_copy_id">Скопировать ID</button>
+                  <button type="button" id="btn-account-app-settings" class="btn-secondary" data-i18n="account_app_settings">Настройки приложения</button>
+                  <button type="button" id="btn-account-advanced" class="btn-secondary" data-i18n="account_advanced">Дополнительные настройки</button>
+                </div>
+              </div>
+
               <!-- Footer Actions -->
               <div class="account-footer-row">
                 <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout">
@@ -823,6 +837,19 @@
                     </div>
                     <label class="switch-control">
                       <input type="checkbox" id="set-autostart" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="card-divider-line"></div>
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">⏻</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="autoconnect_title">Подключаться при запуске</strong>
+                      <span data-i18n="autoconnect_desc">Автоматически подключать VPN при открытии приложения</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-autoconnect" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -961,9 +988,9 @@
                       <svg width="20" height="22" viewBox="0 0 92 104" fill="none">
                         <defs>
                           <linearGradient id="vShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                            <stop stop-color="#00d2ff"/>
-                            <stop offset="0.55" stop-color="#00e5b0"/>
-                            <stop offset="1" stop-color="#00f5a0"/>
+                            <stop stop-color="#468ff0"/>
+                            <stop offset="0.55" stop-color="#53bfcf"/>
+                            <stop offset="1" stop-color="#79d9bc"/>
                           </linearGradient>
                         </defs>
                         <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
@@ -990,7 +1017,7 @@
                 <div class="devices-big-stat-row">
                   <strong id="devices-hero-current" class="devices-big-number">—</strong>
                   <span class="devices-big-slash">из</span>
-                  <span id="devices-hero-max" class="devices-big-max">5</span>
+                  <span id="devices-hero-max" class="devices-big-max">—</span>
                 </div>
                 <p class="devices-stat-label">Устройств подключено к аккаунту</p>
                 <p class="devices-stat-hint">Вы можете использовать ByMeVPN на компьютере, телефоне, планшете и Smart TV одновременно.</p>
@@ -1111,9 +1138,9 @@
                 <div class="advanced-param-row">
                   <div>
                     <strong>Защита от утечек DNS (WFP)</strong>
-                    <span>Блокировка трафика мимо туннеля через Windows Filtering Platform</span>
+                    <span>Защита от утечек зависит от конфигурации Windows; требуется проверка</span>
                   </div>
-                  <span class="badge-tech-pill active">Активна (WFP leak-block)</span>
+                  <span class="badge-tech-pill">Проверка не завершена</span>
                 </div>
 
                 <div class="card-divider-line"></div>
@@ -1123,9 +1150,22 @@
                     <strong>Защита от рекурсии маршрутов</strong>
                     <span>Безусловный прямой маршрут (direct) для собственного хоста сервера</span>
                   </div>
-                  <span class="badge-tech-pill active">Anti-recursion Rule #0</span>
+                  <span class="badge-tech-pill">Настроено в Xray</span>
                 </div>
 
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong data-i18n="dns_title">DNS-провайдер</strong>
+                    <span data-i18n="dns_desc">Применяется при следующем подключении VPN</span>
+                  </div>
+                  <select id="set-dns-mode" aria-label="DNS provider" class="advanced-dns-select">
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="adguard">AdGuard</option>
+                    <option value="google">Google DNS</option>
+                  </select>
+                </div>
                 <div class="card-divider-line"></div>
 
                 <div class="advanced-param-row">
@@ -1161,9 +1201,9 @@
             <svg width="68" height="78" viewBox="0 0 92 104" fill="none">
               <defs>
                 <linearGradient id="pwShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#00d2ff"/>
-                  <stop offset="0.55" stop-color="#00e5b0"/>
-                  <stop offset="1" stop-color="#00f5a0"/>
+                  <stop stop-color="#468ff0"/>
+                  <stop offset="0.55" stop-color="#53bfcf"/>
+                  <stop offset="1" stop-color="#79d9bc"/>
                 </linearGradient>
               </defs>
               <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#pwShieldGrad)" stroke-width="6" stroke-linejoin="round"/>

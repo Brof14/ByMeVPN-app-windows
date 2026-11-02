@@ -40,6 +40,7 @@ const state = {
   },
   connectionBusy: false,
   authBusy: false,
+  sessionEpoch: 0,
   vpnVerified: false,
   vpnPhase: "idle",
   pollBusy: false,
@@ -334,6 +335,7 @@ function setupWindowControls() {
 
 // Initial Data Loader
 async function loadInitialData() {
+  const epoch = state.sessionEpoch;
   const savedSettings = await invoke('get_settings').catch(() => null);
   if (savedSettings) {
     state.settings = { ...state.settings, ...savedSettings };
@@ -352,6 +354,7 @@ async function loadInitialData() {
   } catch (err) {
     restoreFailed = true;
   }
+  if (epoch !== state.sessionEpoch) return;
   if (session?.user) {
     state.user = session.user;
     state.subscription = session.subscription;
@@ -373,8 +376,10 @@ async function loadInitialData() {
 }
 
 async function loadAvailableServers() {
+  const epoch = state.sessionEpoch;
   try {
     const servers = await invoke('get_servers');
+    if (epoch !== state.sessionEpoch) return;
     state.servers = Array.isArray(servers) ? servers : [];
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
     state.selectedServer = preferred || {
@@ -386,6 +391,7 @@ async function loadAvailableServers() {
     renderServersList();
     updateVpnUi();
   } catch (err) {
+    if (epoch !== state.sessionEpoch) return;
     state.servers = [];
     renderServersList();
     showToast('Не удалось загрузить реальные серверы. Проверьте соединение.', true);
@@ -471,6 +477,7 @@ function showAuthScreen(box = 'login') {
 }
 
 function showAppShell() {
+  state.sessionEpoch += 1;
   document.getElementById('view-auth')?.classList.add('hidden');
   document.getElementById('view-app-shell')?.classList.remove('hidden');
   updateUserUi();
@@ -978,6 +985,7 @@ async function handleLogout() {
     'Выход из аккаунта',
     'Вы уверены, что хотите выйти из учётной записи ByMeVPN?',
     async () => {
+      if (state.connectionBusy) return showToast('Дождитесь завершения подключения или отключения', true);
       if (state.vpnConnected) {
         try {
           await invoke('vpn_stop');
@@ -988,6 +996,9 @@ async function handleLogout() {
         state.vpnConnected = false;
       }
       await invoke('auth_logout');
+      state.sessionEpoch += 1;
+      state.servers = [];
+      state.devices = [];
       state.user = null;
       state.subscription = null;
       showAuthScreen('login');
@@ -1001,10 +1012,14 @@ async function handleDeleteAccount() {
     'Удаление аккаунта',
     'Это действие необратимо. Все активные подписки и данные аккаунта будут удалены навсегда.',
     async () => {
+      if (state.connectionBusy) return showToast('Дождитесь завершения работы VPN', true);
       try {
         if (state.vpnConnected) await invoke('vpn_stop');
         await invoke('delete_account');
+        state.sessionEpoch += 1;
         state.vpnConnected = false;
+        state.servers = [];
+        state.devices = [];
         state.user = null;
         state.subscription = null;
         showAuthScreen('login');
@@ -1167,8 +1182,9 @@ document.addEventListener('visibilitychange', () => {
       clearInterval(state.pollInterval);
       state.pollInterval = null;
     }
-  } else if (state.vpnConnected && !state.pollInterval) {
-    startStatusPolling();
+  } else {
+    if (state.vpnConnected && !state.pollInterval) startStatusPolling();
+    if (state.user) void refreshAccountSnapshot();
   }
 });
 
@@ -1680,8 +1696,11 @@ function applyLanguage(lang) {
 
 // Refresh Account Snapshot
 async function refreshAccountSnapshot(notify = false) {
+  if (!state.user) return;
+  const epoch = state.sessionEpoch;
   try {
     const data = await invoke('account_snapshot');
+    if (epoch !== state.sessionEpoch) return;
     if (data) {
       if (data.user) state.user = data.user;
       if (data.subscription) state.subscription = data.subscription;
@@ -1694,7 +1713,9 @@ async function refreshAccountSnapshot(notify = false) {
       if (notify) showToast('Данные аккаунта обновлены');
     }
   } catch (err) {
-    if (notify) showToast(typeof err === 'string' ? err : 'Не удалось обновить аккаунт', true);
+    if (notify && epoch === state.sessionEpoch) {
+      showToast(typeof err === 'string' ? err : 'Не удалось обновить аккаунт', true);
+    }
   }
 }
 

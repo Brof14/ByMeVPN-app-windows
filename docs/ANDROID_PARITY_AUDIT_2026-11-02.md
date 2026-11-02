@@ -9,7 +9,7 @@ Backend baseline: `17d02d175a740042bd31ab21f48f0cf8a66e2ebc`
 
 The initial code-based design evaluation is **5.5/10**, and feature/UI parity is approximately **4/10**. These subjective scores are **not** screenshot, usability lab or accessibility test results. They do not improve automatically to 10/10 when a CSS commit is merged.
 
-The Android V2 source uses a subdued navy canvas (`#090F1D`), navy cards (`#121C2B`), mint (`#69D3BC`) and system typography, while Windows used cyan/neon-green, glows and mock content. The draft PR aligns the basic tokens and decreases glow, but authentic Android assets and frame-by-frame screenshot comparisons are still missing.
+The Android V2 source uses a subdued navy canvas (`#090F1D`), navy cards (`#121C2B`), mint (`#69D3BC`) and system typography, while Windows used cyan/neon-green, glows and mock content. The draft PR aligns the basic tokens and decreases glow, but the exact Android V2 transparent shield is imported and rendered on the desktop; frame-by-frame screenshot comparisons are still missing.
 
 ## Findings and actions
 
@@ -18,7 +18,7 @@ The Android V2 source uses a subdued navy canvas (`#090F1D`), navy cards (`#121C
 | P0 | Pinned Xray v26.10.29 asset returns 404 and stops every fresh Windows CI/runtime assembly | PR updates to official v26.10.31 release, pins official ZIP SHA256 `2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a`, and embeds build-time executable SHA256 for runtime verification |
 | P0 | Windows WebView/UI runs with `requireAdministrator` | Unresolved: separate ACL-protected privileged Windows Service + unprivileged frontend, and end-to-end service tests |
 | P0 | Full IPv4/IPv6/DNS and Kill Switch network leak guarantees are untested; only IPv4 default route is explicitly configured | Unresolved: packet capture and verified routing/WFP policy on real Windows 10/11 with varying connections |
-| P1 | Fake-looking neon UI differs from Android V2 | Android palette/tokens, toned-down components, focusable power controls; visual screenshot acceptance still needed |
+| P1 | Fake-looking neon UI differs from Android V2 | Android palette/tokens, imported canonical shield, toned-down components, focusable power controls; visual screenshot acceptance still needed |
 | P1 | Account and server responses can arrive after logout, restoring stale state | Session epoch guards for async account and server requests |
 | P1 | Login and registration can submit repeatedly while requests run | Auth busy state, disabled actions, server-confirmed user, input sanitization and retry on outage |
 | P1 | Telegram polling can complete after modal closes, logging in a user who canceled | Generation-scoped polling, stop on cancellation, no stale callbacks |

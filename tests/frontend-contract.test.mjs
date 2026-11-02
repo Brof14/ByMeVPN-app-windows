@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createContext, runInContext } from 'node:vm';
 
 const source = readFileSync(new URL('../ui/app.js', import.meta.url), 'utf8');
@@ -156,4 +157,13 @@ test('language resources cover server search and authentication field placeholde
   const app = harness();
   assert.equal(app.eval("I18N.en.email_placeholder"), "Email address");
   assert.equal(app.eval("I18N.en.server_search_placeholder"), "Search servers or countries...");
+});
+
+test('the Windows shield is byte-for-byte the approved Android V2 drawable', () => {
+  const image = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
+  const sha = createHash('sha1')
+    .update(Buffer.from(`blob ${image.length}\0`))
+    .update(image)
+    .digest('hex');
+  assert.equal(sha, 'b1b269246a75c21742ebc968cb2c3ad6893a73d8');
 });

@@ -47,7 +47,7 @@ Windows Service privilege separation, Wintun adapter and route inspection, IPv6/
 
 The Android design source of truth is `Brof14/ByMeVPN-app` (main as of November 2, 2026). The current draft [Windows PR #5](https://github.com/Brof14/ByMeVPN-app-windows/pull/5) aligns its color tokens, account controls and basic connection state with Android.
 
-- Windows uses the Android canvas `#090F1D`, surface `#121C2B` and mint `#69D3BC`. Pixel-perfect parity and Android source artwork are **not yet verified** on a running Windows build.
+- Windows uses the Android canvas `#090F1D`, surface `#121C2B` and mint `#69D3BC`. The exact Android V2 shield has been imported byte-for-byte, but pixel-perfect parity is **not yet verified** on a running Windows build.
 - Email and Telegram state, connected/connecting/unverified UI, account synchronization and trial/payment controls must be tested against the live backend.
 - Google login, background VPN and Kill Switch remain disabled/unavailable by design until securely implemented.
 - Android's automatic connection preference is supported as an opt-in after account restoration in Windows; direct routing for supported Russian sites defaults to enabled.

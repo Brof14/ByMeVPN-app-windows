@@ -950,6 +950,7 @@ fn default_settings() -> Value {
         "stayConnectedInBackground": false,
         "bypassRu": true,
         "adBlock": "none",
+        "dnsMode": "cloudflare",
         "killSwitch": false,
         "language": "ru",
         "selectedServerCode": "auto"
@@ -971,6 +972,11 @@ fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
         "adBlock" => {
             if !matches!(value.as_str(), Some("none" | "basic" | "recommended")) {
                 return Err("Неизвестный режим блокировки рекламы.".into());
+            }
+        }
+        "dnsMode" => {
+            if !matches!(value.as_str(), Some("cloudflare" | "adguard" | "google")) {
+                return Err("Неизвестный DNS-провайдер.".into());
             }
         }
         "language" => {
@@ -1067,7 +1073,8 @@ pub async fn vpn_start(
 
     let settings = load_settings(&app);
     let bypass_ru = settings.get("bypassRu").and_then(Value::as_bool).unwrap_or(true);
-    let ad_block = settings.get("adBlock").and_then(Value::as_str).unwrap_or("recommended");
+    let ad_block = settings.get("adBlock").and_then(Value::as_str).unwrap_or("none");
+    let dns_mode = settings.get("dnsMode").and_then(Value::as_str).unwrap_or("cloudflare");
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
@@ -1097,7 +1104,7 @@ pub async fn vpn_start(
     let baseline_ip = crate::egress::public_egress_ip().await
         .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
-    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block)?;
+    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
@@ -1402,6 +1409,8 @@ mod tests {
         assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
         assert!(validate_setting("adBlock", &json!("unknown")).is_err());
         assert!(validate_setting("language", &json!("fr")).is_err());
+        assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
+        assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);
         assert_eq!(default_settings()["adBlock"], "none");
     }

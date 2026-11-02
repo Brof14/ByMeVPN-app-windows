@@ -21,10 +21,10 @@ fn valid_host(host: &str) -> bool {
 
 #[allow(dead_code)]
 pub fn build_tun_config(session: &Value) -> Result<Value, String> {
-    build_tun_config_ext(session, false, "none")
+    build_tun_config_ext(session, false, "none", "cloudflare")
 }
 
-pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str) -> Result<Value, String> {
+pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dns_mode: &str) -> Result<Value, String> {
     if text(session, &["protocol"]).unwrap_or("vless") != "vless"
         || text(session, &["security"]).unwrap_or("reality") != "reality"
         || !matches!(text(session, &["network"]).unwrap_or("tcp"), "tcp" | "raw")
@@ -62,6 +62,13 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str) ->
     if flow != "xtls-rprx-vision" {
         return Err("Сервер использует неподдерживаемый режим VLESS.".into());
     }
+
+    let dns_servers = match dns_mode {
+        "cloudflare" => ["1.1.1.1", "1.0.0.1"],
+        "adguard" => ["94.140.14.14", "94.140.15.15"],
+        "google" => ["8.8.8.8", "8.8.4.4"],
+        _ => return Err("Неизвестный DNS-провайдер.".into()),
+    };
 
     let mut rules = Vec::new();
 
@@ -124,7 +131,7 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str) ->
                 "name": "ByMeVPN",
                 "mtu": 1500,
                 "gateway": ["172.31.255.1/30"],
-                "dns": ["1.1.1.1", "8.8.8.8"],
+                "dns": dns_servers,
                 "autoSystemRoutingTable": ["0.0.0.0/0"],
                 "autoSystemWfpBlockLeak": ["dns", "misconfigtun"]
             }
@@ -218,6 +225,13 @@ mod tests {
     }
 
     #[test]
+    fn validates_dns_mode_and_generates_provider_addresses() {
+        let config = build_tun_config_ext(&session(), true, "none", "adguard").unwrap();
+        assert_eq!(config["inbounds"][0]["settings"]["dns"][0], "94.140.14.14");
+        assert!(build_tun_config_ext(&session(), true, "none", "untrusted").is_err());
+    }
+
+    #[test]
     fn xray_accepts_generated_synthetic_configuration() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../vendor/runtime/windows-x64/xray.exe");
@@ -241,7 +255,7 @@ mod tests {
         let path_ext = std::env::temp_dir().join(format!("bymevpn-test-ext-{}.json", Uuid::new_v4()));
         std::fs::write(
             &path_ext,
-            serde_json::to_vec(&build_tun_config_ext(&session(), true, "recommended").unwrap()).unwrap(),
+            serde_json::to_vec(&build_tun_config_ext(&session(), true, "recommended", "cloudflare").unwrap()).unwrap(),
         )
         .unwrap();
         let result_ext = std::process::Command::new(&root)

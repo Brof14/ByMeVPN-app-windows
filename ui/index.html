@@ -1138,9 +1138,9 @@
                 <div class="advanced-param-row">
                   <div>
                     <strong>Защита от утечек DNS (WFP)</strong>
-                    <span>Блокировка трафика мимо туннеля через Windows Filtering Platform</span>
+                    <span>Защита от утечек зависит от конфигурации Windows; требуется проверка</span>
                   </div>
-                  <span class="badge-tech-pill active">Активна (WFP leak-block)</span>
+                  <span class="badge-tech-pill">Проверка не завершена</span>
                 </div>
 
                 <div class="card-divider-line"></div>
@@ -1150,9 +1150,22 @@
                     <strong>Защита от рекурсии маршрутов</strong>
                     <span>Безусловный прямой маршрут (direct) для собственного хоста сервера</span>
                   </div>
-                  <span class="badge-tech-pill active">Anti-recursion Rule #0</span>
+                  <span class="badge-tech-pill">Настроено в Xray</span>
                 </div>
 
+                <div class="card-divider-line"></div>
+
+                <div class="advanced-param-row">
+                  <div>
+                    <strong data-i18n="dns_title">DNS-провайдер</strong>
+                    <span data-i18n="dns_desc">Применяется при следующем подключении VPN</span>
+                  </div>
+                  <select id="set-dns-mode" aria-label="DNS provider" class="advanced-dns-select">
+                    <option value="cloudflare">Cloudflare</option>
+                    <option value="adguard">AdGuard</option>
+                    <option value="google">Google DNS</option>
+                  </select>
+                </div>
                 <div class="card-divider-line"></div>
 
                 <div class="advanced-param-row">

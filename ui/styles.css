@@ -3027,3 +3027,18 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 
 /* Auto-connect controls follow Android V2 Settings row rhythm. */
 #tab-settings .setting-item-row { min-height: 61px; }
+
+.advanced-dns-select {
+  appearance: none;
+  border: 1px solid #346071;
+  border-radius: 10px;
+  background: #111c2b;
+  color: #eef4f4;
+  padding: 10px 32px 10px 12px;
+  min-width: 145px;
+  cursor: pointer;
+}
+.advanced-dns-select:focus-visible {
+  outline: 2px solid #69d3bc;
+  outline-offset: 3px;
+}

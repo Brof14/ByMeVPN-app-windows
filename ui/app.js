@@ -56,6 +56,7 @@ const state = {
     stayConnectedInBackground: false,
     bypassRu: true,
     adBlock: 'none',
+    dnsMode: 'cloudflare',
     killSwitch: false,
     language: 'ru'
   },
@@ -70,6 +71,8 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    dns_title: 'DNS-провайдер',
+    dns_desc: 'Изменения применятся при следующем подключении VPN',
     autoconnect_title: 'Подключаться при запуске',
     autoconnect_desc: 'Автоматически запускать VPN после входа при активной подписке',
     account_settings_title: 'Настройки аккаунта',
@@ -191,6 +194,8 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    dns_title: 'DNS provider',
+    dns_desc: 'Changes take effect the next time you connect to VPN',
     autoconnect_title: 'Connect when app opens',
     autoconnect_desc: 'Connect automatically after sign-in when the subscription is active',
     account_settings_title: 'Account settings',
@@ -769,6 +774,7 @@ function setupEventListeners() {
   document.getElementById('set-autoconnect')?.addEventListener('change', e => handleSettingChange('autoConnect', e.target.checked));
   document.getElementById('set-background')?.addEventListener('change', (e) => handleSettingChange('stayConnectedInBackground', e.target.checked));
   document.getElementById('set-bypass')?.addEventListener('change', (e) => handleSettingChange('bypassRu', e.target.checked));
+  document.getElementById('set-dns-mode')?.addEventListener('change', e => handleSettingChange('dnsMode', e.target.value));
   document.getElementById('set-killswitch')?.addEventListener('change', (e) => handleSettingChange('killSwitch', e.target.checked));
 
   document.querySelectorAll('input[name="adblock"]').forEach(radio => {
@@ -1639,12 +1645,14 @@ function applySettingsToUi() {
   const setAutoConnect = document.getElementById('set-autoconnect');
   const setBg = document.getElementById('set-background');
   const setBypass = document.getElementById('set-bypass');
+  const setDnsMode = document.getElementById('set-dns-mode');
   const setKill = document.getElementById('set-killswitch');
 
   if (setAuto) setAuto.checked = !!s.autoStart;
   if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
   if (setBg) setBg.checked = false;
   if (setBypass) setBypass.checked = !!s.bypassRu;
+  if (setDnsMode) setDnsMode.value = s.dnsMode || 'cloudflare';
   if (setKill) setKill.checked = false;
 
   const adRadio = document.querySelector(`input[name="adblock"][value="${s.adBlock || 'recommended'}"]`);

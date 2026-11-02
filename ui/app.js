@@ -39,6 +39,11 @@ const state = {
     ping_ms: 0
   },
   connectionBusy: false,
+  authBusy: false,
+  vpnVerified: false,
+  vpnPhase: "idle",
+  pollBusy: false,
+  pollFailures: 0,
   catalogReady: false,
   devicesSupported: false,
   availableDeviceCounts: [],
@@ -47,10 +52,10 @@ const state = {
   preferredServerCode: 'auto',
   settings: {
     autoStart: false,
-    stayConnectedInBackground: true,
+    stayConnectedInBackground: false,
     bypassRu: true,
-    adBlock: 'recommended',
-    killSwitch: true,
+    adBlock: 'none',
+    killSwitch: false,
     language: 'ru'
   },
   currentTab: 'tab-home',
@@ -83,6 +88,11 @@ const PRICING_MATRIX = {
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    account_settings_title: 'Настройки аккаунта',
+    account_refresh: 'Обновить данные',
+    account_copy_id: 'Скопировать ID',
+    account_app_settings: 'Настройки приложения',
+    account_advanced: 'Дополнительные настройки',
     slogan: 'Скорость. Анонимность. Честность.',
     perk_fast: 'Быстрое подключение',
     perk_easy: 'Простое управление',
@@ -197,6 +207,11 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    account_settings_title: 'Account settings',
+    account_refresh: 'Refresh account',
+    account_copy_id: 'Copy account ID',
+    account_app_settings: 'App settings',
+    account_advanced: 'Advanced settings',
     slogan: 'Speed. Anonymity. Honesty.',
     perk_fast: 'Fast connection',
     perk_easy: 'Simple controls',
@@ -352,7 +367,9 @@ async function loadInitialData() {
     showAppShell();
   } else {
     showAuthScreen('login');
-    if (restoreFailed) showToast('Не удалось проверить сеанс: сеть или API недоступны. Повторите попытку.', true);
+    const retry = document.getElementById('btn-retry-session');
+    retry?.classList.toggle('hidden', !restoreFailed);
+    if (restoreFailed) showToast('Сервер недоступен. Вы можете повторить проверку сеанса.', true);
   }
   await checkVpnStatus();
 }
@@ -550,6 +567,10 @@ function setupEventListeners() {
   // Forms submission
   document.getElementById('form-login')?.addEventListener('submit', handleLogin);
   document.getElementById('form-register')?.addEventListener('submit', handleRegister);
+  document.getElementById('btn-retry-session')?.addEventListener('click', async () => {
+    document.getElementById('btn-retry-session')?.classList.add('hidden');
+    await loadInitialData();
+  });
 
   // Google sign in buttons
   document.getElementById('btn-google-login')?.addEventListener('click', handleGoogleAuth);
@@ -618,12 +639,38 @@ function setupEventListeners() {
   document.getElementById('btn-acc-open-devices')?.addEventListener('click', () => switchTab('tab-devices'));
   document.getElementById('btn-acc-manage')?.addEventListener('click', () => switchTab('tab-renewal'));
   document.getElementById('btn-acc-open-support')?.addEventListener('click', () => switchTab('tab-support'));
+  document.getElementById('btn-account-refresh')?.addEventListener('click', async () => {
+    await refreshAccountSnapshot(true);
+    await loadAvailableServers();
+  });
+  document.getElementById('btn-account-copy-id')?.addEventListener('click', () => {
+    const value = String(state.user?.id || '');
+    if (!value) return showToast('ID аккаунта пока не загружен', true);
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(value).then(
+        () => showToast('ID аккаунта скопирован'),
+        () => showToast('Не удалось скопировать ID', true)
+      );
+    } else {
+      showToast('Копирование недоступно на этом устройстве', true);
+    }
+  });
+  document.getElementById('btn-account-app-settings')?.addEventListener('click', () => switchTab('tab-settings'));
+  document.getElementById('btn-account-advanced')?.addEventListener('click', () => switchTab('tab-advanced'));
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
   document.getElementById('vpn-power-ring-off')?.addEventListener('click', toggleVpn);
+  for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
+    document.getElementById(id)?.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        void toggleVpn();
+      }
+    });
+  }
   document.getElementById('btn-toggle-vpn')?.addEventListener('click', toggleVpn);
 
   // Server selection triggers
@@ -762,54 +809,63 @@ function setupEventListeners() {
 }
 
 // Authentication Handlers
+function setAuthPending(pending) {
+  state.authBusy = pending;
+  for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = pending;
+  }
+}
+
 async function handleLogin(e) {
   e.preventDefault();
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-
+  if (state.authBusy) return;
+  const email = document.getElementById('login-email')?.value?.trim();
+  const password = document.getElementById('login-password')?.value;
   if (!email || !password) {
     showToast('Введите email и пароль', true);
     return;
   }
-
-  showToast('Вход в аккаунт...');
+  setAuthPending(true);
   try {
     const res = await invoke('auth_login', { email, password });
+    if (!res?.user?.id) throw new Error('Сервер не подтвердил вход в аккаунт');
     state.user = res.user;
     state.subscription = res.subscription;
     showAppShell();
-    showToast('Добро пожаловать в ByMeVPN!');
+    showToast('Вход выполнен');
+    document.getElementById('login-password').value = '';
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Ошибка входа', true);
+    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось войти', true);
+  } finally {
+    setAuthPending(false);
   }
 }
 
 async function handleRegister(e) {
   e.preventDefault();
-  const name = document.getElementById('register-name').value.trim() || 'Пользователь';
-  const email = document.getElementById('register-email').value.trim();
-  const password = document.getElementById('register-password').value;
-  const confirm = document.getElementById('register-password-confirm').value;
-
-  if (!email || !password) {
-    showToast('Заполните обязательные поля', true);
-    return;
-  }
-
-  if (password !== confirm) {
-    showToast('Пароли не совпадают', true);
-    return;
-  }
-
-  showToast('Создание аккаунта...');
+  if (state.authBusy) return;
+  const name = document.getElementById('register-name')?.value?.trim() || 'Пользователь';
+  const email = document.getElementById('register-email')?.value?.trim();
+  const password = document.getElementById('register-password')?.value;
+  const confirm = document.getElementById('register-password-confirm')?.value;
+  if (!email || !password) return showToast('Заполните обязательные поля', true);
+  if (password.length < 6) return showToast('Минимальная длина пароля — 6 символов', true);
+  if (password !== confirm) return showToast('Пароли не совпадают', true);
+  setAuthPending(true);
   try {
     const res = await invoke('auth_register', { email, password, name });
+    if (!res?.user?.id) throw new Error('Сервер не подтвердил регистрацию');
     state.user = res.user;
     state.subscription = res.subscription;
     showAppShell();
-    showToast('Аккаунт успешно создан!');
+    showToast('Аккаунт создан');
+    document.getElementById('register-password').value = '';
+    document.getElementById('register-password-confirm').value = '';
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Ошибка регистрации', true);
+    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось зарегистрироваться', true);
+  } finally {
+    setAuthPending(false);
   }
 }
 
@@ -953,12 +1009,15 @@ async function handleDeleteAccount() {
 async function toggleVpn() {
   if (state.connectionBusy) return;
   state.connectionBusy = true;
+  state.vpnPhase = state.vpnConnected ? 'disconnecting' : 'connecting';
+  updateVpnUi();
   try {
   if (state.vpnConnected) {
     showToast('Отключение VPN...');
     try {
       await invoke('vpn_stop');
       state.vpnConnected = false;
+      state.vpnVerified = false;
       if (state.timerInterval) {
         clearInterval(state.timerInterval);
         state.timerInterval = null;
@@ -976,6 +1035,11 @@ async function toggleVpn() {
     // Strict check: active or trial subscription required!
     const sub = state.subscription;
     const hasActiveSub = sub && ['active', 'trial', 'grace'].includes(sub.status);
+    if (sub?.status === 'unknown') {
+      showToast('Не удалось проверить подписку. Обновите аккаунт и повторите попытку.', true);
+      await refreshAccountSnapshot();
+      return;
+    }
     if (!hasActiveSub) {
       showToast('Для подключения требуется активный доступ (3 дня бесплатно или тариф).');
       openModal('modal-paywall');
@@ -992,7 +1056,9 @@ async function toggleVpn() {
     try {
       const code = state.selectedServer.code === 'auto' ? null : state.selectedServer.code;
       const metrics = await invoke('vpn_start', { nodeCode: code });
-      state.vpnConnected = true;
+      state.vpnConnected = metrics?.connected === true;
+      if (!state.vpnConnected) throw new Error('Движок не подтвердил соединение');
+      state.vpnVerified = true;
       state.connectedSeconds = 0;
       if (metrics) {
         state.metrics = metrics;
@@ -1003,6 +1069,7 @@ async function toggleVpn() {
       showToast('Подключение проверено и установлено');
     } catch (err) {
       state.vpnConnected = false;
+      state.vpnVerified = false;
       const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
       showToast(errMsg, true);
       // HTTP 403 may be caused by HWID or unavailable 3x-ui; never erase
@@ -1013,6 +1080,8 @@ async function toggleVpn() {
   }
   } finally {
     state.connectionBusy = false;
+    state.vpnPhase = state.vpnConnected ? 'connected' : 'idle';
+    updateVpnUi();
   }
 }
 
@@ -1020,12 +1089,14 @@ async function checkVpnStatus() {
   try {
     const status = await invoke('vpn_status');
     if (status && status.connected) {
+      state.vpnVerified = true;
       state.vpnConnected = true;
       state.connectedSeconds = status.connected_seconds || 0;
       state.metrics = status;
       startLiveTimer();
       startStatusPolling();
     } else {
+      state.vpnVerified = false;
       state.vpnConnected = false;
       if (state.timerInterval) {
         clearInterval(state.timerInterval);
@@ -1045,9 +1116,12 @@ async function checkVpnStatus() {
 function startStatusPolling() {
   if (state.pollInterval) clearInterval(state.pollInterval);
   state.pollInterval = setInterval(async () => {
-    if (state.vpnConnected && !document.hidden) {
+    if (state.vpnConnected && !document.hidden && !state.pollBusy) {
+      state.pollBusy = true;
       try {
         const status = await invoke('vpn_status');
+        state.pollFailures = 0;
+        state.vpnVerified = status?.connected === true;
         if (status) {
           const wasConnected = state.vpnConnected;
           state.vpnConnected = status.connected === true;
@@ -1062,7 +1136,15 @@ function startStatusPolling() {
           }
           updateVpnUi();
         }
-      } catch (err) {}
+      } catch (err) {
+        state.pollFailures += 1;
+        if (state.pollFailures >= 3) {
+          state.vpnVerified = false;
+          updateVpnUi();
+        }
+      } finally {
+        state.pollBusy = false;
+      }
     }
   }, 2500);
 }
@@ -1102,7 +1184,7 @@ function formatTime(seconds) {
 function updateVpnUi() {
   const isConn = state.vpnConnected;
   const sub = state.subscription;
-  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
+  const hasPlan = sub && ['active', 'trial', 'grace', 'unknown'].includes(sub.status);
 
   const noPlanBox = document.getElementById('home-state-no-plan');
   const connectedBox = document.getElementById('home-state-connected');
@@ -1113,7 +1195,9 @@ function updateVpnUi() {
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.remove('hidden');
     disconnectedBox?.classList.add('hidden');
-    activePill?.classList.remove('hidden');
+    activePill?.classList.toggle('hidden', !state.vpnVerified);
+    const heading = document.querySelector('#home-state-connected .status-title-text');
+    if (heading) heading.textContent = state.vpnVerified ? 'VPN подключён' : 'Проверяем состояние VPN';
   } else if (!hasPlan) {
     // Parity with Android Mockup 03_home_no_plan
     noPlanBox?.classList.remove('hidden');
@@ -1132,8 +1216,8 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (desc) desc.textContent = 'Нажмите, чтобы подключиться';
-    if (btn) btn.textContent = 'Подключиться';
+    if (desc) desc.textContent = state.vpnPhase === 'connecting' ? 'Запуск и проверка VPN...' : 'Нажмите, чтобы подключиться';
+    if (btn) btn.textContent = state.vpnPhase === 'connecting' ? 'Подключаемся...' : 'Подключиться';
     ringOff?.classList.remove('ring-off');
     ringOff?.classList.add('ring-ready');
     promoBox?.classList.add('hidden');
@@ -1148,7 +1232,11 @@ function updateVpnUi() {
   const homeCity = document.getElementById('home-server-city');
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
-  if (nameEl) nameEl.textContent = s.name;
+  if (nameEl) nameEl.textContent = isConn && state.metrics?.server_name ? state.metrics.server_name : s.name;
+  for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
+    document.getElementById(id)?.setAttribute('aria-busy', String(state.connectionBusy));
+  }
+  document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ? 'Автоматически' : s.name.split('•')[0].trim();
   if (homeCity) homeCity.textContent = s.name.includes('•') ? s.name.split('•')[1].trim() : 'Автовыбор';
@@ -1576,7 +1664,7 @@ function applyLanguage(lang) {
 }
 
 // Refresh Account Snapshot
-async function refreshAccountSnapshot() {
+async function refreshAccountSnapshot(notify = false) {
   try {
     const data = await invoke('account_snapshot');
     if (data) {
@@ -1588,8 +1676,11 @@ async function refreshAccountSnapshot() {
       updateSubscriptionUi();
       updateDevicesUi();
       updateVpnUi();
+      if (notify) showToast('Данные аккаунта обновлены');
     }
-  } catch (err) {}
+  } catch (err) {
+    if (notify) showToast(typeof err === 'string' ? err : 'Не удалось обновить аккаунт', true);
+  }
 }
 
 // External Links

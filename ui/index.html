@@ -150,6 +150,9 @@
               </div>
             </div>
 
+            <button type="button" id="btn-retry-session" class="btn-secondary hidden" style="width:100%;margin-top:8px;">
+              Повторить проверку аккаунта
+            </button>
             <div class="auth-switch-link">
               <span data-i18n="no_account">Нет аккаунта?</span>
               <a href="#" id="link-goto-register" class="neon-link" data-i18n="register_link">Зарегистрироваться ›</a>
@@ -372,12 +375,12 @@
                     <div class="connection-substatus">
                       <span data-i18n="conn_secured">Соединение защищено</span>
                       <span class="substatus-sep">•</span>
-                      <span id="vpn-live-timer" class="neon-green">00:42:18</span>
+                      <span id="vpn-live-timer" class="neon-green">00:00:00</span>
                     </div>
 
                     <div id="btn-active-location-pill" class="location-chip-pill">
                       <span id="conn-flag-chip" class="chip-flag">🇩🇪</span>
-                      <span id="conn-location-name">Германия • Франкфурт</span>
+                      <span id="conn-location-name">Автоматически</span>
                     </div>
 
                     <div class="metrics-triad-row">
@@ -445,8 +448,8 @@
                     <div class="card-interactive-row" id="row-sub-info">
                       <div class="card-row-left">
                         <div class="card-row-texts">
-                          <strong id="home-sub-title">Годовой</strong>
-                          <span id="home-sub-expiry">Действует до 24.11.2026</span>
+                          <strong id="home-sub-title">—</strong>
+                          <span id="home-sub-expiry">Проверяем подписку…</span>
                         </div>
                       </div>
                       <span id="home-sub-badge" class="badge-active-mini" data-i18n="active">Активна</span>
@@ -720,8 +723,8 @@
                     <span class="avatar-user-icon">👤</span>
                   </div>
                   <div class="profile-details-column">
-                    <h2 id="acc-user-name" class="profile-name-text">Arseniy</h2>
-                    <span id="acc-user-email" class="profile-email-text">arseniy@example.com</span>
+                    <h2 id="acc-user-name" class="profile-name-text">—</h2>
+                    <span id="acc-user-email" class="profile-email-text">—</span>
                     <span id="acc-user-status-pill" class="badge-active-mini">
                       <span class="dot-green">●</span>
                       <span data-i18n="active">Активна</span>
@@ -787,6 +790,17 @@
                   <span data-i18n="write_support">Написать в поддержку</span>
                   <span class="btn-arrow">›</span>
                 </button>
+              </div>
+
+              <!-- Account settings parity with Android -->
+              <div class="glass-card settings-group-card account-settings-actions">
+                <h3 style="margin-bottom:14px;" data-i18n="account_settings_title">Настройки аккаунта</h3>
+                <div class="account-settings-button-grid">
+                  <button type="button" id="btn-account-refresh" class="btn-secondary" data-i18n="account_refresh">Обновить данные</button>
+                  <button type="button" id="btn-account-copy-id" class="btn-secondary" data-i18n="account_copy_id">Скопировать ID</button>
+                  <button type="button" id="btn-account-app-settings" class="btn-secondary" data-i18n="account_app_settings">Настройки приложения</button>
+                  <button type="button" id="btn-account-advanced" class="btn-secondary" data-i18n="account_advanced">Дополнительные настройки</button>
+                </div>
               </div>
 
               <!-- Footer Actions -->

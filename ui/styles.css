@@ -3042,3 +3042,58 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   outline: 2px solid #69d3bc;
   outline-offset: 3px;
 }
+
+/* Exact visual asset from the Android V2 drawable.
+   One canonical shield across titlebar, sidebar, login, home and paywall. */
+.titlebar-logo, .sidebar-logo {
+  flex: 0 0 auto;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+.titlebar-logo { width: 24px; height: 26px; }
+.sidebar-logo { width: 29px; height: 31px; }
+.titlebar-logo svg, .sidebar-logo svg { display: none; }
+.hero-shield-emblem { min-height: 116px; width: 132px; margin-inline: auto; }
+.hero-shield-emblem .auth-shield-svg { display: none; }
+.hero-shield-emblem::after {
+  content: '';
+  position: relative;
+  display: block;
+  width: 124px;
+  height: 124px;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+#vpn-power-ring .inner-shield-circle svg,
+#vpn-power-ring-off .inner-shield-circle svg,
+.no-plan-shield-circle svg,
+.paywall-shield-box svg { display: none; }
+#vpn-power-ring .inner-shield-circle::after,
+#vpn-power-ring-off .inner-shield-circle::after {
+  content: '';
+  width: 88px;
+  height: 88px;
+  display: block;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+#vpn-power-ring-off .inner-shield-circle::after {
+  filter: grayscale(.36);
+  opacity: .78;
+}
+#vpn-power-ring.ring-connected .inner-shield-circle::after {
+  animation: byme-shield-connected 2.8s ease-in-out infinite;
+}
+@keyframes byme-shield-connected {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(105, 211, 188, .1)); }
+  50% { transform: scale(1.055); filter: drop-shadow(0 0 14px rgba(105, 211, 188, .22)); }
+}
+.no-plan-shield-circle::after, .paywall-shield-box::after {
+  content: '';
+  display: block;
+  width: 95px;
+  height: 95px;
+  margin-inline: auto;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+.paywall-shield-box::after { width: 78px; height: 78px; }
+@media (prefers-reduced-motion: reduce) {
+  #vpn-power-ring.ring-connected .inner-shield-circle::after { animation: none; }
+}

@@ -727,14 +727,14 @@ function setupEventListeners() {
   document.getElementById('btn-open-telegram-support')?.addEventListener('click', handleOpenTelegramSupport);
   document.getElementById('card-support-channel')?.addEventListener('click', () => {
     const url = 'https://t.me/ByMeVPN';
-    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+    invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
   document.getElementById('card-support-faq')?.addEventListener('click', () => openModal('modal-faq'));
 
   // Telegram bot payment button
   document.getElementById('btn-pay-telegram-bot')?.addEventListener('click', () => {
     const url = 'https://t.me/ByMeVPNbot';
-    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+    invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
 
   // Paywall modal actions
@@ -749,7 +749,7 @@ function setupEventListeners() {
   document.getElementById('btn-paywall-tg-action')?.addEventListener('click', () => {
     closeModal('modal-paywall');
     const url = 'https://t.me/ByMeVPNbot';
-    invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+    invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
 
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
@@ -938,9 +938,9 @@ async function startTelegramAuthFlow() {
     openModal('modal-telegram');
     const statusEl = document.getElementById('tg-polling-status');
     if (statusEl) statusEl.textContent = 'Ожидаем подтверждение в Telegram...';
-    const openTelegram = () => invoke('open_external_url', { url: res.bot_url }).catch(() => {
-      if (typeof window.open === 'function') window.open(res.bot_url, '_blank');
-    });
+    // All external URLs must pass the Rust allowlist. WebView window.open
+    // must never bypass native link validation.
+    const openTelegram = () => invoke('open_external_url', { url: res.bot_url });
     const reopenButton = document.getElementById('btn-tg-reopen');
     if (reopenButton) reopenButton.onclick = openTelegram;
     await openTelegram();
@@ -1857,7 +1857,7 @@ async function refreshAccountSnapshot(notify = false) {
 // External Links
 async function handleOpenTelegramSupport() {
   const url = 'https://t.me/ByMeVPNSupportBot';
-  await invoke('open_external_url', { url }).catch(() => window.open(url, '_blank'));
+  await invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
 }
 
 // Modal Helpers

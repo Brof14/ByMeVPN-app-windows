@@ -870,71 +870,81 @@ async function handleRegister(e) {
 }
 
 let tgPollingInterval = null;
+let tgPollingGeneration = 0;
 let tgPollingBusy = false;
+let tgStarting = false;
 let tgPollingFailures = 0;
 
+function cancelTelegramPolling() {
+  tgPollingGeneration += 1;
+  if (tgPollingInterval) clearInterval(tgPollingInterval);
+  tgPollingInterval = null;
+  tgPollingBusy = false;
+}
+
 function handleGoogleAuth() {
-  openModal('modal-google');
+  // Google OIDC is unavailable until the backend verifies signed ID tokens.
+  showToast('Google-вход пока недоступен. Используйте Telegram или Email.', true);
 }
 
 async function startTelegramAuthFlow() {
-  showToast('Подготовка авторизации через Telegram...');
+  if (tgStarting || state.authBusy) return;
+  cancelTelegramPolling();
+  tgStarting = true;
+  const generation = tgPollingGeneration;
   try {
     const res = await invoke('telegram_create_session');
-    if (!res || !res.session_token || !res.bot_url) {
-      showToast('Не удалось получить сессию Telegram', true);
-      return;
+    if (generation !== tgPollingGeneration) return;
+    if (!res?.session_token || !res?.bot_url) {
+      throw new Error('Сервер не вернул сеанс Telegram');
     }
-
     openModal('modal-telegram');
-
-    // Automatically open the bot link
-    await invoke('open_external_url', { url: res.bot_url }).catch(() => window.open(res.bot_url, '_blank'));
-
-    const reopenBtn = document.getElementById('btn-tg-reopen');
-    if (reopenBtn) {
-      reopenBtn.onclick = () => {
-        invoke('open_external_url', { url: res.bot_url }).catch(() => window.open(res.bot_url, '_blank'));
-      };
-    }
-
     const statusEl = document.getElementById('tg-polling-status');
-    if (statusEl) statusEl.textContent = 'Ожидание подтверждения от Telegram...';
+    if (statusEl) statusEl.textContent = 'Ожидаем подтверждение в Telegram...';
+    const openTelegram = () => invoke('open_external_url', { url: res.bot_url }).catch(() => {
+      if (typeof window.open === 'function') window.open(res.bot_url, '_blank');
+    });
+    document.getElementById('btn-tg-reopen')?.addEventListener('click', openTelegram, { once: true });
+    await openTelegram();
+    if (generation !== tgPollingGeneration) return;
 
-    if (tgPollingInterval) clearInterval(tgPollingInterval);
     tgPollingFailures = 0;
     tgPollingInterval = setInterval(async () => {
-      if (tgPollingBusy) return;
+      if (tgPollingBusy || generation !== tgPollingGeneration) return;
       tgPollingBusy = true;
       try {
         const check = await invoke('telegram_check_session', { sessionToken: res.session_token });
+        if (generation !== tgPollingGeneration) return;
         tgPollingFailures = 0;
-        if (check && ['authenticated', 'approved', 'success'].includes(check.status) && check.auth) {
-          clearInterval(tgPollingInterval);
-          tgPollingInterval = null;
+        if (check && ['authenticated', 'approved', 'success'].includes(check.status)) {
+          if (!check.auth?.user?.id) throw new Error('Telegram не вернул профиль пользователя');
+          cancelTelegramPolling();
           state.user = check.auth.user;
           state.subscription = check.auth.subscription;
           closeModal('modal-telegram');
           showAppShell();
-          showToast(`Вход через Telegram выполнен: ${state.user.name || 'Пользователь'}!`);
-          await refreshAccountSnapshot();
-        } else if (check && check.status === 'expired') {
-          clearInterval(tgPollingInterval);
-          tgPollingInterval = null;
-          if (statusEl) statusEl.textContent = 'Время сессии истекло. Откройте бота ещё раз.';
+          showToast('Вход через Telegram подтверждён');
+          void refreshAccountSnapshot();
+        } else if (check?.status === 'expired') {
+          cancelTelegramPolling();
+          if (statusEl) statusEl.textContent = 'Срок ссылки истёк. Начните вход снова.';
         }
-      } catch (e) {
-        tgPollingFailures++;
+      } catch (err) {
+        if (generation !== tgPollingGeneration) return;
+        tgPollingFailures += 1;
         if (tgPollingFailures >= 3 && statusEl) {
-          statusEl.textContent = 'Сервер авторизации недоступен. Повторяем проверку...';
+          statusEl.textContent = 'Нет ответа сервера. Продолжаем проверку...';
         }
       } finally {
         tgPollingBusy = false;
       }
     }, 1500);
-
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Не удалось запустить вход через Telegram', true);
+    if (generation === tgPollingGeneration) {
+      showToast(typeof err === 'string' ? err : err?.message || 'Не удалось начать вход через Telegram', true);
+    }
+  } finally {
+    tgStarting = false;
   }
 }
 
@@ -1695,10 +1705,7 @@ function openModal(id) {
 }
 
 function closeModal(id) {
-  if (id === 'modal-telegram' && tgPollingInterval) {
-    clearInterval(tgPollingInterval);
-    tgPollingInterval = null;
-  }
+  if (id === 'modal-telegram') cancelTelegramPolling();
   if (id === 'modal-confirm') {
     const btn = document.getElementById('btn-confirm-accept');
     if (btn) btn.onclick = null;

@@ -56,3 +56,8 @@ The Android design source of truth is `Brof14/ByMeVPN-app` (main as of November 
 - Tests include an independent Ubuntu frontend job and Windows Rust/TUN configuration checks. Green CI does not guarantee successful network tunneling.
 
 See [Android parity audit and release gates](docs/ANDROID_PARITY_AUDIT_2026-11-02.md).
+
+
+## Current engineering audit (2026-11-02)
+
+The latest [second-pass audit](docs/SECOND_PASS_AUDIT_2026-11-02.md) covers Telegram login cancellation, native logout and Xray shutdown, continuous connection-health checks, true HWID current-device flags, live subscription states, safer RU/EN UI and the release-gate checklist. The main app now refuses to invent VPN or login results when the Tauri bridge is unavailable. Account/subscription details are backend-owned; personal Windows settings currently remain local and **do not sync** with Android.

@@ -1294,6 +1294,9 @@ const TOAST_EN = Object.freeze({
   "Тарифы сейчас недоступны. Повторите загрузку позже.": "Plans unavailable. Retry later.",
   "Выбранное число устройств недоступно. Обновите тарифы.": "Selected device count is unavailable. Refresh plans.",
   "Цена тарифа не подтверждена сервером.": "The plan price has not been verified by the server.",
+  "Выбранный тариф недоступен для оплаты. Обновите список.": "The selected plan is unavailable for checkout. Refresh plans.",
+  "Неожиданный платёжный провайдер.": "Unexpected payment provider.",
+  "Сервер не вернул подтверждённые данные счёта": "The server did not return a valid invoice.",
   "Формирование счёта ЮKassa...": "Creating a YooKassa invoice...",
   "Ожидаем подтверждение конкретного счёта от сервера": "Waiting for confirmation of this invoice.",
   "Счёт отменён. Можно создать новый платёж.": "Invoice canceled. You can create a new payment.",
@@ -1698,48 +1701,66 @@ async function handlePayYooKassa() {
   }
   const plan = state.selectedPlanCode || 'year';
   const devices = state.selectedDevicesCount || 2;
-  if (!state.availableDeviceCounts.includes(devices)) {
-    showToast('Выбранное число устройств недоступно. Обновите тарифы.', true);
-    return;
-  }
   const selected = PRICING_MATRIX[devices]?.[plan];
-  if (!Number.isSafeInteger(selected?.price) || !Number.isSafeInteger(selected?.days)) {
-    showToast('Цена тарифа не подтверждена сервером.', true);
+  if (!state.availableDeviceCounts.includes(devices) ||
+      !selected?.planCode || selected.purchaseEnabled !== true ||
+      !Number.isSafeInteger(selected.price) || !Number.isSafeInteger(selected.days)) {
+    showToast('Выбранный тариф недоступен для оплаты. Обновите список.', true);
     return;
   }
+  const epoch = state.sessionEpoch;
   state.paymentBusy = true;
-  document.getElementById('btn-pay-yookassa')?.setAttribute('disabled', '');
-  document.getElementById('btn-paywall-yookassa-action')?.setAttribute('disabled', '');
+  updatePricingMatrixUi();
   try {
-    const matches = state.pendingCheckout?.plan === plan && state.pendingCheckout?.devices === devices;
+    const matches = state.pendingCheckout?.planCode === selected.planCode &&
+      state.pendingCheckout?.devices === devices &&
+      state.pendingCheckout?.accountId === String(state.user?.id);
     if (!matches) {
-      const requestId = `checkout_${window.crypto?.randomUUID?.() ||
-        `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
-      state.pendingCheckout = { plan, devices, requestId, invoiceId: null };
+      const random = window.crypto?.randomUUID?.() ||
+        Date.now() + '_' + Math.random().toString(36).slice(2);
+      state.pendingCheckout = {
+        planCode: selected.planCode, devices,
+        accountId: String(state.user?.id), requestId: 'checkout_' + random,
+        invoiceId: null, paymentUrl: null
+      };
     }
-    showToast('Формирование счёта ЮKassa...');
-    const response = await invoke('create_payment', {
-      planCode: plan, devices, amountRub: selected.price, days: selected.days,
-      requestId: state.pendingCheckout.requestId
-    });
-    const invoiceId = response?.invoice_id;
-    const url = response?.confirmation_url || response?.payment_url;
-    if (!invoiceId || !/^[a-zA-Z0-9_-]{1,128}$/.test(invoiceId) ||
-        typeof url !== 'string' || !url.startsWith('https://')) {
-      throw new Error('Сервер не вернул подтверждённые данные счёта');
+    // Reuse an existing invoice after closing checkout or timing out.
+    if (!state.pendingCheckout.invoiceId) {
+      showToast('Формирование счёта ЮKassa...');
+      const response = await invoke('create_payment', {
+        planCode: selected.planCode, devices,
+        amountRub: selected.price, days: selected.days,
+        requestId: state.pendingCheckout.requestId
+      });
+      if (epoch !== state.sessionEpoch) return;
+      const invoiceId = response?.invoice_id;
+      const url = response?.payment_url || response?.confirmation_url;
+      if (response?.provider && response.provider !== 'yookassa') {
+        throw new Error('Неожиданный платёжный провайдер.');
+      }
+      if (typeof invoiceId !== 'string' ||
+          !/^[a-zA-Z0-9_-]{1,128}$/.test(invoiceId) ||
+          typeof url !== 'string' || !url.startsWith('https://')) {
+        throw new Error('Сервер не вернул подтверждённые данные счёта');
+      }
+      state.pendingCheckout.invoiceId = invoiceId;
+      state.pendingCheckout.paymentUrl = url;
     }
-    state.pendingCheckout.invoiceId = invoiceId;
-    await invoke('open_external_url', { url });
+    await invoke('open_external_url', { url: state.pendingCheckout.paymentUrl });
+    if (epoch !== state.sessionEpoch) return;
     showToast('Ожидаем подтверждение конкретного счёта от сервера');
     for (let attempt = 0; attempt < 24; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000));
-      const status = await invoke('check_payment', { invoiceId });
-      if (status?.status === 'failed' || status?.status === 'canceled') {
+      if (epoch !== state.sessionEpoch) return;
+      const status = await invoke('check_payment', { invoiceId: state.pendingCheckout.invoiceId });
+      if (epoch !== state.sessionEpoch) return;
+      const paymentStatus = String(status?.status || '').toLowerCase();
+      if (['failed', 'canceled', 'cancelled', 'expired'].includes(paymentStatus)) {
         state.pendingCheckout = null;
         showToast('Счёт отменён. Можно создать новый платёж.', true);
         return;
       }
-      if (status?.status === 'succeeded' && status.is_active === true) {
+      if (['succeeded', 'paid', 'completed'].includes(paymentStatus) && status?.is_active === true) {
         state.pendingCheckout = null;
         await refreshAccountSnapshot();
         showToast('Оплата подтверждена, подписка обновлена.');
@@ -1748,7 +1769,9 @@ async function handlePayYooKassa() {
     }
     showToast('Счёт ожидает подтверждения. Повторное открытие продолжит его проверку.');
   } catch (err) {
-    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось проверить счёт.', true);
+    if (epoch === state.sessionEpoch) {
+      showToast(typeof err === 'string' ? err : err?.message || 'Не удалось проверить счёт.', true);
+    }
   } finally {
     state.paymentBusy = false;
     updatePricingMatrixUi();

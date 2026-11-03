@@ -857,10 +857,13 @@ let tgPollingGeneration = 0;
 let tgPollingBusy = false;
 let tgStarting = false;
 let tgPollingFailures = 0;
+const TG_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+let tgPollingStartedAt = 0;
 
 function cancelTelegramPolling() {
   const previousToken = tgActiveToken;
   tgActiveToken = null;
+  tgPollingStartedAt = 0;
   if (previousToken) {
     void invoke('telegram_cancel_session', { sessionToken: previousToken }).catch(() => {});
   }
@@ -887,9 +890,10 @@ async function startTelegramAuthFlow() {
       throw new Error('Сервер не вернул сеанс Telegram');
     }
     tgActiveToken = res.session_token;
+    tgPollingStartedAt = Date.now();
     openModal('modal-telegram');
     const statusEl = document.getElementById('tg-polling-status');
-    if (statusEl) statusEl.textContent = 'Ожидаем подтверждение в Telegram...';
+    if (statusEl) statusEl.textContent = uiText('Ожидаем подтверждение в Telegram...', 'Waiting for Telegram confirmation...');
     // All external URLs must pass the Rust allowlist. WebView window.open
     // must never bypass native link validation.
     const openTelegram = () => invoke('open_external_url', { url: res.bot_url });
@@ -901,6 +905,13 @@ async function startTelegramAuthFlow() {
     tgPollingFailures = 0;
     tgPollingInterval = setInterval(async () => {
       if (tgPollingBusy || generation !== tgPollingGeneration) return;
+      if (Date.now() - tgPollingStartedAt >= TG_SESSION_TIMEOUT_MS) {
+        cancelTelegramPolling();
+        if (statusEl) statusEl.textContent = uiText(
+          'Время ожидания истекло. Начните вход заново.',
+          'Sign-in timed out. Start again.');
+        return;
+      }
       tgPollingBusy = true;
       try {
         const check = await invoke('telegram_check_session', { sessionToken: res.session_token });
@@ -918,13 +929,13 @@ async function startTelegramAuthFlow() {
           void refreshAccountSnapshot();
         } else if (check?.status === 'expired') {
           cancelTelegramPolling();
-          if (statusEl) statusEl.textContent = 'Срок ссылки истёк. Начните вход снова.';
+          if (statusEl) statusEl.textContent = uiText('Срок ссылки истёк. Начните вход снова.', 'The login link expired. Start again.');
         }
       } catch (err) {
         if (generation !== tgPollingGeneration) return;
         tgPollingFailures += 1;
         if (tgPollingFailures >= 3 && statusEl) {
-          statusEl.textContent = 'Нет ответа сервера. Продолжаем проверку...';
+          statusEl.textContent = uiText('Нет ответа сервера. Продолжаем проверку...', 'Server unavailable. Retrying...');
         }
       } finally {
         tgPollingBusy = false;

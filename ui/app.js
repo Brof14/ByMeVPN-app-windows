@@ -50,6 +50,7 @@ const state = {
   devicesSupported: false,
   availableDeviceCounts: [],
   paymentBusy: false,
+  trialBusy: false,
   pendingCheckout: null,
   preferredServerCode: 'auto',
   settings: {
@@ -688,10 +689,7 @@ function setupEventListeners() {
   });
 
   // Paywall modal actions
-  document.getElementById('btn-paywall-trial')?.addEventListener('click', () => {
-    closeModal('modal-paywall');
-    handleActivateTrial();
-  });
+  document.getElementById('btn-paywall-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-paywall-yookassa-action')?.addEventListener('click', () => {
     closeModal('modal-paywall');
     handlePayYooKassa();
@@ -1639,22 +1637,72 @@ function filterServers(query) {
 }
 
 // Payment & Trial
+const TRIAL_ACTION_IDS = [
+  'btn-home-activate-trial',
+  'btn-no-plan-trial',
+  'btn-pricing-activate-trial',
+  'btn-paywall-trial'
+];
+
+function setTrialPending(pending) {
+  state.trialBusy = pending;
+  for (const id of TRIAL_ACTION_IDS) {
+    const button = document.getElementById(id);
+    if (button) {
+      button.disabled = pending;
+      button.setAttribute('aria-busy', String(pending));
+    }
+  }
+}
+
 async function handleActivateTrial() {
-  showToast('Активация 3 дней бесплатного доступа...');
+  // Android V2 parity: never issue multiple trial activations for one user.
+  if (state.trialBusy) return;
+  if (!state.user?.id) {
+    showToast(uiText('Войдите в аккаунт для активации пробного периода.', 'Sign in to activate your free trial.'), true);
+    return;
+  }
+  const epoch = state.sessionEpoch;
+  const accountId = String(state.user.id);
+  const sameAccount = () => state.sessionEpoch === epoch &&
+    String(state.user?.id ?? '') === accountId;
+  setTrialPending(true);
+  showToast(uiText('Проверяем пробный доступ...', 'Checking your free trial...'));
   try {
     const res = await invoke('activate_trial');
+    // A successful backend response for a previous signed-in identity must
+    // never overwrite a newly signed-in account after an async race.
+    if (!sameAccount()) return;
     if (!res || !['active', 'trial', 'grace'].includes(res.status)) {
-      throw new Error('Сервер не подтвердил активацию пробного периода');
+      throw new Error(uiText(
+        'Сервер не подтвердил активацию пробного периода.',
+        'The server did not confirm free-trial activation.'
+      ));
     }
     state.subscription = res;
     updateSubscriptionUi();
     updateVpnUi();
-    await loadAvailableServers();
     closeModal('modal-paywall');
-    showToast('Пробный период на 3 дня успешно активирован (0 ₽)!');
     switchTab('tab-home');
+    showToast(uiText('Бесплатный доступ активирован!', 'Your free trial is active!'));
+    // Server discovery may fail independently of successful activation.
+    // Do not report a failed trial or restore paywall after confirmation.
+    try {
+      await loadAvailableServers();
+    } catch (error) {
+      if (sameAccount()) {
+        showToast(uiText(
+          'Доступ активирован, но серверы пока недоступны. Обновите список позже.',
+          'Your trial is active, but servers are unavailable. Retry later.'
+        ), true);
+      }
+    }
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Не удалось активировать пробный период', true);
+    if (!sameAccount()) return;
+    showToast(typeof err === 'string' ? err : err?.message ||
+      uiText('Не удалось активировать пробный период.', 'Could not activate your free trial.'), true);
+  } finally {
+    setTrialPending(false);
   }
 }
 

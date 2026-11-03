@@ -1655,6 +1655,34 @@ function setTrialPending(pending) {
   }
 }
 
+function trialActivationMessage(error) {
+  const raw = String(typeof error === 'string' ? error : error?.message || '');
+  // Match Android's AccountActionErrorMessages: explain recoverable cases
+  // without dumping raw backend payloads or untranslated internal errors.
+  if (/\(HTTP 401\)|\[UNAUTHORIZED\]|Сначала войдите/i.test(raw)) {
+    return uiText('Сеанс завершился. Войдите заново и повторите попытку.',
+      'Your session expired. Sign in again and retry.');
+  }
+  if (/\(HTTP 409\)/.test(raw)) {
+    return uiText('Пробный период уже использован или активирован. Обновите аккаунт.',
+      'Your trial was already used or activated. Refresh your account status.');
+  }
+  if (/\(HTTP 422\)/.test(raw)) {
+    return uiText('Не удалось подтвердить устройство. Перезапустите приложение.',
+      'This device could not be verified. Restart the app.');
+  }
+  if (/\(HTTP 5\d\d\)/.test(raw)) {
+    return uiText('Сервис пробного доступа временно недоступен. Повторите позже.',
+      'The trial service is temporarily unavailable. Try again later.');
+  }
+  if (/связаться|подключени|NETWORK_ERROR|fetch|network|timeout/i.test(raw)) {
+    return uiText('Не удалось связаться с сервером. Проверьте интернет.',
+      'Could not reach the server. Check your internet connection.');
+  }
+  return uiText('Не удалось активировать пробный период. Повторите попытку.',
+    'Could not activate your free trial. Please try again.');
+}
+
 async function handleActivateTrial() {
   // Android V2 parity: never issue multiple trial activations for one user.
   if (state.trialBusy) return;
@@ -1699,8 +1727,7 @@ async function handleActivateTrial() {
     }
   } catch (err) {
     if (!sameAccount()) return;
-    showToast(typeof err === 'string' ? err : err?.message ||
-      uiText('Не удалось активировать пробный период.', 'Could not activate your free trial.'), true);
+    showToast(trialActivationMessage(err), true);
   } finally {
     setTrialPending(false);
   }

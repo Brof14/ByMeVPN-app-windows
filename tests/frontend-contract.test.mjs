@@ -23,7 +23,7 @@ function harness(getPlans = async () => canonical, overrides = {}) {
     console,
     document: {
       addEventListener() {},
-      getElementById() { return null; },
+      getElementById(id) { return id === 'page-title' ? { textContent: '' } : null; },
       querySelectorAll() { return []; }
     },
     window: { __TAURI__: { core: { invoke: async (cmd) => {

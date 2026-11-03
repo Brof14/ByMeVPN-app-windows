@@ -54,6 +54,7 @@ fn main() {
             service::activate_trial,
             service::create_payment,
             service::check_payment,
+            service::get_pending_payment,
             service::delete_device,
             service::delete_account,
             service::vpn_start,

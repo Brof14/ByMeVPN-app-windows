@@ -581,52 +581,43 @@ pub async fn telegram_check_session(
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("pending");
-    if status == "authenticated" || status == "approved" || status == "success" {
-        if let Some(access_token) = res.get("access_token")
-            .or_else(|| res.get("access")).and_then(Value::as_str)
-            .filter(|token| !token.is_empty()) {
-            // A user may cancel while the HTTP request is in flight. Hold the
-            // ticket lock while persisting credentials so cancellation wins
-            // deterministically before or after token storage, not midway.
-            let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
-            if ticket.as_deref() != Some(token) {
-                return Err("Вход через Telegram отменён.".into());
-            }
-            // Current Android contract accepts legacy ref_<access> refresh
-            // credentials when the server omitted a dedicated refresh token.
-            let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
-                .and_then(Value::as_str).filter(|token| !token.is_empty())
-                .map(str::to_string)
-                .unwrap_or_else(|| format!("ref_{access_token}"));
-            if let Err(err) = save_secret(REFRESH_KEY, &refresh_token) {
-                clear_secrets();
-                return Err(err);
-            }
-            if let Err(err) = save_secret(ACCESS_KEY, access_token) {
-                clear_secrets();
-                return Err(err);
-            }
-            *ticket = None;
-            clear_telegram_session();
-            let mut user: UserProfile = res.get("user")
-                .ok_or("Telegram не вернул профиль пользователя.")
-                .and_then(|value| serde_json::from_value(value.clone())
-                    .map_err(|_| "Некорректный профиль Telegram.".to_string()))?;
-            if user.id.is_null() ||
-                user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
-                return Err("Telegram не подтвердил ID пользователя.".into());
-            }
-            if user.name.trim().is_empty() {
-                user.name = "Пользователь Telegram".into();
-            }
-            let subscription: Option<Subscription> = res
-                .get("subscription")
-                .and_then(|s| serde_json::from_value(s.clone()).ok());
-            return Ok(TelegramCheckResult {
-                status: "approved".into(),
-                auth: Some(AuthResult { user, subscription }),
-            });
+    if matches!(status, "authenticated" | "approved" | "success") {
+        let access_token = res.get("access_token").or_else(|| res.get("access"))
+            .and_then(Value::as_str).filter(|token| !token.is_empty())
+            .ok_or("Telegram не вернул токен доступа.")?;
+        let mut user: UserProfile = serde_json::from_value(
+            res.get("user").cloned().ok_or("Telegram не вернул профиль пользователя.")?
+        ).map_err(|_| "Некорректный профиль Telegram.".to_string())?;
+        if user.id.is_null() ||
+            user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
+            return Err("Telegram не подтвердил ID пользователя.".into());
         }
+        if user.name.trim().is_empty() {
+            user.name = "Пользователь Telegram".into();
+        }
+        let subscription: Option<Subscription> = res.get("subscription")
+            .and_then(|value| serde_json::from_value(value.clone()).ok());
+        let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
+            .and_then(Value::as_str).filter(|token| !token.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("ref_{access_token}"));
+        // Check cancellation while the HTTP request was in flight. Keep the
+        // ticket lock through credential persistence and avoid fake profiles.
+        let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+        if ticket.as_deref() != Some(token) {
+            return Err("Вход через Telegram отменён.".into());
+        }
+        if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
+            .and_then(|_| save_secret(ACCESS_KEY, access_token)) {
+            clear_secrets();
+            return Err(err);
+        }
+        *ticket = None;
+        clear_telegram_session();
+        return Ok(TelegramCheckResult {
+            status: "approved".into(),
+            auth: Some(AuthResult { user, subscription }),
+        });
     }
     Ok(TelegramCheckResult {
         status: status.to_string(),

@@ -43,6 +43,26 @@ test('all external links pass through the validated native Tauri broker', () => 
   assert.match(source, /invoke\('open_external_url'/);
 });
 
+test('pending invoice survives app restart and is bound to the backend invoice', () => {
+  const native = readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');
+  assert.match(native, /PENDING_PAYMENT_KEY: &str = "pending_payment"/);
+  assert.match(native, /save_secret\(PENDING_PAYMENT_KEY/);
+  assert.match(native, /pub fn get_pending_payment\(\) -> Option<Value>/);
+  assert.match(native, /clear_pending_payment\(\)/);
+  assert.match(native, /payment_url_is_allowed/);
+  assert.match(source, /invoke\('get_pending_payment'\)/);
+  assert.match(source, /recovered\?\.invoice_id/);
+  assert.match(app, /service::get_pending_payment/);
+});
+
+test('Telegram login wait expires after five minutes and revokes the native ticket', () => {
+  assert.match(source, /const TG_SESSION_TIMEOUT_MS = 5 \* 60 \* 1000/);
+  assert.match(source, /Date\.now\(\) - tgPollingStartedAt >= TG_SESSION_TIMEOUT_MS/);
+  assert.match(source, /cancelTelegramPolling\(\);/);
+  assert.match(source, /telegram_cancel_session/);
+});
+
 test('legacy subscription links cannot fabricate account activation', () => {
   const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
   const native = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');

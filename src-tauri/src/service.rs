@@ -43,6 +43,8 @@ pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
     // Serialize connect/disconnect across network requests and Xray startup.
     pub connection_gate: tokio::sync::Mutex<()>,
+    // Prevent overlapping watchdog/UI egress checks from racing each other.
+    pub status_probe_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
     pub telegram_ticket: Mutex<Option<String>>,
 }
@@ -1389,6 +1391,7 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+    let _probe_guard = state.status_probe_gate.lock().await;
     // Process liveness is not network liveness. Recheck the same public exit
     // address periodically, and remove a tunnel if route/egress changed.
     // The poll runs outside the native tunnel lock to keep disconnect responsive.

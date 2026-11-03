@@ -18,7 +18,7 @@ const canonical = [
   purchase_enabled: true
 })));
 
-function harness(getPlans = async () => canonical) {
+function harness(getPlans = async () => canonical, overrides = {}) {
   const context = {
     console,
     document: {
@@ -27,6 +27,7 @@ function harness(getPlans = async () => canonical) {
       querySelectorAll() { return []; }
     },
     window: { __TAURI__: { core: { invoke: async (cmd) => {
+      if (Object.hasOwn(overrides, cmd)) return await overrides[cmd]();
       if (cmd === 'get_plans') return await getPlans();
       if (cmd === 'get_servers') return [];
       return null;
@@ -292,4 +293,42 @@ test('the Windows shield is byte-for-byte the approved Android V2 drawable', () 
     .update(image)
     .digest('hex');
   assert.equal(sha, 'b1b269246a75c21742ebc968cb2c3ad6893a73d8');
+});
+
+test('trial activation sends only one request even after rapid repeated clicks', async () => {
+  let calls = 0;
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const app = harness(undefined, { activate_trial: async () => {
+    calls += 1;
+    return pending;
+  } });
+  app.eval("state.user = { id: 'account-A' }");
+  const first = app.eval("handleActivateTrial()");
+  const duplicate = app.eval("handleActivateTrial()");
+  assert.equal(calls, 1);
+  assert.equal(app.eval('state.trialBusy'), true);
+  settle({ status: 'trial', max_devices: 2 });
+  await Promise.all([first, duplicate]);
+  assert.equal(app.eval('state.trialBusy'), false);
+});
+
+test('late trial confirmation cannot replace a different signed-in account', async () => {
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const app = harness(undefined, { activate_trial: async () => pending });
+  app.eval("state.user = { id: 'account-A' }");
+  const first = app.eval("handleActivateTrial()");
+  app.eval("state.sessionEpoch += 1; state.user = { id: 'account-B' }; state.subscription = {status:'none'}");
+  settle({ status: 'trial', max_devices: 2 });
+  await first;
+  assert.equal(app.eval('state.subscription.status'), 'none');
+  assert.equal(app.eval('state.trialBusy'), false);
+});
+
+test('trial paywall remains open until server confirms trial activation', () => {
+  const src = readFileSync(new URL('../ui/app.js', import.meta.url), 'utf8');
+  assert.match(src, /getElementById\('btn-paywall-trial'\)\?\.addEventListener\('click', handleActivateTrial\)/);
+  assert.match(src, /if \(!sameAccount\(\)\) return;/);
+  assert.match(src, /setTrialPending\(true\)/);
 });

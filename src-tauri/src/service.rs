@@ -63,7 +63,7 @@ pub struct TunnelMetrics {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {
-    #[serde(default)]
+    #[serde(default, alias = "user_id")]
     pub id: Value,
     #[serde(default, deserialize_with = "null_string_as_empty")]
     pub email: String,
@@ -100,6 +100,8 @@ pub struct Subscription {
     pub max_devices: i64,
     #[serde(default)]
     pub active_devices: i64,
+    #[serde(default)]
+    pub auto_renew: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -327,6 +329,21 @@ async fn request(
     Ok(data)
 }
 
+// Mirror Android's device-limit fallback when the backend omits max_devices.
+fn normalized_subscription_value(value: &Value) -> Value {
+    let mut result = value.clone();
+    if result.get("max_devices").and_then(Value::as_i64).unwrap_or(0) <= 0 {
+        let from_code = result.get("plan_code").and_then(Value::as_str)
+            .and_then(|code| code.rsplit_once("_d"))
+            .and_then(|(_, suffix)| suffix.parse::<i64>().ok())
+            .filter(|count| matches!(count, 2 | 5 | 10));
+        if let Some(limit) = from_code {
+            result["max_devices"] = json!(limit);
+        }
+    }
+    result
+}
+
 fn parse_auth(value: &Value) -> Result<AuthResult, String> {
     let access = value
         .get("access")
@@ -356,7 +373,7 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
         user,
         subscription: value
             .get("subscription")
-            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+            .and_then(|v| serde_json::from_value(normalized_subscription_value(v)).ok()),
     })
 }
 
@@ -478,6 +495,7 @@ pub async fn telegram_login(
         trial_available: false,
         max_devices: 0,
         active_devices: 0,
+        auto_renew: None,
     };
     let profile_json = serde_json::to_string(&profile).map_err(|e| e.to_string())?;
     let subscription_json = serde_json::to_string(&subscription).map_err(|e| e.to_string())?;
@@ -598,7 +616,7 @@ pub async fn telegram_check_session(
             user.name = "Пользователь Telegram".into();
         }
         let subscription: Option<Subscription> = res.get("subscription")
-            .and_then(|value| serde_json::from_value(value.clone()).ok());
+            .and_then(|value| serde_json::from_value(normalized_subscription_value(value)).ok());
         let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
             .and_then(Value::as_str).filter(|token| !token.is_empty())
             .map(str::to_string)
@@ -723,7 +741,7 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     // Device-management downtime must never break login or session recovery.
     let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
     let user = me.get("user").unwrap_or(&me).clone();
-    let subscription = sub.get("subscription").unwrap_or(&sub).clone();
+    let subscription = normalized_subscription_value(sub.get("subscription").unwrap_or(&sub));
     let current_install_id = install_id(app)?;
     let mut device_list = devices.as_ref()
         .and_then(|response| response.get("devices"))
@@ -764,7 +782,7 @@ pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, Strin
     let data = snapshot(&app).await?;
     let user: UserProfile = serde_json::from_value(data["user"].clone())
         .map_err(|e| format!("Некорректный профиль: {e}"))?;
-    let subscription = serde_json::from_value(data["subscription"].clone()).ok();
+    let subscription = serde_json::from_value(normalized_subscription_value(&data["subscription"])).ok();
     Ok(Some(AuthResult { user, subscription }))
 }
 
@@ -974,7 +992,7 @@ pub async fn activate_trial(app: AppHandle) -> Result<Subscription, String> {
     )
     .await?;
     let sub = res.get("subscription").unwrap_or(&res);
-    serde_json::from_value(sub.clone()).map_err(|e| format!("Некорректный статус: {e}"))
+    serde_json::from_value(normalized_subscription_value(sub)).map_err(|e| format!("Некорректный статус: {e}"))
 }
 
 #[tauri::command]
@@ -1608,6 +1626,23 @@ mod tests {
         }}))
         .unwrap();
         assert_eq!(auth.user.name, "tester");
+    }
+
+    #[test]
+    fn android_user_id_and_subscription_device_limit_are_supported() {
+        let auth = parse_auth(&json!({
+            "access":"access", "refresh":"refresh",
+            "user":{"user_id":42, "email":"tester@example.com","name":null},
+            "subscription":{"status":"active","plan_code":"12m_d5","auto_renew":true}
+        })).unwrap();
+        assert_eq!(auth.user.id, json!(42));
+        let sub = auth.subscription.unwrap();
+        assert_eq!(sub.max_devices, 5);
+        assert_eq!(sub.auto_renew, Some(true));
+        let invalid = normalized_subscription_value(&json!({
+            "status":"active", "plan_code":"abc_d999"
+        }));
+        assert!(invalid.get("max_devices").is_none());
     }
 
     #[test]

@@ -595,50 +595,10 @@ function setupEventListeners() {
   // Telegram login buttons
   document.getElementById('btn-tg-login-modal')?.addEventListener('click', startTelegramAuthFlow);
   document.getElementById('btn-tg-register-modal')?.addEventListener('click', startTelegramAuthFlow);
-  document.getElementById('btn-submit-tg-login')?.addEventListener('click', handleTelegramLogin);
-  document.getElementById('btn-toggle-manual-tg')?.addEventListener('click', () => {
-    document.getElementById('tg-manual-box')?.classList.toggle('hidden');
-  });
-
-  // Manual key / subscription link entry (view-auth)
-  document.getElementById('btn-toggle-manual-key')?.addEventListener('click', () => {
-    const pane = document.getElementById('auth-manual-key-pane');
-    const label = document.getElementById('manual-key-btn-text');
-    if (pane) {
-      pane.classList.toggle('hidden');
-      const isHidden = pane.classList.contains('hidden');
-      if (label) {
-        label.textContent = isHidden ? 'Ввести ключ или ссылку вручную ▾' : 'Ввести ключ или ссылку вручную ▴';
-      }
-    }
-  });
-
-  document.getElementById('btn-submit-manual-key')?.addEventListener('click', async () => {
-    const textarea = document.getElementById('input-manual-key-url');
-    const keyUrl = textarea?.value?.trim();
-    if (!keyUrl) {
-      showToast('Вставьте HTTPS-ссылку подписки', true);
-      return;
-    }
-    if (!keyUrl.startsWith('https://')) {
-      showToast('Прямой импорт VLESS-ключей пока не поддерживается.', true);
-      return;
-    }
-    showToast('Проверка ссылки подписки...');
-    try {
-      const res = await invoke('telegram_login', {
-        subscriptionUrl: keyUrl,
-        name: 'Пользователь ByMeVPN'
-      });
-      state.user = res.user;
-      state.subscription = res.subscription;
-      showAppShell();
-      showToast('Ключ успешно активирован!');
-      await refreshAccountSnapshot();
-    } catch (err) {
-      showToast(typeof err === 'string' ? err : 'Неверный формат ключа или ссылки', true);
-    }
-  });
+  // Manual subscription links are not authentication credentials. The
+  // deprecated native telegram_login command was deliberately unregistered
+  // because it fabricated an active account without server verification.
+  // Authenticated bot sessions are the only supported Telegram sign-in flow.
 
   // Sidebar navigation
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
@@ -976,30 +936,6 @@ async function startTelegramAuthFlow() {
     }
   } finally {
     tgStarting = false;
-  }
-}
-
-async function handleTelegramLogin() {
-  const url = document.getElementById('input-tg-sub-url').value.trim();
-  if (!url) {
-    showToast('Вставьте ссылку из Telegram-бота', true);
-    return;
-  }
-
-  showToast('Проверка подписки Telegram...');
-  try {
-    const res = await invoke('telegram_login', {
-      subscriptionUrl: url,
-      name: 'Пользователь Telegram'
-    });
-    state.user = res.user;
-    state.subscription = res.subscription;
-    closeModal('modal-telegram');
-    showAppShell();
-    showToast('Подписка Telegram успешно активирована!');
-    await refreshAccountSnapshot();
-  } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Ошибка проверки ссылки', true);
   }
 }
 

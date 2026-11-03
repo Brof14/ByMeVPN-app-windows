@@ -1677,6 +1677,21 @@ async function handlePayYooKassa() {
   state.paymentBusy = true;
   updatePricingMatrixUi();
   try {
+    // Resume the exact server invoice after a Windows restart. Windows
+    // Credential Manager stores the invoice under the signed-in user.
+    const recovered = await invoke('get_pending_payment');
+    if (epoch !== state.sessionEpoch) return;
+    if (recovered?.plan_code === selected.planCode &&
+        recovered?.devices === devices &&
+        recovered?.invoice_id && recovered?.payment_url && recovered?.request_id) {
+      state.pendingCheckout = {
+        planCode: selected.planCode, devices,
+        accountId: String(state.user?.id),
+        requestId: recovered.request_id,
+        invoiceId: recovered.invoice_id,
+        paymentUrl: recovered.payment_url
+      };
+    }
     const matches = state.pendingCheckout?.planCode === selected.planCode &&
       state.pendingCheckout?.devices === devices &&
       state.pendingCheckout?.accountId === String(state.user?.id);

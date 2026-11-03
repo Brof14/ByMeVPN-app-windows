@@ -255,9 +255,16 @@ async fn refresh(client: &Client) -> Result<(), RefreshError> {
             "Сервер не вернул токен доступа.".into(),
         ));
     }
-    save_secret(ACCESS_KEY, access).map_err(RefreshError::Unavailable)?;
+    // Rotate refresh first; never keep a partially updated token pair.
     if !next_refresh.is_empty() {
-        save_secret(REFRESH_KEY, next_refresh).map_err(RefreshError::Unavailable)?;
+        if let Err(error) = save_secret(REFRESH_KEY, next_refresh) {
+            clear_secrets();
+            return Err(RefreshError::Unavailable(error));
+        }
+    }
+    if let Err(error) = save_secret(ACCESS_KEY, access) {
+        clear_secrets();
+        return Err(RefreshError::Unavailable(error));
     }
     Ok(())
 }
@@ -556,17 +563,28 @@ pub async fn telegram_check_session(
             return Err("Этот сеанс Telegram уже отменён.".into());
         }
     }
-    // Avoid exposing one-time session tickets in URL/proxy access logs.
-    let res = request(
+    // POST keeps one-time tickets out of proxy logs. Only a legacy HTTP 405
+    // permits the same narrow GET fallback as the current Android client.
+    let res = match request(
         &app, Method::POST, "/auth/telegram/check-session",
         Some(json!({"token": token})), false, false,
-    ).await?;
+    ).await {
+        Ok(response) => response,
+        Err(error) if error.ends_with("(HTTP 405)") => {
+            let escaped: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
+            let path = format!("/auth/telegram/check-session?token={escaped}");
+            request(&app, Method::GET, &path, None, false, false).await?
+        }
+        Err(error) => return Err(error),
+    };
     let status = res
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("pending");
     if status == "authenticated" || status == "approved" || status == "success" {
-        if let Some(access_token) = res.get("access_token").and_then(Value::as_str) {
+        if let Some(access_token) = res.get("access_token")
+            .or_else(|| res.get("access")).and_then(Value::as_str)
+            .filter(|token| !token.is_empty()) {
             // A user may cancel while the HTTP request is in flight. Hold the
             // ticket lock while persisting credentials so cancellation wins
             // deterministically before or after token storage, not midway.
@@ -574,14 +592,15 @@ pub async fn telegram_check_session(
             if ticket.as_deref() != Some(token) {
                 return Err("Вход через Telegram отменён.".into());
             }
-            let refresh_token = res.get("refresh_token").and_then(Value::as_str);
-            if let Some(refresh_token) = refresh_token {
-                if let Err(err) = save_secret(REFRESH_KEY, refresh_token) {
-                    clear_secrets();
-                    return Err(err);
-                }
-            } else if let Ok(previous) = entry(REFRESH_KEY) {
-                let _ = previous.delete_credential();
+            // Current Android contract accepts legacy ref_<access> refresh
+            // credentials when the server omitted a dedicated refresh token.
+            let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
+                .and_then(Value::as_str).filter(|token| !token.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("ref_{access_token}"));
+            if let Err(err) = save_secret(REFRESH_KEY, &refresh_token) {
+                clear_secrets();
+                return Err(err);
             }
             if let Err(err) = save_secret(ACCESS_KEY, access_token) {
                 clear_secrets();
@@ -589,16 +608,14 @@ pub async fn telegram_check_session(
             }
             *ticket = None;
             clear_telegram_session();
-            let mut user: UserProfile = res
-                .get("user")
-                .and_then(|u| serde_json::from_value(u.clone()).ok())
-                .unwrap_or(UserProfile {
-                    id: json!("tg_user"),
-                    email: String::new(),
-                    name: "Пользователь Telegram".into(),
-                    is_google: false,
-                    created_at: None,
-                });
+            let mut user: UserProfile = res.get("user")
+                .ok_or("Telegram не вернул профиль пользователя.")
+                .and_then(|value| serde_json::from_value(value.clone())
+                    .map_err(|_| "Некорректный профиль Telegram.".to_string()))?;
+            if user.id.is_null() ||
+                user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
+                return Err("Telegram не подтвердил ID пользователя.".into());
+            }
             if user.name.trim().is_empty() {
                 user.name = "Пользователь Telegram".into();
             }
@@ -1640,6 +1657,12 @@ mod tests {
         assert_eq!(found[0]["purchase_enabled"], false);
         assert_eq!(mobile_plan_duration("3m_d5", 5), Some(120));
         assert_eq!(mobile_plan_duration("3m_d2", 5), None);
+    }
+
+    #[test]
+    fn telegram_legacy_ticket_query_is_percent_encoded() {
+        let encoded: String = url::form_urlencoded::byte_serialize(b"ab+c/=token").collect();
+        assert_eq!(encoded, "ab%2Bc%2F%3Dtoken");
     }
 
     #[test]

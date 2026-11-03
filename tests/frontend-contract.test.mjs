@@ -332,3 +332,14 @@ test('trial paywall remains open until server confirms trial activation', () => 
   assert.match(src, /if \(!sameAccount\(\)\) return;/);
   assert.match(src, /setTrialPending\(true\)/);
 });
+
+test('trial errors use Android-aligned, language-specific recovery copy', () => {
+  const app = harness();
+  assert.match(app.eval("trialActivationMessage('(HTTP 409)')"), /уже использован/);
+  assert.match(app.eval("trialActivationMessage('(HTTP 422)')"), /устройство/);
+  assert.match(app.eval("trialActivationMessage('(HTTP 503)')"), /временно недоступен/);
+  app.eval("state.settings.language = 'en'");
+  assert.match(app.eval("trialActivationMessage('(HTTP 409)')"), /already used/);
+  assert.match(app.eval("trialActivationMessage('(HTTP 401)')"), /session expired/);
+  assert.match(app.eval("trialActivationMessage('NETWORK_ERROR')"), /internet connection/);
+});

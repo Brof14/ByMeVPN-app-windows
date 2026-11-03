@@ -6,17 +6,17 @@ import { createContext, runInContext } from 'node:vm';
 
 const source = readFileSync(new URL('../ui/app.js', import.meta.url), 'utf8');
 
+// Android V2: GET /mobile/v2/plans?devices=2,5,10.
 const canonical = [
-  { code: 'month', days: 30, options: [89, 109, 129] },
-  { code: 'quarter', days: 120, options: [316, 396, 476] },
-  { code: 'half_year', days: 240, options: [552, 712, 872] },
-  { code: 'year', days: 450, options: [885, 1185, 1485] },
-].map(plan => ({
-  code: plan.code,
-  device_options: [2, 5, 10].map((devices, index) => ({
-    devices, price_rub: plan.options[index], days: plan.days
-  }))
-}));
+  { sku: '1m', days: 30, options: [89, 109, 129] },
+  { sku: '3m', days: 120, options: [316, 396, 476] },
+  { sku: '6m', days: 240, options: [552, 712, 872] },
+  { sku: '12m', days: 450, options: [885, 1185, 1485] }
+].flatMap(plan => [2, 5, 10].map((devices, index) => ({
+  code: plan.sku + '_d' + devices,
+  devices, days: plan.days, price_rub: plan.options[index],
+  purchase_enabled: true
+})));
 
 function harness(getPlans = async () => canonical) {
   const context = {
@@ -57,71 +57,75 @@ test('production UI fails closed without Tauri rather than pretending to use a V
     /должно быть открыто через Windows-клиент/);
 });
 
-test('checkout prices and gift durations come from server catalog', async () => {
+test('Android V2 exact SKU prices, device counts and gift durations are confirmed', async () => {
   const app = harness();
   await app.eval('loadPricingCatalog()');
-  const result = JSON.parse(app.eval(`JSON.stringify({
-    ready: state.catalogReady,
-    price: PRICING_MATRIX[2].year.price,
-    days: PRICING_MATRIX[2].year.days,
-    bigger: PRICING_MATRIX[10].quarter.price
-  })`));
-  assert.deepEqual(result, { ready: true, price: 885, days: 450, bigger: 476 });
+  const result = JSON.parse(app.eval('JSON.stringify({ ready: state.catalogReady, price: PRICING_MATRIX[2].year.price, days: PRICING_MATRIX[2].year.days, bigger: PRICING_MATRIX[10].quarter.price, sku: PRICING_MATRIX[5].year.planCode, checkout: PRICING_MATRIX[5].year.purchaseEnabled })'));
+  assert.deepEqual(result, {
+    ready: true, price: 885, days: 450, bigger: 476,
+    sku: '12m_d5', checkout: true
+  });
 });
 
-test('checkout prices parse correctly from live production flat catalog', async () => {
-  const liveCatalog = [
-    { code: 'trial', name: '3 дня бесплатно', price_rub: 0, days: 3 },
-    { code: 'month', name: '1 месяц', price_rub: 149, days: 30 },
-    { code: 'quarter', name: '3 месяца', price_rub: 380, days: 90 },
-    { code: 'half_year', name: '6 месяцев', price_rub: 625, days: 180 },
-    { code: 'year', name: '1 год', price_rub: 983, days: 365 }
-  ];
-  const app = harness(async () => liveCatalog);
+test('verified device-specific offers do not generate prices for absent tiers', async () => {
+  const onlyTwo = canonical.filter(p => p.devices === 2);
+  const app = harness(async () => onlyTwo);
   await app.eval('loadPricingCatalog()');
-  const result = JSON.parse(app.eval(`JSON.stringify({
-    ready: state.catalogReady,
-    monthPrice: PRICING_MATRIX[2].month.price,
-    yearPrice: PRICING_MATRIX[2].year.price,
-    quarterDays: PRICING_MATRIX[2].quarter.days
-  })`));
-  assert.deepEqual(result, { ready: true, monthPrice: 149, yearPrice: 983, quarterDays: 90 });
+  const result = JSON.parse(app.eval('JSON.stringify({ready: state.catalogReady, available: state.availableDeviceCounts, price: PRICING_MATRIX[2].quarter.price, missing: PRICING_MATRIX[5].quarter || null})'));
+  assert.deepEqual(result, { ready: true, available: [2], price: 316, missing: null });
 });
 
+test('missing or false purchase_enabled permits showing price, not checkout', async () => {
+  const disabled = canonical.map(p => ({ ...p, purchase_enabled: false }));
+  const app = harness(async () => disabled);
+  await app.eval('loadPricingCatalog()');
+  const result = JSON.parse(app.eval('JSON.stringify({ready: state.catalogReady, price: PRICING_MATRIX[2].year.price, checkout: PRICING_MATRIX[2].year.purchaseEnabled})'));
+  assert.deepEqual(result, { ready: true, price: 885, checkout: false });
+  const noFlag = harness(async () => canonical.map(({purchase_enabled, ...p}) => p));
+  await noFlag.eval('loadPricingCatalog()');
+  assert.equal(noFlag.eval('PRICING_MATRIX[2].year.purchaseEnabled'), false);
+});
 
-test('real Android API plan aliases are accepted without fabricating prices for device upgrades', async () => {
+test('legacy or mismatched Android V2 SKU codes cannot authorize checkout', async () => {
   const oldApi = [
-    { code: '1m', price_rub: 89, days: 30 },
-    { code: '3m', price_rub: 316, days: 120 },
-    { code: '6m', price_rub: 552, days: 240 },
-    { code: '12m', price_rub: 885, days: 450 }
+    { code: '1m', price_rub: 89, days: 30, devices: 2, purchase_enabled: true },
+    { code: '12m_d5', price_rub: 885, days: 450, devices: 2, purchase_enabled: true },
+    { code: '3m_d2', price_rub: 316, days: 90, devices: 2, purchase_enabled: true }
   ];
   const app = harness(async () => oldApi);
   await app.eval('loadPricingCatalog()');
-  const state = JSON.parse(app.eval(`JSON.stringify({
-    ready: state.catalogReady,
-    available: state.availableDeviceCounts,
-    price: PRICING_MATRIX[2].quarter.price
-  })`));
-  assert.deepEqual(state, { ready: true, available: [2], price: 316 });
-});
-
-test('missing server plans block checkout, even if cached defaults exist', async () => {
-  const app = harness(async () => [{ code: '1m', price_rub: 89, days: 30 }]);
-  await app.eval('loadPricingCatalog()');
   assert.equal(app.eval('state.catalogReady'), false);
+  assert.deepEqual(JSON.parse(app.eval('JSON.stringify(state.availableDeviceCounts)')), []);
 });
 
-test('new server catalog exposes three exact device variants', async () => {
+test('incomplete server catalog cannot fabricate unavailable plan durations', async () => {
+  const app = harness(async () => [canonical[0]]);
+  await app.eval('loadPricingCatalog()');
+  assert.equal(app.eval('state.catalogReady'), true);
+  assert.deepEqual(JSON.parse(app.eval('JSON.stringify(state.availableDeviceCounts)')), [2]);
+  assert.equal(app.eval('PRICING_MATRIX[2].year'), undefined);
+});
+
+test('full confirmed Android V2 catalog exposes all three device variants', async () => {
   const app = harness();
   await app.eval('loadPricingCatalog()');
   assert.deepEqual(JSON.parse(app.eval('JSON.stringify(state.availableDeviceCounts)')), [2, 5, 10]);
 });
 
-test('failed catalog fetch blocks payment rather than selling old prices', async () => {
+test('failed authenticated Android V2 catalog request blocks checkout', async () => {
   const app = harness(async () => { throw new Error('offline'); });
   await app.eval('loadPricingCatalog()');
   assert.equal(app.eval('state.catalogReady'), false);
+});
+
+test('payment and catalog endpoints track current Android V2 and reject stale payment contracts', () => {
+  const native = readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8');
+  assert.match(native, /\/mobile\/v2\/plans\?devices=2/);
+  assert.match(native, /\/mobile\/v2\/payment\/create/);
+  assert.match(native, /\/mobile\/v2\/payment\/check/);
+  assert.doesNotMatch(native, /"\/payment\/create"/);
+  assert.match(source, /selected\.purchaseEnabled !== true/);
+  assert.match(source, /state\.pendingCheckout\.invoiceId/);
 });
 
 test('default state contains neither imaginary countries nor fake measured bandwidth', () => {

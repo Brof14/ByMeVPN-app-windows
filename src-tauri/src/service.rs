@@ -821,11 +821,41 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
         let code = server.get("node_code").or_else(|| server.get("code"))
             .and_then(Value::as_str).unwrap_or("");
         if code.is_empty() { continue; }
+        let code_upper = server.get("country_code").and_then(Value::as_str)
+            .unwrap_or("").to_ascii_uppercase();
+        let country_fallback = match code_upper.as_str() {
+            "DE" => "Германия", "NL" => "Нидерланды", "US" => "США",
+            "FI" => "Финляндия", "SE" => "Швеция", "GB" => "Великобритания",
+            _ => "Основной сервер",
+        };
+        let country_en_fallback = match code_upper.as_str() {
+            "DE" => "Germany", "NL" => "Netherlands", "US" => "USA",
+            "FI" => "Finland", "SE" => "Sweden", "GB" => "United Kingdom",
+            _ => "Main Server",
+        };
+        let country = server.get("country").and_then(Value::as_str)
+            .filter(|v| !v.is_empty() && *v != "Unknown")
+            .unwrap_or(country_fallback);
+        let country_en = server.get("country_en").and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(if country == country_fallback { country_en_fallback } else { country });
+        let city = server.get("city").and_then(Value::as_str)
+            .filter(|v| *v != "Unknown").unwrap_or("");
+        let city_en = server.get("city_en").and_then(Value::as_str)
+            .filter(|v| !v.is_empty()).unwrap_or(city);
         let name = server.get("display_name").or_else(|| server.get("name"))
-            .or_else(|| server.get("remark")).and_then(Value::as_str).unwrap_or(code);
-        let country = server.get("country_code").or_else(|| server.get("country"))
-            .and_then(Value::as_str).unwrap_or("");
-        let flag = server.get("flag").and_then(Value::as_str).unwrap_or("🌐");
+            .or_else(|| server.get("remark")).and_then(Value::as_str)
+            .unwrap_or(code);
+        let name_en = server.get("display_name_en").or_else(|| server.get("name_en"))
+            .and_then(Value::as_str).filter(|v| !v.is_empty())
+            .unwrap_or(country_en);
+        let flag_fallback = match code_upper.as_str() {
+            "DE" => "🇩🇪", "NL" => "🇳🇱", "US" => "🇺🇸",
+            "FI" => "🇫🇮", "SE" => "🇸🇪", "GB" => "🇬🇧",
+            _ => "🌐"
+        };
+        let flag = server.get("flag").and_then(Value::as_str)
+            .filter(|v| !v.is_empty()).unwrap_or(flag_fallback);
         let host = config.get("server").or_else(|| config.get("endpoint"))
             .and_then(Value::as_str).unwrap_or("").to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
@@ -838,7 +868,9 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             None
         };
         tasks.push(task);
-        normalized.push(json!({"code":code, "name":name, "country":country,
+        normalized.push(json!({"code":code, "name":name, "name_en":name_en,
+            "country":country, "country_en":country_en, "country_code":code_upper,
+            "city":city, "city_en":city_en,
             "flag":flag, "supported":supported, "ping":0}));
     }
     // Concurrent TCP probes; never block the async runtime or measure one by one.

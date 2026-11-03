@@ -43,6 +43,25 @@ test('all external links pass through the validated native Tauri broker', () => 
   assert.match(source, /invoke\('open_external_url'/);
 });
 
+test('legacy subscription links cannot fabricate account activation', () => {
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  const native = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /invoke\('telegram_login'/);
+  assert.doesNotMatch(html, /id="btn-submit-manual-key"|id="btn-submit-tg-login"/);
+  assert.doesNotMatch(native, /service::telegram_login,/);
+  assert.match(source, /telegram_create_session/);
+  assert.match(source, /telegram_check_session/);
+});
+
+test('checkout never displays historical prices before server verification', () => {
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  for (const id of ['price-month', 'price-quarter', 'price-half_year', 'price-year']) {
+    assert.match(html, new RegExp('id="' + id + '">—</strong>'));
+  }
+  assert.doesNotMatch(html, /class="tariff-price-bold">(?:89|885)\s*₽/);
+  assert.match(source, /purchaseEnabled === true/);
+});
+
 test('production UI fails closed without Tauri rather than pretending to use a VPN', async () => {
   const context = createContext({
     console,

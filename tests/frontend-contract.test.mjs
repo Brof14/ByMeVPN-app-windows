@@ -120,7 +120,7 @@ test('failed authenticated Android V2 catalog request blocks checkout', async ()
 
 test('payment and catalog endpoints track current Android V2 and reject stale payment contracts', () => {
   const native = readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8');
-  assert.match(native, /\/mobile\/v2\/plans\?devices=2/);
+  assert.match(native, /\/mobile\/v2\/plans\?devices=\{devices\}/);
   assert.match(native, /\/mobile\/v2\/payment\/create/);
   assert.match(native, /\/mobile\/v2\/payment\/check/);
   assert.doesNotMatch(native, /"\/payment\/create"/);

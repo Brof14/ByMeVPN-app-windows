@@ -367,7 +367,6 @@ async function loadInitialData() {
   // Plans can be requested without an authenticated user. Never show stale
   // local price constants as a live checkout option.
   // Pricing is nonessential for login: never delay startup on /plans timeout.
-  void loadPricingCatalog();
   let session = null;
   let restoreFailed = false;
   try {
@@ -419,65 +418,58 @@ async function loadAvailableServers() {
   }
 }
 
+// Android V2 offers exact device-scoped SKUs; prices are never extrapolated.
+const VERIFIED_PLAN_TYPES = Object.freeze({
+  month: { sku: '1m', days: 30, months: 1 },
+  quarter: { sku: '3m', days: 120, months: 4 },
+  half_year: { sku: '6m', days: 240, months: 8 },
+  year: { sku: '12m', days: 450, months: 15 }
+});
+
 async function loadPricingCatalog() {
+  const epoch = state.sessionEpoch;
   state.catalogReady = false;
   state.availableDeviceCounts = [];
+  updatePricingMatrixUi();
   try {
+    // The native broker aggregates authenticated Android V2 catalog tiers.
     const plans = await invoke('get_plans');
-    const aliases = { month: '1m', quarter: '3m', half_year: '6m', year: '12m' };
-    const codes = Object.keys(aliases);
-    if (!Array.isArray(plans)) throw new Error('Missing plans');
-
-    // Fail closed on incomplete or invented prices. Older API responses may
-    // explicitly offer ONLY the 2-device variant, never estimated upgrades.
+    if (epoch !== state.sessionEpoch) return;
+    if (!Array.isArray(plans)) throw new Error('Invalid Android V2 catalog');
     const catalog = { 2: {}, 5: {}, 10: {} };
-    let hasDeviceOptions = true;
-    for (const code of codes) {
-      const plan = plans.find(p => p.code === aliases[code] || p.code === code ||
-        p.desktop_code === code);
-      if (!plan) throw new Error(`Missing plan ${code}`);
-      if (Array.isArray(plan.device_options)) {
-        for (const devices of [2, 5, 10]) {
-          const option = plan.device_options.find(item => item.devices === devices);
-          if (!Number.isSafeInteger(option?.price_rub) || option.price_rub <= 0 ||
-              !Number.isSafeInteger(option?.days) || option.days <= 0) {
-            throw new Error('Incomplete device price');
-          }
-          catalog[devices][code] = {
-            price: option.price_rub, days: option.days,
-            note: code === 'month' ? `${option.days} дней` :
-              `${Math.round(option.price_rub / (option.days / 30))} ₽ / месяц`
-          };
-        }
-      } else {
-        hasDeviceOptions = false;
-        if (!Number.isSafeInteger(plan.price_rub) || plan.price_rub <= 0 ||
-            !Number.isSafeInteger(plan.days) || plan.days <= 0) {
-          throw new Error('Incomplete legacy plan');
-        }
-        catalog[2][code] = {
-          price: plan.price_rub, days: plan.days,
-          note: code === 'month' ? `${plan.days} дней` :
-            `${Math.round(plan.price_rub / (plan.days / 30))} ₽ / месяц`
+    for (const devices of [2, 5, 10]) {
+      for (const [key, meta] of Object.entries(VERIFIED_PLAN_TYPES)) {
+        const planCode = meta.sku + '_d' + devices;
+        const offer = plans.find(p => p.code === planCode &&
+          p.devices === devices && p.days === meta.days &&
+          Number.isSafeInteger(p.price_rub) && p.price_rub > 0);
+        if (!offer) continue;
+        catalog[devices][key] = {
+          price: offer.price_rub, days: offer.days, planCode,
+          purchaseEnabled: offer.purchase_enabled === true,
+          note: key === 'month' ? uiText('30 дней', '30 days') :
+            Math.round(offer.price_rub / meta.months) + ' ' +
+              uiText('₽ / месяц', 'RUB / month')
         };
       }
     }
-    state.availableDeviceCounts = hasDeviceOptions ? [2, 5, 10] : [2];
-    for (const device of state.availableDeviceCounts) {
-      for (const code of codes) {
-        if (!catalog[device][code]) throw new Error('Incomplete price matrix');
-      }
-    }
-    for (const device of state.availableDeviceCounts) {
-      PRICING_MATRIX[device] = catalog[device];
-    }
+    state.availableDeviceCounts = [2, 5, 10].filter(devices =>
+      Object.keys(catalog[devices]).length > 0);
+    if (!state.availableDeviceCounts.length) throw new Error('No verified mobile V2 plans');
+    for (const devices of [2, 5, 10]) PRICING_MATRIX[devices] = catalog[devices];
     if (!state.availableDeviceCounts.includes(state.selectedDevicesCount)) {
-      state.selectedDevicesCount = 2;
+      state.selectedDevicesCount = state.availableDeviceCounts[0];
+    }
+    if (!catalog[state.selectedDevicesCount][state.selectedPlanCode]) {
+      state.selectedPlanCode = ['year', 'half_year', 'quarter', 'month']
+        .find(code => catalog[state.selectedDevicesCount][code]) || 'month';
     }
     state.catalogReady = true;
   } catch (err) {
+    if (epoch !== state.sessionEpoch) return;
     state.catalogReady = false;
     state.availableDeviceCounts = [];
+    for (const devices of [2, 5, 10]) PRICING_MATRIX[devices] = {};
     showToast('Тарифы сейчас недоступны: оплата временно заблокирована.', true);
   }
   updatePricingMatrixUi();
@@ -507,6 +499,7 @@ function showAppShell() {
   updateVpnUi();
   void refreshAccountSnapshot();
   void loadAvailableServers();
+  void loadPricingCatalog();
 }
 
 // Tab Switching
@@ -757,6 +750,7 @@ function setupEventListeners() {
       document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       state.selectedPlanCode = card.dataset.pwPlan || 'year';
+      updatePricingMatrixUi();
     });
   });
 
@@ -776,6 +770,7 @@ function setupEventListeners() {
       document.querySelectorAll('.tariff-card[data-plan]').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       state.selectedPlanCode = card.dataset.plan;
+      updatePricingMatrixUi();
     });
   });
 
@@ -1571,54 +1566,46 @@ function escapeHtml(str) {
 
 // Pricing Matrix UI Calculation
 function updatePricingMatrixUi() {
-  document.getElementById('btn-pay-yookassa')?.toggleAttribute('disabled', !state.catalogReady);
-  document.getElementById('btn-paywall-yookassa-action')?.toggleAttribute('disabled', !state.catalogReady);
+  const dev = state.selectedDevicesCount || 2;
+  const matrix = PRICING_MATRIX[dev] || {};
+  const chosen = matrix[state.selectedPlanCode];
+  const canPay = state.catalogReady && chosen?.purchaseEnabled === true && !state.paymentBusy;
+  for (const id of ['btn-pay-yookassa', 'btn-paywall-yookassa-action']) {
+    document.getElementById(id)?.toggleAttribute('disabled', !canPay);
+  }
   document.querySelectorAll('.dev-seg-btn').forEach(btn => {
     const count = Number(btn.dataset.devices);
     btn.disabled = !state.availableDeviceCounts.includes(count);
-    btn.classList.toggle('active', count === state.selectedDevicesCount);
+    btn.classList.toggle('active', count === dev);
   });
-  const dev = state.selectedDevicesCount || 2;
-  const matrix = PRICING_MATRIX[dev] || PRICING_MATRIX[2];
-  if (!state.catalogReady) {
-    for (const card of document.querySelectorAll('.paywall-mini-tariffs .tariff-card')) {
-      const price = card.querySelector('.tariff-price-bold');
-      if (price) price.textContent = '—';
-    }
-    for (const id of ['price-month', 'price-quarter', 'price-half_year', 'price-year']) {
-      const element = document.getElementById(id);
-      if (element) element.textContent = '—';
-    }
-    return;
+  for (const [code, priceId, noteId] of [
+    ['month', 'price-month', 'days-month'],
+    ['quarter', 'price-quarter', 'rate-quarter'],
+    ['half_year', 'price-half_year', 'rate-half_year'],
+    ['year', 'price-year', 'rate-year']
+  ]) {
+    const offer = state.catalogReady ? matrix[code] : null;
+    const price = document.getElementById(priceId);
+    const note = document.getElementById(noteId);
+    if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
+    if (note) note.textContent = offer ? offer.note :
+      uiText('Тариф недоступен', 'Plan unavailable');
   }
-
-  const pMonth = document.getElementById('price-month');
-  const dMonth = document.getElementById('days-month');
-  const pQuarter = document.getElementById('price-quarter');
-  const rQuarter = document.getElementById('rate-quarter');
-  const pHalf = document.getElementById('price-half_year');
-  const rHalf = document.getElementById('rate-half_year');
-  const pYear = document.getElementById('price-year');
-  const rYear = document.getElementById('rate-year');
-
-  if (pMonth) pMonth.textContent = `${matrix.month.price} ₽`;
-  if (dMonth) dMonth.textContent = matrix.month.note;
-
-  if (pQuarter) pQuarter.textContent = `${matrix.quarter.price} ₽`;
-  if (rQuarter) rQuarter.textContent = matrix.quarter.note;
-
-  if (pHalf) pHalf.textContent = `${matrix.half_year.price} ₽`;
-  if (rHalf) rHalf.textContent = matrix.half_year.note;
-
-  if (pYear) pYear.textContent = `${matrix.year.price} ₽`;
-  if (rYear) rYear.textContent = matrix.year.note;
+  document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
+    const offer = state.catalogReady ? matrix[card.dataset.plan] : null;
+    card.classList.toggle('selected', card.dataset.plan === state.selectedPlanCode);
+    card.classList.toggle('unavailable', !offer);
+    card.setAttribute('aria-disabled', String(!offer));
+  });
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
-    const entry = matrix[card.dataset.pwPlan];
-    if (!entry) return;
+    const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
     const price = card.querySelector('.tariff-price-bold');
     const note = card.querySelector('.tariff-subnote');
-    if (price) price.textContent = `${entry.price} ₽`;
-    if (note) note.textContent = entry.note;
+    if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
+    if (note) note.textContent = offer ? offer.note :
+      uiText('Тариф недоступен', 'Plan unavailable');
+    card.classList.toggle('unavailable', !offer);
+    card.classList.toggle('selected', card.dataset.pwPlan === state.selectedPlanCode);
   });
 }
 

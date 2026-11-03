@@ -660,6 +660,9 @@ pub async fn telegram_check_session(
         if ticket.as_deref() != Some(token) {
             return Err("Вход через Telegram отменён.".into());
         }
+        // Telegram may switch the active account. Invalidate any previous
+        // identity's invoice before saving the new signed-in credentials.
+        clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
             .and_then(|_| save_secret(ACCESS_KEY, access_token)) {
             clear_secrets();

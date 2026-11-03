@@ -869,17 +869,21 @@ fn mobile_catalog_plans(catalog: &Value, devices: i64) -> Vec<Value> {
 pub async fn get_plans(app: AppHandle) -> Result<Vec<Value>, String> {
     // Android V2 explicitly scopes pricing to each device tier, and requires auth.
     // Each tier is independent: one unavailable tier should not hide valid offers.
-    let (two, five, ten) = tokio::join!(
-        request(&app, Method::GET, "/mobile/v2/plans?devices=2", None, true, false),
-        request(&app, Method::GET, "/mobile/v2/plans?devices=5", None, true, false),
-        request(&app, Method::GET, "/mobile/v2/plans?devices=10", None, true, false),
-    );
+    let tasks: Vec<_> = [2_i64, 5, 10].into_iter().map(|devices| {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let path = format!("/mobile/v2/plans?devices={devices}");
+            (devices, request(&app, Method::GET, &path, None, true, false).await)
+        })
+    }).collect();
     let mut confirmed = Vec::new();
     let mut failure = None;
-    for (devices, result) in [(2, two), (5, five), (10, ten)] {
-        match result {
-            Ok(body) => confirmed.extend(mobile_catalog_plans(&body, devices)),
-            Err(error) => failure = Some(error),
+    for task in tasks {
+        match task.await {
+            Ok((devices, Ok(body))) =>
+                confirmed.extend(mobile_catalog_plans(&body, devices)),
+            Ok((_, Err(error))) => failure = Some(error),
+            Err(error) => failure = Some(format!("Не удалось загрузить тарифы: {error}")),
         }
     }
     if confirmed.is_empty() {

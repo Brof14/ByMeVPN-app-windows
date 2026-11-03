@@ -1371,16 +1371,19 @@ function updateVpnUi() {
   const homeCity = document.getElementById('home-server-city');
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
-  if (nameEl) nameEl.textContent = isConn && state.metrics?.server_name ? state.metrics.server_name : s.name;
+  if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
+    state.metrics.server_name : serverDisplayName(s);
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     document.getElementById(id)?.setAttribute('aria-busy', String(state.connectionBusy));
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
-    uiText('Автоматически', 'Automatic') : s.name.split('•')[0].trim();
-  if (homeCity) homeCity.textContent = s.name.includes('•') ?
-    s.name.split('•')[1].trim() : uiText('Автовыбор', 'Auto select');
+    uiText('Автоматически', 'Automatic') :
+    (state.settings.language === 'en' ? s.country_en : s.country) || serverDisplayName(s);
+  if (homeCity) homeCity.textContent = s.code === 'auto' ?
+    uiText('Автовыбор', 'Auto select') :
+    ((state.settings.language === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
 }
@@ -1616,6 +1619,14 @@ function updatePricingMatrixUi() {
 }
 
 // Render Servers
+function serverDisplayName(server) {
+  if (!server || server.code === 'auto') return uiText('Автоматически', 'Automatic');
+  if (state.settings.language !== 'en') return server.name || server.code;
+  if (server.name_en && server.name_en !== server.country_en) return server.name_en;
+  const country = server.country_en || server.name || server.code;
+  return server.city_en ? country + ' • ' + server.city_en : country;
+}
+
 function renderServersList(filter = '') {
   const container = document.getElementById('servers-dynamic-list');
   if (!container) return;
@@ -1628,7 +1639,8 @@ function renderServersList(filter = '') {
   if (!list.length) {
     const empty = document.createElement('p');
     empty.className = 'server-empty-message';
-    empty.textContent = 'Доступных серверов нет. Проверьте подписку и соединение.';
+    empty.textContent = uiText('Доступных серверов нет. Проверьте подписку и соединение.',
+      'No servers available. Check your subscription and connection.');
     container.appendChild(empty);
     return;
   }
@@ -1646,13 +1658,16 @@ function renderServersList(filter = '') {
     const details = document.createElement('div');
     details.className = 'server-item-text';
     const title = document.createElement('strong');
-    title.textContent = srv.name || srv.code;
+    title.textContent = serverDisplayName(srv);
     const subtitle = document.createElement('span');
-    subtitle.textContent = srv.supported === false ? 'Этот протокол пока не поддерживается' : (srv.country || 'Доступная локация');
+    subtitle.textContent = srv.supported === false ?
+      uiText('Этот протокол пока не поддерживается', 'This protocol is not yet supported') :
+      ((state.settings.language === 'en' ? srv.country_en : srv.country) ||
+        uiText('Доступная локация', 'Available location'));
     details.append(title, subtitle);
     const ping = document.createElement('span');
     ping.className = 'server-ping-badge';
-    ping.textContent = srv.ping > 0 ? `${srv.ping} мс` : '—';
+    ping.textContent = srv.ping > 0 ? (srv.ping + ' ms') : '—';
     const dot = document.createElement('span');
     dot.className = 'radio-selection-dot';
     card.append(flag, details, ping, dot);
@@ -1665,7 +1680,7 @@ function renderServersList(filter = '') {
       document.getElementById('recommended-server-auto')?.setAttribute('aria-pressed', 'false');
       renderServersList(filter);
       updateVpnUi();
-      showToast(`Выбран сервер: ${srv.name || srv.code}`);
+      showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(srv));
       switchTab('tab-home');
     });
     container.appendChild(card);
@@ -1840,6 +1855,7 @@ function applyLanguage(lang) {
   updateVpnUi();
   updateSubscriptionUi();
   updateDevicesUi();
+  renderServersList();
 }
 
 // Refresh Account Snapshot

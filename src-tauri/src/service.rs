@@ -19,6 +19,7 @@ use std::os::windows::process::CommandExt;
 const KEYRING_SERVICE: &str = "ByMeVPN";
 const ACCESS_KEY: &str = "access_token";
 const REFRESH_KEY: &str = "refresh_token";
+const PENDING_PAYMENT_KEY: &str = "pending_payment";
 const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
@@ -147,6 +148,7 @@ fn clear_secrets() {
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
+        PENDING_PAYMENT_KEY,
         TELEGRAM_PROFILE_KEY,
         TELEGRAM_STATUS_KEY,
         TELEGRAM_SUBSCRIPTION_KEY,
@@ -155,6 +157,35 @@ fn clear_secrets() {
             let _ = e.delete_credential();
         }
     }
+}
+
+fn clear_pending_payment() {
+    if let Ok(entry) = entry(PENDING_PAYMENT_KEY) {
+        let _ = entry.delete_credential();
+    }
+}
+
+#[tauri::command]
+pub fn get_pending_payment() -> Option<Value> {
+    if read_secret(ACCESS_KEY).is_none() {
+        return None;
+    }
+    let raw = read_secret(PENDING_PAYMENT_KEY)?;
+    let pending: Value = serde_json::from_str(&raw).ok()?;
+    let code = pending.get("plan_code")?.as_str()?;
+    let devices = pending.get("devices")?.as_i64()?;
+    let invoice = pending.get("invoice_id")?.as_str()?;
+    let url = pending.get("payment_url")?.as_str()?;
+    let request_id = pending.get("request_id")?.as_str()?;
+    if mobile_plan_duration(code, devices).is_none() ||
+        invoice.is_empty() || invoice.len() > 128 ||
+        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
+        request_id.is_empty() || request_id.len() > 128 ||
+        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
+        !payment_url_is_allowed(url) {
+        return None;
+    }
+    Some(pending)
 }
 
 fn clear_telegram_session() {
@@ -379,6 +410,8 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
 
 async fn store_auth(value: Value) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
+    // A newly authenticated identity must not inherit another account's invoice.
+    clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
     // must never be paired with the previous account's refresh token.
     let access = value["access"].as_str().or_else(|| value["access_token"].as_str()).unwrap_or("");
@@ -1074,7 +1107,7 @@ pub async fn create_payment(
 
     // New Android contract: send ONLY the canonical SKU and an idempotency
     // key; the backend, not the desktop client, owns the checkout terms.
-    request(
+    let result = request(
         &app,
         Method::POST,
         "/mobile/v2/payment/create",
@@ -1085,7 +1118,39 @@ pub async fn create_payment(
         })),
         true,
         false,
-    ).await
+    ).await?;
+    let invoice = result.get("invoice_id").and_then(Value::as_str)
+        .ok_or("Сервер оплаты не вернул идентификатор счёта.")?;
+    if invoice.is_empty() || invoice.len() > 128 ||
+        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Сервер оплаты вернул некорректный номер счёта.".into());
+    }
+    let payment_url = result.get("payment_url").or_else(|| result.get("confirmation_url"))
+        .and_then(Value::as_str).ok_or("Сервер не вернул ссылку на оплату.")?;
+    if !payment_url_is_allowed(payment_url) {
+        return Err("Ссылка оплаты не принадлежит проверенному провайдеру.".into());
+    }
+    if result.get("provider").and_then(Value::as_str)
+        .is_some_and(|provider| provider != "yookassa") {
+        return Err("Сервер вернул неожиданного платёжного провайдера.".into());
+    }
+    let pending = json!({
+        "plan_code":plan_code, "devices":dev, "price_rub":submitted_price,
+        "days":submitted_days, "invoice_id":invoice, "payment_url":payment_url,
+        "request_id":request_id
+    });
+    save_secret(PENDING_PAYMENT_KEY, &pending.to_string())?;
+    Ok(result)
+}
+
+fn payment_url_is_allowed(url: &str) -> bool {
+    let Ok(parsed) = Url::parse(url) else { return false; };
+    let host = parsed.host_str().unwrap_or_default();
+    parsed.scheme() == "https" &&
+    (host == "yookassa.ru" || host.ends_with(".yookassa.ru") ||
+        host == "yoomoney.ru" || host.ends_with(".yoomoney.ru")) &&
+    parsed.port().is_none_or(|port| port == 443) &&
+    parsed.username().is_empty() && parsed.password().is_none()
 }
 
 /// Query invoice-specific fulfillment; an active prior subscription does not
@@ -1096,11 +1161,21 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
         !invoice_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
         return Err("Некорректный номер счёта.".into());
     }
-    request(
+    let result = request(
         &app, Method::GET,
         &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
         None, true, false,
-    ).await
+    ).await?;
+    let paid = matches!(result.get("status").and_then(Value::as_str),
+        Some("succeeded" | "paid" | "completed")) &&
+        result.get("is_active").and_then(Value::as_bool) == Some(true);
+    let failed = matches!(result.get("status").and_then(Value::as_str),
+        Some("failed" | "canceled" | "cancelled" | "expired"));
+    if (paid || failed) && get_pending_payment().as_ref()
+        .and_then(|p| p.get("invoice_id")).and_then(Value::as_str) == Some(invoice_id.as_str()) {
+        clear_pending_payment();
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1708,6 +1783,16 @@ mod tests {
         assert_eq!(found[1]["purchase_enabled"], false);
         assert!(mobile_catalog_plans(&catalog, 10).is_empty());
         assert_eq!(mobile_catalog_plans(&catalog, 5).len(), 1);
+    }
+
+    #[test]
+    fn checkout_url_policy_rejects_untrusted_redirects_and_http() {
+        assert!(payment_url_is_allowed("https://yookassa.ru/checkout/test"));
+        assert!(payment_url_is_allowed("https://payments.yookassa.ru/checkout/test"));
+        assert!(!payment_url_is_allowed("http://yookassa.ru/checkout"));
+        assert!(!payment_url_is_allowed("https://yookassa.ru.attacker.net/"));
+        assert!(!payment_url_is_allowed("https://evil@yookassa.ru/"));
+        assert!(!payment_url_is_allowed("https://yookassa.ru:8443/checkout"));
     }
 
     #[test]

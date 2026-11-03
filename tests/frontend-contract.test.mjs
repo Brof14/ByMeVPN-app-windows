@@ -343,3 +343,10 @@ test('trial errors use Android-aligned, language-specific recovery copy', () => 
   assert.match(app.eval("trialActivationMessage('(HTTP 401)')"), /session expired/);
   assert.match(app.eval("trialActivationMessage('NETWORK_ERROR')"), /internet connection/);
 });
+
+test('account deletion remains a support request, not a destructive native IPC', () => {
+  const backend = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');
+  assert.doesNotMatch(backend, /service::delete_account,/);
+  assert.doesNotMatch(source, /invoke\('delete_account'/);
+  assert.match(source, /Automatic account deletion is not available yet/);
+});

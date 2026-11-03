@@ -822,19 +822,72 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     Ok(normalized)
 }
 
+/// Android V2 sells exact, device-scoped plans (1m_d2, 3m_d5, etc.).
+/// Never infer prices/durations from legacy flat catalogs or other tiers.
+fn mobile_plan_duration(code: &str, devices: i64) -> Option<i64> {
+    for (base, days) in [("1m", 30), ("3m", 120), ("6m", 240), ("12m", 450)] {
+        if code == format!("{base}_d{devices}") {
+            return Some(days);
+        }
+    }
+    None
+}
+
+fn confirmed_mobile_plan(plan: &Value, devices: i64, checkout_default: bool) -> Option<Value> {
+    let code = plan.get("code")?.as_str()?;
+    let expected_days = mobile_plan_duration(code, devices)?;
+    let days = plan.get("days")?.as_i64()?;
+    let price = plan.get("price_rub")?.as_i64()?;
+    let tier = plan.get("devices").and_then(Value::as_i64).unwrap_or(2);
+    if days != expected_days || price <= 0 || tier != devices {
+        return None;
+    }
+    let mut verified = plan.clone();
+    verified["purchase_enabled"] = json!(plan
+        .get("purchase_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(checkout_default));
+    verified["devices"] = json!(devices);
+    Some(verified)
+}
+
+fn mobile_catalog_plans(catalog: &Value, devices: i64) -> Vec<Value> {
+    let checkout_default = catalog.get("payment_enabled")
+        .and_then(Value::as_bool).unwrap_or(false);
+    let plans = catalog.get("raw_array").or_else(|| catalog.get("plans"))
+        .and_then(Value::as_array);
+    // Some backends preserve the catalog as a JSON-encoded string.
+    let raw = catalog.get("raw").and_then(Value::as_str)
+        .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok());
+    plans.cloned().or(raw).unwrap_or_default()
+        .iter()
+        .filter_map(|plan| confirmed_mobile_plan(plan, devices, checkout_default))
+        .collect()
+}
+
 #[tauri::command]
 pub async fn get_plans(app: AppHandle) -> Result<Vec<Value>, String> {
-    let data = request(&app, Method::GET, "/plans", None, false, false).await?;
-    if let Some(v) = data.as_array() {
-        return Ok(v.clone());
+    // Android V2 explicitly scopes pricing to each device tier, and requires auth.
+    // Each tier is independent: one unavailable tier should not hide valid offers.
+    let (two, five, ten) = tokio::join!(
+        request(&app, Method::GET, "/mobile/v2/plans?devices=2", None, true, false),
+        request(&app, Method::GET, "/mobile/v2/plans?devices=5", None, true, false),
+        request(&app, Method::GET, "/mobile/v2/plans?devices=10", None, true, false),
+    );
+    let mut confirmed = Vec::new();
+    let mut failure = None;
+    for (devices, result) in [(2, two), (5, five), (10, ten)] {
+        match result {
+            Ok(body) => confirmed.extend(mobile_catalog_plans(&body, devices)),
+            Err(error) => failure = Some(error),
+        }
     }
-    if let Some(v) = data.get("plans").and_then(Value::as_array) {
-        return Ok(v.clone());
+    if confirmed.is_empty() {
+        return Err(failure.unwrap_or_else(|| {
+            "Сервер не вернул ни одного подтверждённого тарифа Android V2.".into()
+        }));
     }
-    if let Some(raw) = data.get("raw_array").and_then(Value::as_array) {
-        return Ok(raw.clone());
-    }
-    Err("Сервер вернул тарифы в неизвестном формате.".into())
+    Ok(confirmed)
 }
 
 #[tauri::command]
@@ -919,42 +972,60 @@ pub async fn create_payment(
     days: Option<i64>,
     request_id: Option<String>,
 ) -> Result<Value, String> {
-    let id = install_id(&app)?;
     let dev = devices.unwrap_or(2);
     if !matches!(dev, 2 | 5 | 10) {
         return Err("Недопустимое количество устройств.".into());
     }
-    // The UI only submits values received from GET /plans. The API verifies
-    // them again; never fall back to historical hard-coded prices or durations.
-    let final_days = days.filter(|d| *d > 0).ok_or("Не загружен срок тарифа.")?;
-    let final_amount = amount_rub.filter(|a| *a > 0).ok_or("Не загружена цена тарифа.")?;
+    let canonical_days = mobile_plan_duration(&plan_code, dev)
+        .ok_or("Неизвестный тариф Android V2 для выбранного числа устройств.")?;
+    let submitted_days = days.filter(|days| *days > 0)
+        .ok_or("Не загружен срок тарифа.")?;
+    let submitted_price = amount_rub.filter(|price| *price > 0)
+        .ok_or("Не загружена цена тарифа.")?;
+    if submitted_days != canonical_days {
+        return Err("Срок тарифа не соответствует проверенному каталогу.".into());
+    }
     let request_id = request_id.unwrap_or_else(|| format!("req_{}", Uuid::new_v4().simple()));
     if request_id.len() < 8 || request_id.len() > 128 ||
         !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
         return Err("Некорректный идентификатор платежа.".into());
     }
 
+    // Revalidate server-owned price, duration, tier and checkout capability.
+    // A stale or tampered desktop UI must never initiate an unknown payment.
+    let catalog = request(&app, Method::GET,
+        &format!("/mobile/v2/plans?devices={dev}"), None, true, false).await?;
+    let matching = mobile_catalog_plans(&catalog, dev).into_iter()
+        .find(|p| p.get("code").and_then(Value::as_str) == Some(plan_code.as_str()));
+    let plan = matching.ok_or(
+        "Выбранный тариф больше не доступен. Обновите список тарифов."
+    )?;
+    if plan.get("price_rub").and_then(Value::as_i64) != Some(submitted_price) ||
+        plan.get("days").and_then(Value::as_i64) != Some(submitted_days) {
+        return Err("Цена или срок тарифа изменились. Обновите тарифы перед оплатой.".into());
+    }
+    if plan.get("purchase_enabled").and_then(Value::as_bool) != Some(true) {
+        return Err("Сервер временно отключил оплату этого тарифа.".into());
+    }
+
+    // New Android contract: send ONLY the canonical SKU and an idempotency
+    // key; the backend, not the desktop client, owns the checkout terms.
     request(
         &app,
         Method::POST,
-        "/payment/create",
+        "/mobile/v2/payment/create",
         Some(json!({
             "plan_code": plan_code,
-            "amount_rub": final_amount,
-            "days": final_days,
-            "devices": dev,
             "provider": "yookassa",
-            "request_id": request_id,
-            "install_id": id
+            "request_id": request_id
         })),
         true,
         false,
-    )
-    .await
+    ).await
 }
 
-/// Check only a payment invoice owned by the signed-in user.
-/// The server verifies webhook fulfillment before reporting success.
+/// Query invoice-specific fulfillment; an active prior subscription does not
+/// prove that this invoice was paid.
 #[tauri::command]
 pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
     if invoice_id.is_empty() || invoice_id.len() > 128 ||
@@ -962,7 +1033,8 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
         return Err("Некорректный номер счёта.".into());
     }
     request(
-        &app, Method::GET, &format!("/payment/check?invoice_id={invoice_id}&provider=yookassa"),
+        &app, Method::GET,
+        &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
         None, true, false,
     ).await
 }
@@ -1534,6 +1606,36 @@ mod tests {
         assert!(device_is_current(legacy.as_object().unwrap(), "local-install-uuid"));
         let unknown = json!({"id":"45"});
         assert!(!device_is_current(unknown.as_object().unwrap(), "local-install-uuid"));
+    }
+
+    #[test]
+    fn v2_catalog_accepts_only_exact_backend_owned_skus_and_device_tiers() {
+        let catalog = json!({"payment_enabled":true,"raw_array":[
+            {"code":"1m_d2","devices":2,"price_rub":89,"days":30},
+            {"code":"12m_d2","devices":2,"price_rub":885,"days":450,"purchase_enabled":false},
+            {"code":"3m_d5","devices":5,"price_rub":396,"days":120},
+            {"code":"6m_d2","devices":2,"price_rub":552,"days":180},
+            {"code":"12m_d2","devices":5,"price_rub":1185,"days":450},
+            {"code":"month","devices":2,"price_rub":89,"days":30},
+            {"code":"3m_d2","devices":2,"price_rub":0,"days":120}
+        ]});
+        let found = mobile_catalog_plans(&catalog, 2);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0]["code"], "1m_d2");
+        assert_eq!(found[0]["purchase_enabled"], true);
+        assert_eq!(found[1]["purchase_enabled"], false);
+        assert!(mobile_catalog_plans(&catalog, 10).is_empty());
+        assert_eq!(mobile_catalog_plans(&catalog, 5).len(), 1);
+    }
+
+    #[test]
+    fn missing_explicit_payment_capability_disables_checkout() {
+        let catalog = json!({"plans":[{"code":"3m_d5","devices":5,"price_rub":396,"days":120}]});
+        let found = mobile_catalog_plans(&catalog, 5);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0]["purchase_enabled"], false);
+        assert_eq!(mobile_plan_duration("3m_d5", 5), Some(120));
+        assert_eq!(mobile_plan_duration("3m_d2", 5), None);
     }
 
     #[test]

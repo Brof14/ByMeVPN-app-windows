@@ -446,10 +446,7 @@ async function loadPricingCatalog() {
         if (!offer) continue;
         catalog[devices][key] = {
           price: offer.price_rub, days: offer.days, planCode,
-          purchaseEnabled: offer.purchase_enabled === true,
-          note: key === 'month' ? uiText('30 дней', '30 days') :
-            Math.round(offer.price_rub / meta.months) + ' ' +
-              uiText('₽ / месяц', 'RUB / month')
+          purchaseEnabled: offer.purchase_enabled === true
         };
       }
     }
@@ -1568,6 +1565,14 @@ function escapeHtml(str) {
 }
 
 // Pricing Matrix UI Calculation
+function priceNoteForOffer(code, offer) {
+  if (!offer) return uiText('Тариф недоступен', 'Plan unavailable');
+  if (code === 'month') return uiText('30 дней', '30 days');
+  const months = VERIFIED_PLAN_TYPES[code]?.months || 1;
+  return Math.round(offer.price / months) + ' ' +
+    uiText('₽ / месяц', 'RUB / month');
+}
+
 function updatePricingMatrixUi() {
   const dev = state.selectedDevicesCount || 2;
   const matrix = PRICING_MATRIX[dev] || {};
@@ -1591,8 +1596,7 @@ function updatePricingMatrixUi() {
     const price = document.getElementById(priceId);
     const note = document.getElementById(noteId);
     if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
-    if (note) note.textContent = offer ? offer.note :
-      uiText('Тариф недоступен', 'Plan unavailable');
+    if (note) note.textContent = priceNoteForOffer(code, offer);
   }
   document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.plan] : null;
@@ -1605,8 +1609,7 @@ function updatePricingMatrixUi() {
     const price = card.querySelector('.tariff-price-bold');
     const note = card.querySelector('.tariff-subnote');
     if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
-    if (note) note.textContent = offer ? offer.note :
-      uiText('Тариф недоступен', 'Plan unavailable');
+    if (note) note.textContent = priceNoteForOffer(card.dataset.pwPlan, offer);
     card.classList.toggle('unavailable', !offer);
     card.classList.toggle('selected', card.dataset.pwPlan === state.selectedPlanCode);
   });

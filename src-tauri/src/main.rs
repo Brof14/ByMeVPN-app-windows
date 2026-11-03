@@ -22,6 +22,19 @@ fn main() {
             }
             #[cfg(all(debug_assertions, windows))]
             app.deep_link().register_all()?;
+            // Native tunnel surveillance must continue even if the WebView is
+            // minimized/hidden; frontend visibilitychange stops UI polling.
+            // This detects Xray exits and observed egress loss. A kernel WFP
+            // Kill Switch is still required for leak-free guarantees.
+            let watchdog = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(8));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    interval.tick().await;
+                    let _ = service::vpn_status(watchdog.state::<service::AppState>()).await;
+                }
+            });
             Ok(())
         })
         .manage(service::AppState::default())

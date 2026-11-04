@@ -21,15 +21,26 @@ if ($process.ExitCode -ne 0) {
 }
 
 $files = @(Get-ChildItem -Path $temp -File -Recurse -ErrorAction Stop)
-foreach ($required in @("bymevpn.exe", "xray.exe", "wintun.dll", "geoip.dat", "geosite.dat")) {
-    if (@($files | Where-Object { $_.Name -ieq $required }).Count -lt 1) {
-        throw "MSI does not include required installable file: $required"
+$executables = @($files | Where-Object { $_.Name -ieq "bymevpn.exe" })
+if ($executables.Count -ne 1) {
+    throw "Expected exactly one installed bymevpn.exe; found $($executables.Count)."
+}
+
+# An installer containing Xray SOMEWHERE is insufficient: the app resolves
+# files relative to bymevpn.exe, so assert the exact on-disk Tauri layout.
+$installedRoot = Split-Path -Parent $executables[0].FullName
+$installedRuntime = Join-Path $installedRoot "vendor/runtime/windows-x64"
+$sourceRuntime = Join-Path $root "vendor/runtime/windows-x64"
+foreach ($name in @("xray.exe", "wintun.dll", "geoip.dat", "geosite.dat")) {
+    $installed = Join-Path $installedRuntime $name
+    $source = Join-Path $sourceRuntime $name
+    if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) {
+        throw "MSI runtime is not next to bymevpn.exe at the path used by the app: $installed"
+    }
+    $expected = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    $actual = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
+    if ($actual -ne $expected) {
+        throw "MSI embeds a modified VPN resource: $installed"
     }
 }
-$runtime = Join-Path $root "vendor/runtime/windows-x64"
-foreach ($name in @("xray.exe", "wintun.dll", "geoip.dat", "geosite.dat")) {
-    $expected = (Get-FileHash -LiteralPath (Join-Path $runtime $name) -Algorithm SHA256).Hash
-    $match = @($files | Where-Object { $_.Name -ieq $name -and (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $expected })
-    if ($match.Count -lt 1) { throw "MSI embeds a missing or modified VPN resource: $name" }
-}
-Write-Host "MSI extraction smoke-test passed. All verified runtime assets and bymevpn.exe are present."
+Write-Host "MSI smoke-test passed: bymevpn.exe can locate all hash-verified assets at vendor/runtime/windows-x64."

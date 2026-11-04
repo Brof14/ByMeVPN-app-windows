@@ -1,5 +1,5 @@
 use crate::api_transport::{send_to_bases, API_BASES};
-use crate::egress::verify_egress;
+use crate::egress::{verify_egress, EgressFailure};
 use crate::tun_config::build_tun_config_ext;
 use crate::tunnel_runtime::verify_runtime;
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
@@ -36,7 +36,9 @@ pub struct ActiveTunnel {
     pub server_ip: String,
     pub server_host: String,
     pub server_port: u16,
-    pub last_egress_verified: std::time::Instant,
+    pub last_egress_probe: std::time::Instant,
+    pub baseline_ip: std::net::IpAddr,
+    pub egress_verified: bool,
 }
 
 #[derive(Default)]
@@ -46,6 +48,8 @@ pub struct AppState {
     pub connection_gate: tokio::sync::Mutex<()>,
     // Prevent overlapping watchdog/UI egress checks from racing each other.
     pub status_probe_gate: tokio::sync::Mutex<()>,
+    // Native OAuth sessions must not overlap and confuse browser callbacks.
+    pub google_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
     pub telegram_ticket: Mutex<Option<String>>,
 }
@@ -53,6 +57,8 @@ pub struct AppState {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TunnelMetrics {
     pub connected: bool,
+    #[serde(default)]
+    pub verified: bool,
     pub connected_seconds: u64,
     pub download_mbps: f64,
     pub upload_mbps: f64,
@@ -1012,36 +1018,55 @@ pub async fn delete_device(app: AppHandle, device_id: String) -> Result<(), Stri
     Ok(())
 }
 
+// Keep the legacy IPC entry point strict: Android's backend requires a
+// server-issued nonce tied to the signed ID token. Never accept email/name
+// fields from the untrusted WebView as Google account identity.
 #[tauri::command]
 pub async fn auth_google(
     app: AppHandle,
-    id_token: Option<String>,
-    _email: Option<String>,
-    _name: Option<String>,
+    id_token: String,
+    nonce: String,
 ) -> Result<AuthResult, String> {
-    let token = match id_token {
-        Some(t) if !t.trim().is_empty() && t.split('.').count() >= 3 => t,
-        _ => {
-            return Err("Серверная авторизация через Google отключена в текущей версии (GOOGLE_AUTH_SERVER_VERIFIED = false). Пожалуйста, используйте вход по Email или через Telegram.".into());
-        }
-    };
-
+    if id_token.len() > 16_384 || id_token.split('.').count() != 3
+        || nonce.len() < 24 || nonce.len() > 256 {
+        return Err("Некорректный токен или одноразовый запрос входа Google.".into());
+    }
     let id = install_id(&app)?;
-    let val = request(
-        &app,
-        Method::POST,
-        "/auth/google",
-        Some(json!({
-            "id_token": token,
-            "install_id": id
-        })),
-        false,
-        false,
-    )
-    .await?;
+    let result = request(
+        &app, Method::POST, "/auth/google",
+        Some(json!({"id_token": id_token, "nonce": nonce, "install_id": id})),
+        false, false,
+    ).await?;
+    store_auth(result).await
+}
 
-    let auth = store_auth(val).await?;
-    Ok(auth)
+/// Windows Desktop OAuth: server nonce + native system browser with PKCE.
+/// All Google tokens stay inside Rust; only the verified ByMeVPN user snapshot
+/// is returned to the WebView.
+#[tauri::command]
+pub async fn auth_google_desktop(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AuthResult, String> {
+    let _login_guard = state.google_gate.lock().await;
+    let config = request(
+        &app, Method::GET, "/auth/google/desktop-client", None, false, false
+    ).await?;
+    let client_id = config.get("client_id").and_then(Value::as_str)
+        .ok_or("Сервер не настроил Google OAuth Desktop Client ID.")?;
+    let challenge = request(
+        &app, Method::POST, "/auth/google/nonce", Some(json!({})), false, false
+    ).await?;
+    let nonce = challenge.get("nonce").and_then(Value::as_str)
+        .ok_or("Сервер не выдал одноразовый код Google.")?;
+    let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
+    let id = install_id(&app)?;
+    let result = request(
+        &app, Method::POST, "/auth/google",
+        Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
+        false, false,
+    ).await?;
+    store_auth(result).await
 }
 
 #[tauri::command]
@@ -1449,16 +1474,16 @@ pub async fn vpn_start(
         };
 
     let mut verified_ip = None;
-    let mut last_error = "Проверка VPN не завершилась.".to_string();
+    let mut fatal_error: Option<&str> = None;
     for _ in 0..3 {
         tokio::time::sleep(Duration::from_millis(750)).await;
         match child.try_wait() {
             Ok(Some(_)) => {
-                last_error = "Xray завершился до установления туннеля.".into();
+                fatal_error = Some("Xray завершился до установления туннеля.");
                 break;
             }
             Err(_) => {
-                last_error = "Не удалось проверить процесс Xray.".into();
+                fatal_error = Some("Не удалось проверить процесс Xray.");
                 break;
             }
             Ok(None) => {}
@@ -1468,15 +1493,23 @@ pub async fn vpn_start(
                 verified_ip = Some(ip);
                 break;
             }
-            Err(message) => last_error = message,
+            Err(EgressFailure::Unchanged) => {
+                // A real, observed original IP is evidence of a bypass.
+                fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
+                break;
+            }
+            Err(EgressFailure::Unavailable) => {
+                // Unknown is not evidence of a leak or a healthy tunnel.
+                // Do NOT claim protection; keep Xray running for a retry.
+            }
         }
     }
-    if verified_ip.is_none() {
+    if let Some(cause) = fatal_error {
         let _ = child.kill();
         let _ = child.wait();
         let _ = fs::remove_file(&config_path);
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-        return Err(format!("VPN не подтверждён: {last_error}"));
+        return Err(format!("VPN не подтверждён: {cause}"));
     }
 
     let server_port = session.get("port").and_then(Value::as_u64)
@@ -1495,21 +1528,24 @@ pub async fn vpn_start(
         _node_code: chosen_node,
         server_name: server_name.clone(),
         country: country.clone(),
-        server_ip: verified_ip.expect("verified before storing").to_string(),
+        server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
         server_host: host.to_string(),
         server_port,
-        last_egress_verified: std::time::Instant::now(),
+        last_egress_probe: std::time::Instant::now(),
+        baseline_ip,
+        egress_verified: verified_ip.is_some(),
     });
 
     Ok(TunnelMetrics {
         connected: true,
+        verified: verified_ip.is_some(),
         connected_seconds: 0,
         download_mbps: 0.0,
         upload_mbps: 0.0,
         ping_ms: ping,
         server_name,
         country,
-        ip: verified_ip.expect("verified before publishing").to_string(),
+        ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
     })
 }
 
@@ -1542,33 +1578,40 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
     let _probe_guard = state.status_probe_gate.lock().await;
-    // Process liveness is not network liveness. Recheck the same public exit
-    // address periodically, and remove a tunnel if route/egress changed.
-    // The poll runs outside the native tunnel lock to keep disconnect responsive.
+    // A check outage is an UNKNOWN health signal, not an observed route leak.
+    // If the original (pre-VPN) IP is actually observed, stop Xray.
+    // Run outside the process lock to keep disconnect responsive.
     let probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
-            (active.last_egress_verified.elapsed() >= Duration::from_secs(20))
-                .then(|| (active.started_at, active.server_ip.clone()))
+            (active.last_egress_probe.elapsed() >= Duration::from_secs(20))
+                .then(|| (active.started_at, active.baseline_ip))
         })
     };
-    if let Some((started_at, expected_ip)) = probe {
+    if let Some((started_at, baseline_ip)) = probe {
         let result = tokio::time::timeout(
-            Duration::from_secs(9), crate::egress::public_egress_ip(),
-        ).await;
-        let observed_ok = matches!(result, Ok(Ok(ref ip)) if ip.to_string() == expected_ip);
+            Duration::from_secs(9), verify_egress(baseline_ip)
+        ).await.unwrap_or(Err(EgressFailure::Unavailable));
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
-                if observed_ok {
-                    active.last_egress_verified = std::time::Instant::now();
-                } else {
-                    // Fail closed in the UI. Xray termination owns TUN cleanup.
-                    // This does NOT replace a genuine kernel WFP Kill Switch.
-                    let _ = active.child.kill();
-                    let _ = active.child.wait();
-                    if let Some(active) = lock.take() {
-                        let _ = fs::remove_file(active.config_path);
+                active.last_egress_probe = std::time::Instant::now();
+                match result {
+                    Ok(ip) => {
+                        active.egress_verified = true;
+                        active.server_ip = ip.to_string();
+                    }
+                    Err(EgressFailure::Unavailable) => {
+                        active.egress_verified = false;
+                        active.server_ip.clear();
+                    }
+                    Err(EgressFailure::Unchanged) => {
+                        // This is evidence of bypass, unlike a probe outage.
+                        let _ = active.child.kill();
+                        let _ = active.child.wait();
+                        if let Some(active) = lock.take() {
+                            let _ = fs::remove_file(active.config_path);
+                        }
                     }
                 }
             }
@@ -1591,20 +1634,21 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.country.clone(),
             active.server_ip.clone(),
             active.server_host.clone(),
-            active.server_port
+            active.server_port,
+            active.egress_verified
         ))
     };
-    if let Some((elapsed, server_name, country, ip, host, port)) = active_info {
+    if let Some((elapsed, server_name, country, ip, host, port, verified)) = active_info {
         let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
             .await.unwrap_or(0);
         return Ok(TunnelMetrics {
-            connected: true, connected_seconds: elapsed,
+            connected: true, verified, connected_seconds: elapsed,
             download_mbps: 0.0, upload_mbps: 0.0,
             ping_ms: ping, server_name, country, ip
         });
     }
     Ok(TunnelMetrics {
-        connected: false, connected_seconds: 0,
+        connected: false, verified: false, connected_seconds: 0,
         download_mbps: 0.0, upload_mbps: 0.0,
         ping_ms: 0, server_name: String::new(),
         country: String::new(), ip: String::new()

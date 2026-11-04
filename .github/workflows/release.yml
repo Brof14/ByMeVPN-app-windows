@@ -9,11 +9,11 @@ on:
       tag_name:
         description: 'Tag / Release version (e.g. v1.2.0)'
         required: false
-        default: 'v1.2.0'
+        default: 'v1.2.1-rc.1'
       create_release:
         description: 'Publish as GitHub Release'
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -56,7 +56,7 @@ jobs:
       - name: Build Tauri Installers (.exe and .msi)
         shell: powershell
         run: |
-          npx --yes @tauri-apps/cli build
+          npx --yes @tauri-apps/cli@2 build
 
       - name: Prepare Artifacts & Calculate Checksums
         id: artifacts
@@ -94,11 +94,11 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == true || github.event.inputs.create_release == 'true'
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
-          name: ByMeVPN Windows ${{ github.ref_name || github.event.inputs.tag_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          name: ByMeVPN Windows ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
           body: |
             ## ByMeVPN Windows Client Release
             

@@ -106,9 +106,9 @@ mod tests {
 
     #[test]
     fn accepts_plain_ip_and_cloudflare_trace_but_rejects_html_and_ipv6() {
-        assert_eq!(parse_ip(" 192.0.2.1\n").unwrap(), "192.0.2.1".parse().unwrap());
+        assert_eq!(parse_ip(" 192.0.2.1\n").unwrap(), "192.0.2.1".parse::<IpAddr>().unwrap());
         let trace = "fl=12f34\nh=www.cloudflare.com\nip=198.51.100.9\nts=1700000000\n";
-        assert_eq!(parse_ip(trace).unwrap(), "198.51.100.9".parse().unwrap());
+        assert_eq!(parse_ip(trace).unwrap(), "198.51.100.9".parse::<IpAddr>().unwrap());
         assert!(parse_ip("<html>192.0.2.1</html>").is_err());
         assert!(parse_ip("2001:db8::1").is_err());
         assert!(parse_ip(&"1".repeat(1025)).is_err());

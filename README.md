@@ -4,6 +4,19 @@ A Windows desktop client for the ByMeVPN service, built with **Tauri 2**, **Rust
 
 > **Status:** Experimental, NOT production-ready. Xray launch and a fail-closed egress probe are implemented; real Windows routing, IPv4/IPv6/DNS leak behavior, elevated service isolation and crash recovery still require full end-to-end acceptance. Do not rely on this build for privacy until those tests pass.
 
+## Download installers (.exe / .msi)
+
+The current source is built on Windows by GitHub Actions after frontend contract tests, Rust tests, and an MSI extraction check.
+
+- **Direct .exe / .msi downloads:** [GitHub Releases](https://github.com/Brof14/ByMeVPN-app-windows/releases). Choose the newest **Windows Preview** release and its `ByMeVPN_*_x64-setup.exe` (normal installer) or `ByMeVPN_*_x64_en-US.msi` (managed deployment).
+- **Builds for open pull requests:** [Actions → CI](https://github.com/Brof14/ByMeVPN-app-windows/actions/workflows/ci.yml). Open a successful run, then download the `ByMeVPN-Windows-Installers` artifact (GitHub downloads Actions artifacts as a ZIP).
+- Verify downloaded files against the release's `SHA256SUMS.txt` (Windows: `Get-FileHash .\\YourInstaller.exe -Algorithm SHA256`).
+- The bare `bymevpn.exe` from a development build **is not portable**; it requires the bundled Xray/Wintun runtime. Download an installer, not a bare executable.
+
+**Security disclaimer:** Windows preview builds are not yet certified as leak-free or production-ready. The application still runs with administrator privileges and lacks a verified kernel-level Kill Switch. CI verifies packaging, not actual Windows VPN routing, DNS/IPv6 leak protection or real billing. Unsigned builds can trigger SmartScreen warnings; do not disable Windows security settings to bypass them.
+
+The previously published `v1.2.0` installers (October 30, 2026) predate major Android-parity fixes and advertise unsupported security guarantees. Use newer verified-preview CI builds for evaluation, and do not interpret 'preview' as a security certification.
+
 ## Requirements
 
 - Windows 10/11 (x64)

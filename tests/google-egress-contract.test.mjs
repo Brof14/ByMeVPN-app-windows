@@ -81,3 +81,15 @@ test('desktop opens in a compact resizable window and UI polls conservatively', 
   assert.match(ui, /\}, 5000\);\s*\}\s*\/\/ Pause heavy polling/);
   assert.match(css, /Compact native desktop window/);
 });
+
+
+test('Desktop Google OAuth uses server-side exchange when securely configured', () => {
+  assert.match(oauth, /pub struct AuthorizationCode/);
+  assert.match(oauth, /pub async fn acquire_code\(/);
+  assert.match(rust, /"server_code_exchange"/);
+  assert.match(rust, /"\/auth\/google\/desktop-exchange"/);
+  assert.match(rust, /"code_verifier": code\.code_verifier/);
+  assert.match(rust, /"redirect_uri": code\.redirect_uri/);
+  assert.match(rust, /"nonce": nonce/);
+  assert.doesNotMatch(rust, /GOOGLE_DESKTOP_CLIENT_SECRET/);
+});

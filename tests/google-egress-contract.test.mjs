@@ -47,6 +47,6 @@ test('Google login never sends raw tokens through UI and uses native PKCE S256',
   assert.match(oauth, /state_values\.len\(\) != 1/);
   assert.match(ui, /invoke\('auth_google_desktop'\)/);
   assert.doesNotMatch(ui, /invoke\('auth_google',\s*\{\s*idToken/);
-  assert.doesNotMatch(ui, /Google-вход пока недоступен\. Используйте Telegram или Email\.',);
+  assert.ok(!ui.includes('Google-вход пока недоступен. Используйте Telegram или Email.'));
   assert.doesNotMatch(css, /display: none; \/\* Google OAuth remains disabled/);
 });

@@ -807,7 +807,7 @@ function setupEventListeners() {
 // Authentication Handlers
 function setAuthPending(pending) {
   state.authBusy = pending;
-  for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal']) {
+  for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal', 'btn-google-login', 'btn-google-register']) {
     const el = document.getElementById(id);
     if (el) el.disabled = pending;
   }
@@ -889,9 +889,29 @@ function cancelTelegramPolling() {
   tgPollingBusy = false;
 }
 
-function handleGoogleAuth() {
-  // Google OIDC is unavailable until the backend verifies signed ID tokens.
-  showToast('Google-вход пока недоступен. Используйте Telegram или Email.', true);
+async function handleGoogleAuth() {
+  if (state.authBusy) return;
+  setAuthPending(true);
+  showToast(uiText('Откройте браузер для входа через Google.', 'Complete Google sign-in in your browser.'));
+  try {
+    // Rust receives OAuth code and ID token directly; only backend-verified
+    // ByMeVPN user data crosses into the WebView.
+    const result = await invoke('auth_google_desktop');
+    if (!result?.user?.id) throw new Error('Сервер не подтвердил вход через Google.');
+    state.sessionEpoch += 1;
+    state.user = result.user;
+    state.subscription = result.subscription;
+    showAppShell();
+    showToast(uiText('Вход через Google подтверждён.', 'Google sign-in complete.'));
+    void refreshAccountSnapshot();
+  } catch (error) {
+    const message = typeof error === 'string' ? error : (error?.message || uiText(
+      'Не удалось войти через Google.', 'Google sign-in failed.'
+    ));
+    showToast(message, true);
+  } finally {
+    setAuthPending(false);
+  }
 }
 
 async function startTelegramAuthFlow() {
@@ -1076,7 +1096,7 @@ async function toggleVpn() {
       const metrics = await invoke('vpn_start', { nodeCode: code });
       state.vpnConnected = metrics?.connected === true;
       if (!state.vpnConnected) throw new Error('Движок не подтвердил соединение');
-      state.vpnVerified = true;
+      state.vpnVerified = metrics?.verified === true;
       state.connectedSeconds = 0;
       if (metrics) {
         state.metrics = metrics;
@@ -1084,7 +1104,11 @@ async function toggleVpn() {
       startLiveTimer();
       startStatusPolling();
       updateVpnUi();
-      showToast('Подключение проверено и установлено');
+      showToast(state.vpnVerified
+        ? uiText('VPN подключён, внешний IP подтверждён.', 'VPN connected; exit IP verified.')
+        : uiText('Xray запущен, но проверить внешний IP не удалось. Защита не подтверждена.',
+            'Xray is running, but the exit IP cannot be verified. Protection is unconfirmed.'),
+        !state.vpnVerified);
     } catch (err) {
       state.vpnConnected = false;
       state.vpnVerified = false;
@@ -1109,7 +1133,7 @@ async function checkVpnStatus() {
     const status = await invoke('vpn_status');
     if (epoch !== state.sessionEpoch) return;
     if (status && status.connected) {
-      state.vpnVerified = true;
+      state.vpnVerified = status.verified === true;
       state.vpnConnected = true;
       state.connectedSeconds = status.connected_seconds || 0;
       state.metrics = status;
@@ -1148,7 +1172,7 @@ function startStatusPolling() {
         const status = await invoke('vpn_status');
         if (epoch !== state.sessionEpoch) return;
         state.pollFailures = 0;
-        state.vpnVerified = status?.connected === true;
+        state.vpnVerified = status?.connected === true && status?.verified === true;
         if (status) {
           const wasConnected = state.vpnConnected;
           state.vpnConnected = status.connected === true;
@@ -1301,7 +1325,11 @@ function updateVpnUi() {
     const heading = document.querySelector('#home-state-connected .status-title-text');
     if (heading) heading.textContent = state.vpnVerified ?
       uiText('VPN подключён', 'VPN connected') :
-      uiText('Проверяем состояние VPN', 'Checking VPN connection');
+      uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
+    const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
+    if (description) description.textContent = state.vpnVerified
+      ? uiText('Соединение проверено', 'Connection verified')
+      : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
   } else if (accessUnknown) {
     // An offline/unknown entitlement is NOT an expired or active plan.
     // Keep the power control inert; the primary action retries the backend.

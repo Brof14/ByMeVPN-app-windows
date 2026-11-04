@@ -173,7 +173,15 @@ fn token_exchange_error(status: reqwest::StatusCode, response: &Value) -> String
     }
 }
 
-pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, String> {
+// Auth code and PKCE verifier stay in native Rust. When server-side exchange
+// is enabled, only the backend sees the Desktop OAuth client secret.
+pub struct AuthorizationCode {
+    pub code: String,
+    pub redirect_uri: String,
+    pub code_verifier: String,
+}
+
+pub async fn acquire_code(client_id: &str, nonce: &str) -> Result<AuthorizationCode, String> {
     if !valid_client_id(client_id) || nonce.len() < 24 || nonce.len() > 256 {
         return Err("Google OAuth для Windows настроен неверно.".into());
     }
@@ -186,7 +194,18 @@ pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, St
     let authorization = oauth_url(client_id, &redirect, nonce, &state, &pkce_challenge(&verifier));
     open_google_in_system_browser(&authorization)?;
     let code = wait_for_callback(listener, &state).await?;
+    Ok(AuthorizationCode {
+        code,
+        redirect_uri: redirect,
+        code_verifier: verifier,
+    })
+}
 
+// Backward-compatible local PKCE exchange for servers without the optional
+// server-side code exchange endpoint. Google officially documents the
+// desktop client secret as optional; some deployed projects reject its absence.
+pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, String> {
+    let authorization = acquire_code(client_id, nonce).await?;
     let client = Client::builder().https_only(true)
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15)).build()
@@ -194,10 +213,10 @@ pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, St
     let response = client.post("https://oauth2.googleapis.com/token")
         .form(&[
             ("client_id", client_id),
-            ("code", code.as_str()),
-            ("redirect_uri", redirect.as_str()),
+            ("code", authorization.code.as_str()),
+            ("redirect_uri", authorization.redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
-            ("code_verifier", verifier.as_str()),
+            ("code_verifier", authorization.code_verifier.as_str()),
         ])
         .send().await.map_err(|_| "Google не ответил при подтверждении входа.".to_string())?;
     if !response.status().is_success() {

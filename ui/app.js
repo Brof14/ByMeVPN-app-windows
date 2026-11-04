@@ -113,7 +113,7 @@ const I18N = {
     nav_connection: 'Главная',
     nav_account: 'Аккаунт',
     nav_settings: 'Настройки',
-    protection_active: 'Защита активна',
+    protection_active: 'Внешний IP подтверждён',
     vpn_connected: 'VPN подключён',
     conn_secured: 'Соединение защищено',
     download: 'Скачивание',
@@ -246,7 +246,7 @@ const I18N = {
     nav_connection: 'Home',
     nav_account: 'Account',
     nav_settings: 'Settings',
-    protection_active: 'Protection active',
+    protection_active: 'Exit IP verified',
     vpn_connected: 'VPN Connected',
     conn_secured: 'Connection secured',
     download: 'Download',
@@ -1328,7 +1328,7 @@ function updateVpnUi() {
       uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnVerified
-      ? uiText('Соединение проверено', 'Connection verified')
+      ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
       : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
   } else if (accessUnknown) {
     // An offline/unknown entitlement is NOT an expired or active plan.

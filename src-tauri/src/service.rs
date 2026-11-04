@@ -1471,11 +1471,23 @@ pub async fn vpn_start(
         });
     }
 
+    // Preserve bounded, local diagnostics for failures that happen only
+    // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
+    // This log is private to the current Windows profile and is reset on
+    // each connection attempt. Never transmit it automatically.
+    let log_path = app_dir.join("xray_startup.log");
+    let xray_log = fs::OpenOptions::new().create(true).write(true).truncate(true)
+        .open(&log_path)
+        .map_err(|e| format!("Не удалось открыть локальный журнал Xray: {e}"))?;
+    let xray_stdout = xray_log.try_clone()
+        .map_err(|e| format!("Не удалось подготовить журнал Xray: {e}"))?;
     let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
         .current_dir(&runtime_dir)
         .env("XRAY_LOCATION_ASSET", &runtime_dir)
         .args(["run", "-config"])
         .arg(&config_path)
+        .stdout(std::process::Stdio::from(xray_stdout))
+        .stderr(std::process::Stdio::from(xray_log))
         .creation_flags(CREATE_NO_WINDOW)
         .spawn() {
             Ok(child) => child,

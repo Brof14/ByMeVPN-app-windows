@@ -19,6 +19,7 @@ use std::os::windows::process::CommandExt;
 const KEYRING_SERVICE: &str = "ByMeVPN";
 const ACCESS_KEY: &str = "access_token";
 const REFRESH_KEY: &str = "refresh_token";
+const PENDING_PAYMENT_KEY: &str = "pending_payment";
 const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
@@ -43,6 +44,8 @@ pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
     // Serialize connect/disconnect across network requests and Xray startup.
     pub connection_gate: tokio::sync::Mutex<()>,
+    // Prevent overlapping watchdog/UI egress checks from racing each other.
+    pub status_probe_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
     pub telegram_ticket: Mutex<Option<String>>,
 }
@@ -61,7 +64,7 @@ pub struct TunnelMetrics {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {
-    #[serde(default)]
+    #[serde(default, alias = "user_id")]
     pub id: Value,
     #[serde(default, deserialize_with = "null_string_as_empty")]
     pub email: String,
@@ -98,6 +101,8 @@ pub struct Subscription {
     pub max_devices: i64,
     #[serde(default)]
     pub active_devices: i64,
+    #[serde(default)]
+    pub auto_renew: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -143,6 +148,7 @@ fn clear_secrets() {
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
+        PENDING_PAYMENT_KEY,
         TELEGRAM_PROFILE_KEY,
         TELEGRAM_STATUS_KEY,
         TELEGRAM_SUBSCRIPTION_KEY,
@@ -151,6 +157,35 @@ fn clear_secrets() {
             let _ = e.delete_credential();
         }
     }
+}
+
+fn clear_pending_payment() {
+    if let Ok(entry) = entry(PENDING_PAYMENT_KEY) {
+        let _ = entry.delete_credential();
+    }
+}
+
+#[tauri::command]
+pub fn get_pending_payment() -> Option<Value> {
+    if read_secret(ACCESS_KEY).is_none() {
+        return None;
+    }
+    let raw = read_secret(PENDING_PAYMENT_KEY)?;
+    let pending: Value = serde_json::from_str(&raw).ok()?;
+    let code = pending.get("plan_code")?.as_str()?;
+    let devices = pending.get("devices")?.as_i64()?;
+    let invoice = pending.get("invoice_id")?.as_str()?;
+    let url = pending.get("payment_url")?.as_str()?;
+    let request_id = pending.get("request_id")?.as_str()?;
+    if mobile_plan_duration(code, devices).is_none() ||
+        invoice.is_empty() || invoice.len() > 128 ||
+        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
+        request_id.is_empty() || request_id.len() > 128 ||
+        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
+        !payment_url_is_allowed(url) {
+        return None;
+    }
+    Some(pending)
 }
 
 fn clear_telegram_session() {
@@ -255,9 +290,16 @@ async fn refresh(client: &Client) -> Result<(), RefreshError> {
             "Сервер не вернул токен доступа.".into(),
         ));
     }
-    save_secret(ACCESS_KEY, access).map_err(RefreshError::Unavailable)?;
+    // Rotate refresh first; never keep a partially updated token pair.
     if !next_refresh.is_empty() {
-        save_secret(REFRESH_KEY, next_refresh).map_err(RefreshError::Unavailable)?;
+        if let Err(error) = save_secret(REFRESH_KEY, next_refresh) {
+            clear_secrets();
+            return Err(RefreshError::Unavailable(error));
+        }
+    }
+    if let Err(error) = save_secret(ACCESS_KEY, access) {
+        clear_secrets();
+        return Err(RefreshError::Unavailable(error));
     }
     Ok(())
 }
@@ -318,6 +360,21 @@ async fn request(
     Ok(data)
 }
 
+// Mirror Android's device-limit fallback when the backend omits max_devices.
+fn normalized_subscription_value(value: &Value) -> Value {
+    let mut result = value.clone();
+    if result.get("max_devices").and_then(Value::as_i64).unwrap_or(0) <= 0 {
+        let from_code = result.get("plan_code").and_then(Value::as_str)
+            .and_then(|code| code.rsplit_once("_d"))
+            .and_then(|(_, suffix)| suffix.parse::<i64>().ok())
+            .filter(|count| matches!(count, 2 | 5 | 10));
+        if let Some(limit) = from_code {
+            result["max_devices"] = json!(limit);
+        }
+    }
+    result
+}
+
 fn parse_auth(value: &Value) -> Result<AuthResult, String> {
     let access = value
         .get("access")
@@ -347,12 +404,14 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
         user,
         subscription: value
             .get("subscription")
-            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+            .and_then(|v| serde_json::from_value(normalized_subscription_value(v)).ok()),
     })
 }
 
 async fn store_auth(value: Value) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
+    // A newly authenticated identity must not inherit another account's invoice.
+    clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
     // must never be paired with the previous account's refresh token.
     let access = value["access"].as_str().or_else(|| value["access_token"].as_str()).unwrap_or("");
@@ -469,6 +528,7 @@ pub async fn telegram_login(
         trial_available: false,
         max_devices: 0,
         active_devices: 0,
+        auto_renew: None,
     };
     let profile_json = serde_json::to_string(&profile).map_err(|e| e.to_string())?;
     let subscription_json = serde_json::to_string(&subscription).map_err(|e| e.to_string())?;
@@ -556,60 +616,64 @@ pub async fn telegram_check_session(
             return Err("Этот сеанс Telegram уже отменён.".into());
         }
     }
-    // Avoid exposing one-time session tickets in URL/proxy access logs.
-    let res = request(
+    // POST keeps one-time tickets out of proxy logs. Only a legacy HTTP 405
+    // permits the same narrow GET fallback as the current Android client.
+    let res = match request(
         &app, Method::POST, "/auth/telegram/check-session",
         Some(json!({"token": token})), false, false,
-    ).await?;
+    ).await {
+        Ok(response) => response,
+        Err(error) if error.ends_with("(HTTP 405)") => {
+            let escaped: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
+            let path = format!("/auth/telegram/check-session?token={escaped}");
+            request(&app, Method::GET, &path, None, false, false).await?
+        }
+        Err(error) => return Err(error),
+    };
     let status = res
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("pending");
-    if status == "authenticated" || status == "approved" || status == "success" {
-        if let Some(access_token) = res.get("access_token").and_then(Value::as_str) {
-            // A user may cancel while the HTTP request is in flight. Hold the
-            // ticket lock while persisting credentials so cancellation wins
-            // deterministically before or after token storage, not midway.
-            let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
-            if ticket.as_deref() != Some(token) {
-                return Err("Вход через Telegram отменён.".into());
-            }
-            let refresh_token = res.get("refresh_token").and_then(Value::as_str);
-            if let Some(refresh_token) = refresh_token {
-                if let Err(err) = save_secret(REFRESH_KEY, refresh_token) {
-                    clear_secrets();
-                    return Err(err);
-                }
-            } else if let Ok(previous) = entry(REFRESH_KEY) {
-                let _ = previous.delete_credential();
-            }
-            if let Err(err) = save_secret(ACCESS_KEY, access_token) {
-                clear_secrets();
-                return Err(err);
-            }
-            *ticket = None;
-            clear_telegram_session();
-            let mut user: UserProfile = res
-                .get("user")
-                .and_then(|u| serde_json::from_value(u.clone()).ok())
-                .unwrap_or(UserProfile {
-                    id: json!("tg_user"),
-                    email: String::new(),
-                    name: "Пользователь Telegram".into(),
-                    is_google: false,
-                    created_at: None,
-                });
-            if user.name.trim().is_empty() {
-                user.name = "Пользователь Telegram".into();
-            }
-            let subscription: Option<Subscription> = res
-                .get("subscription")
-                .and_then(|s| serde_json::from_value(s.clone()).ok());
-            return Ok(TelegramCheckResult {
-                status: "approved".into(),
-                auth: Some(AuthResult { user, subscription }),
-            });
+    if matches!(status, "authenticated" | "approved" | "success") {
+        let access_token = res.get("access_token").or_else(|| res.get("access"))
+            .and_then(Value::as_str).filter(|token| !token.is_empty())
+            .ok_or("Telegram не вернул токен доступа.")?;
+        let mut user: UserProfile = serde_json::from_value(
+            res.get("user").cloned().ok_or("Telegram не вернул профиль пользователя.")?
+        ).map_err(|_| "Некорректный профиль Telegram.".to_string())?;
+        if user.id.is_null() ||
+            user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
+            return Err("Telegram не подтвердил ID пользователя.".into());
         }
+        if user.name.trim().is_empty() {
+            user.name = "Пользователь Telegram".into();
+        }
+        let subscription: Option<Subscription> = res.get("subscription")
+            .and_then(|value| serde_json::from_value(normalized_subscription_value(value)).ok());
+        let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
+            .and_then(Value::as_str).filter(|token| !token.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("ref_{access_token}"));
+        // Check cancellation while the HTTP request was in flight. Keep the
+        // ticket lock through credential persistence and avoid fake profiles.
+        let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
+        if ticket.as_deref() != Some(token) {
+            return Err("Вход через Telegram отменён.".into());
+        }
+        // Telegram may switch the active account. Invalidate any previous
+        // identity's invoice before saving the new signed-in credentials.
+        clear_pending_payment();
+        if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
+            .and_then(|_| save_secret(ACCESS_KEY, access_token)) {
+            clear_secrets();
+            return Err(err);
+        }
+        *ticket = None;
+        clear_telegram_session();
+        return Ok(TelegramCheckResult {
+            status: "approved".into(),
+            auth: Some(AuthResult { user, subscription }),
+        });
     }
     Ok(TelegramCheckResult {
         status: status.to_string(),
@@ -713,7 +777,7 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     // Device-management downtime must never break login or session recovery.
     let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
     let user = me.get("user").unwrap_or(&me).clone();
-    let subscription = sub.get("subscription").unwrap_or(&sub).clone();
+    let subscription = normalized_subscription_value(sub.get("subscription").unwrap_or(&sub));
     let current_install_id = install_id(app)?;
     let mut device_list = devices.as_ref()
         .and_then(|response| response.get("devices"))
@@ -754,7 +818,7 @@ pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, Strin
     let data = snapshot(&app).await?;
     let user: UserProfile = serde_json::from_value(data["user"].clone())
         .map_err(|e| format!("Некорректный профиль: {e}"))?;
-    let subscription = serde_json::from_value(data["subscription"].clone()).ok();
+    let subscription = serde_json::from_value(normalized_subscription_value(&data["subscription"])).ok();
     Ok(Some(AuthResult { user, subscription }))
 }
 
@@ -793,11 +857,41 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
         let code = server.get("node_code").or_else(|| server.get("code"))
             .and_then(Value::as_str).unwrap_or("");
         if code.is_empty() { continue; }
+        let code_upper = server.get("country_code").and_then(Value::as_str)
+            .unwrap_or("").to_ascii_uppercase();
+        let country_fallback = match code_upper.as_str() {
+            "DE" => "Германия", "NL" => "Нидерланды", "US" => "США",
+            "FI" => "Финляндия", "SE" => "Швеция", "GB" => "Великобритания",
+            _ => "Основной сервер",
+        };
+        let country_en_fallback = match code_upper.as_str() {
+            "DE" => "Germany", "NL" => "Netherlands", "US" => "USA",
+            "FI" => "Finland", "SE" => "Sweden", "GB" => "United Kingdom",
+            _ => "Main Server",
+        };
+        let country = server.get("country").and_then(Value::as_str)
+            .filter(|v| !v.is_empty() && *v != "Unknown")
+            .unwrap_or(country_fallback);
+        let country_en = server.get("country_en").and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(if country == country_fallback { country_en_fallback } else { country });
+        let city = server.get("city").and_then(Value::as_str)
+            .filter(|v| *v != "Unknown").unwrap_or("");
+        let city_en = server.get("city_en").and_then(Value::as_str)
+            .filter(|v| !v.is_empty()).unwrap_or(city);
         let name = server.get("display_name").or_else(|| server.get("name"))
-            .or_else(|| server.get("remark")).and_then(Value::as_str).unwrap_or(code);
-        let country = server.get("country_code").or_else(|| server.get("country"))
-            .and_then(Value::as_str).unwrap_or("");
-        let flag = server.get("flag").and_then(Value::as_str).unwrap_or("🌐");
+            .or_else(|| server.get("remark")).and_then(Value::as_str)
+            .unwrap_or(code);
+        let name_en = server.get("display_name_en").or_else(|| server.get("name_en"))
+            .and_then(Value::as_str).filter(|v| !v.is_empty())
+            .unwrap_or(country_en);
+        let flag_fallback = match code_upper.as_str() {
+            "DE" => "🇩🇪", "NL" => "🇳🇱", "US" => "🇺🇸",
+            "FI" => "🇫🇮", "SE" => "🇸🇪", "GB" => "🇬🇧",
+            _ => "🌐"
+        };
+        let flag = server.get("flag").and_then(Value::as_str)
+            .filter(|v| !v.is_empty()).unwrap_or(flag_fallback);
         let host = config.get("server").or_else(|| config.get("endpoint"))
             .and_then(Value::as_str).unwrap_or("").to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
@@ -810,7 +904,9 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             None
         };
         tasks.push(task);
-        normalized.push(json!({"code":code, "name":name, "country":country,
+        normalized.push(json!({"code":code, "name":name, "name_en":name_en,
+            "country":country, "country_en":country_en, "country_code":code_upper,
+            "city":city, "city_en":city_en,
             "flag":flag, "supported":supported, "ping":0}));
     }
     // Concurrent TCP probes; never block the async runtime or measure one by one.
@@ -822,19 +918,76 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     Ok(normalized)
 }
 
+/// Android V2 sells exact, device-scoped plans (1m_d2, 3m_d5, etc.).
+/// Never infer prices/durations from legacy flat catalogs or other tiers.
+fn mobile_plan_duration(code: &str, devices: i64) -> Option<i64> {
+    for (base, days) in [("1m", 30), ("3m", 120), ("6m", 240), ("12m", 450)] {
+        if code == format!("{base}_d{devices}") {
+            return Some(days);
+        }
+    }
+    None
+}
+
+fn confirmed_mobile_plan(plan: &Value, devices: i64, checkout_default: bool) -> Option<Value> {
+    let code = plan.get("code")?.as_str()?;
+    let expected_days = mobile_plan_duration(code, devices)?;
+    let days = plan.get("days")?.as_i64()?;
+    let price = plan.get("price_rub")?.as_i64()?;
+    let tier = plan.get("devices").and_then(Value::as_i64).unwrap_or(2);
+    if days != expected_days || price <= 0 || tier != devices {
+        return None;
+    }
+    let mut verified = plan.clone();
+    verified["purchase_enabled"] = json!(plan
+        .get("purchase_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(checkout_default));
+    verified["devices"] = json!(devices);
+    Some(verified)
+}
+
+fn mobile_catalog_plans(catalog: &Value, devices: i64) -> Vec<Value> {
+    let checkout_default = catalog.get("payment_enabled")
+        .and_then(Value::as_bool).unwrap_or(false);
+    let plans = catalog.get("raw_array").or_else(|| catalog.get("plans"))
+        .and_then(Value::as_array);
+    // Some backends preserve the catalog as a JSON-encoded string.
+    let raw = catalog.get("raw").and_then(Value::as_str)
+        .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok());
+    plans.cloned().or(raw).unwrap_or_default()
+        .iter()
+        .filter_map(|plan| confirmed_mobile_plan(plan, devices, checkout_default))
+        .collect()
+}
+
 #[tauri::command]
 pub async fn get_plans(app: AppHandle) -> Result<Vec<Value>, String> {
-    let data = request(&app, Method::GET, "/plans", None, false, false).await?;
-    if let Some(v) = data.as_array() {
-        return Ok(v.clone());
+    // Android V2 explicitly scopes pricing to each device tier, and requires auth.
+    // Each tier is independent: one unavailable tier should not hide valid offers.
+    let tasks: Vec<_> = [2_i64, 5, 10].into_iter().map(|devices| {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let path = format!("/mobile/v2/plans?devices={devices}");
+            (devices, request(&app, Method::GET, &path, None, true, false).await)
+        })
+    }).collect();
+    let mut confirmed = Vec::new();
+    let mut failure = None;
+    for task in tasks {
+        match task.await {
+            Ok((devices, Ok(body))) =>
+                confirmed.extend(mobile_catalog_plans(&body, devices)),
+            Ok((_, Err(error))) => failure = Some(error),
+            Err(error) => failure = Some(format!("Не удалось загрузить тарифы: {error}")),
+        }
     }
-    if let Some(v) = data.get("plans").and_then(Value::as_array) {
-        return Ok(v.clone());
+    if confirmed.is_empty() {
+        return Err(failure.unwrap_or_else(|| {
+            "Сервер не вернул ни одного подтверждённого тарифа Android V2.".into()
+        }));
     }
-    if let Some(raw) = data.get("raw_array").and_then(Value::as_array) {
-        return Ok(raw.clone());
-    }
-    Err("Сервер вернул тарифы в неизвестном формате.".into())
+    Ok(confirmed)
 }
 
 #[tauri::command]
@@ -907,7 +1060,7 @@ pub async fn activate_trial(app: AppHandle) -> Result<Subscription, String> {
     )
     .await?;
     let sub = res.get("subscription").unwrap_or(&res);
-    serde_json::from_value(sub.clone()).map_err(|e| format!("Некорректный статус: {e}"))
+    serde_json::from_value(normalized_subscription_value(sub)).map_err(|e| format!("Некорректный статус: {e}"))
 }
 
 #[tauri::command]
@@ -919,52 +1072,113 @@ pub async fn create_payment(
     days: Option<i64>,
     request_id: Option<String>,
 ) -> Result<Value, String> {
-    let id = install_id(&app)?;
     let dev = devices.unwrap_or(2);
     if !matches!(dev, 2 | 5 | 10) {
         return Err("Недопустимое количество устройств.".into());
     }
-    // The UI only submits values received from GET /plans. The API verifies
-    // them again; never fall back to historical hard-coded prices or durations.
-    let final_days = days.filter(|d| *d > 0).ok_or("Не загружен срок тарифа.")?;
-    let final_amount = amount_rub.filter(|a| *a > 0).ok_or("Не загружена цена тарифа.")?;
+    let canonical_days = mobile_plan_duration(&plan_code, dev)
+        .ok_or("Неизвестный тариф Android V2 для выбранного числа устройств.")?;
+    let submitted_days = days.filter(|days| *days > 0)
+        .ok_or("Не загружен срок тарифа.")?;
+    let submitted_price = amount_rub.filter(|price| *price > 0)
+        .ok_or("Не загружена цена тарифа.")?;
+    if submitted_days != canonical_days {
+        return Err("Срок тарифа не соответствует проверенному каталогу.".into());
+    }
     let request_id = request_id.unwrap_or_else(|| format!("req_{}", Uuid::new_v4().simple()));
     if request_id.len() < 8 || request_id.len() > 128 ||
         !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
         return Err("Некорректный идентификатор платежа.".into());
     }
 
-    request(
+    // Revalidate server-owned price, duration, tier and checkout capability.
+    // A stale or tampered desktop UI must never initiate an unknown payment.
+    let catalog = request(&app, Method::GET,
+        &format!("/mobile/v2/plans?devices={dev}"), None, true, false).await?;
+    let matching = mobile_catalog_plans(&catalog, dev).into_iter()
+        .find(|p| p.get("code").and_then(Value::as_str) == Some(plan_code.as_str()));
+    let plan = matching.ok_or(
+        "Выбранный тариф больше не доступен. Обновите список тарифов."
+    )?;
+    if plan.get("price_rub").and_then(Value::as_i64) != Some(submitted_price) ||
+        plan.get("days").and_then(Value::as_i64) != Some(submitted_days) {
+        return Err("Цена или срок тарифа изменились. Обновите тарифы перед оплатой.".into());
+    }
+    if plan.get("purchase_enabled").and_then(Value::as_bool) != Some(true) {
+        return Err("Сервер временно отключил оплату этого тарифа.".into());
+    }
+
+    // New Android contract: send ONLY the canonical SKU and an idempotency
+    // key; the backend, not the desktop client, owns the checkout terms.
+    let result = request(
         &app,
         Method::POST,
-        "/payment/create",
+        "/mobile/v2/payment/create",
         Some(json!({
             "plan_code": plan_code,
-            "amount_rub": final_amount,
-            "days": final_days,
-            "devices": dev,
             "provider": "yookassa",
-            "request_id": request_id,
-            "install_id": id
+            "request_id": request_id
         })),
         true,
         false,
-    )
-    .await
+    ).await?;
+    let invoice = result.get("invoice_id").and_then(Value::as_str)
+        .ok_or("Сервер оплаты не вернул идентификатор счёта.")?;
+    if invoice.is_empty() || invoice.len() > 128 ||
+        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+        return Err("Сервер оплаты вернул некорректный номер счёта.".into());
+    }
+    let payment_url = result.get("payment_url").or_else(|| result.get("confirmation_url"))
+        .and_then(Value::as_str).ok_or("Сервер не вернул ссылку на оплату.")?;
+    if !payment_url_is_allowed(payment_url) {
+        return Err("Ссылка оплаты не принадлежит проверенному провайдеру.".into());
+    }
+    if result.get("provider").and_then(Value::as_str)
+        .is_some_and(|provider| provider != "yookassa") {
+        return Err("Сервер вернул неожиданного платёжного провайдера.".into());
+    }
+    let pending = json!({
+        "plan_code":plan_code, "devices":dev, "price_rub":submitted_price,
+        "days":submitted_days, "invoice_id":invoice, "payment_url":payment_url,
+        "request_id":request_id
+    });
+    save_secret(PENDING_PAYMENT_KEY, &pending.to_string())?;
+    Ok(result)
 }
 
-/// Check only a payment invoice owned by the signed-in user.
-/// The server verifies webhook fulfillment before reporting success.
+fn payment_url_is_allowed(url: &str) -> bool {
+    let Ok(parsed) = Url::parse(url) else { return false; };
+    let host = parsed.host_str().unwrap_or_default();
+    parsed.scheme() == "https" &&
+    (host == "yookassa.ru" || host.ends_with(".yookassa.ru") ||
+        host == "yoomoney.ru" || host.ends_with(".yoomoney.ru")) &&
+    parsed.port().is_none_or(|port| port == 443) &&
+    parsed.username().is_empty() && parsed.password().is_none()
+}
+
+/// Query invoice-specific fulfillment; an active prior subscription does not
+/// prove that this invoice was paid.
 #[tauri::command]
 pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
     if invoice_id.is_empty() || invoice_id.len() > 128 ||
         !invoice_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
         return Err("Некорректный номер счёта.".into());
     }
-    request(
-        &app, Method::GET, &format!("/payment/check?invoice_id={invoice_id}&provider=yookassa"),
+    let result = request(
+        &app, Method::GET,
+        &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
         None, true, false,
-    ).await
+    ).await?;
+    let paid = matches!(result.get("status").and_then(Value::as_str),
+        Some("succeeded" | "paid" | "completed")) &&
+        result.get("is_active").and_then(Value::as_bool) == Some(true);
+    let failed = matches!(result.get("status").and_then(Value::as_str),
+        Some("failed" | "canceled" | "cancelled" | "expired"));
+    if (paid || failed) && get_pending_payment().as_ref()
+        .and_then(|p| p.get("invoice_id")).and_then(Value::as_str) == Some(invoice_id.as_str()) {
+        clear_pending_payment();
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1305,6 +1519,7 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 
 #[tauri::command]
 pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+    let _probe_guard = state.status_probe_gate.lock().await;
     // Process liveness is not network liveness. Recheck the same public exit
     // address periodically, and remove a tunnel if route/egress changed.
     // The poll runs outside the native tunnel lock to keep disconnect responsive.
@@ -1524,6 +1739,23 @@ mod tests {
     }
 
     #[test]
+    fn android_user_id_and_subscription_device_limit_are_supported() {
+        let auth = parse_auth(&json!({
+            "access":"access", "refresh":"refresh",
+            "user":{"user_id":42, "email":"tester@example.com","name":null},
+            "subscription":{"status":"active","plan_code":"12m_d5","auto_renew":true}
+        })).unwrap();
+        assert_eq!(auth.user.id, json!(42));
+        let sub = auth.subscription.unwrap();
+        assert_eq!(sub.max_devices, 5);
+        assert_eq!(sub.auto_renew, Some(true));
+        let invalid = normalized_subscription_value(&json!({
+            "status":"active", "plan_code":"abc_d999"
+        }));
+        assert!(invalid.get("max_devices").is_none());
+    }
+
+    #[test]
     fn server_device_identity_is_preserved_without_a_raw_hwid_or_install_id() {
         let confirmed = json!({"id":"42","is_current":true,"device_model":"Desktop"});
         let obj = confirmed.as_object().unwrap();
@@ -1534,6 +1766,52 @@ mod tests {
         assert!(device_is_current(legacy.as_object().unwrap(), "local-install-uuid"));
         let unknown = json!({"id":"45"});
         assert!(!device_is_current(unknown.as_object().unwrap(), "local-install-uuid"));
+    }
+
+    #[test]
+    fn v2_catalog_accepts_only_exact_backend_owned_skus_and_device_tiers() {
+        let catalog = json!({"payment_enabled":true,"raw_array":[
+            {"code":"1m_d2","devices":2,"price_rub":89,"days":30},
+            {"code":"12m_d2","devices":2,"price_rub":885,"days":450,"purchase_enabled":false},
+            {"code":"3m_d5","devices":5,"price_rub":396,"days":120},
+            {"code":"6m_d2","devices":2,"price_rub":552,"days":180},
+            {"code":"12m_d2","devices":5,"price_rub":1185,"days":450},
+            {"code":"month","devices":2,"price_rub":89,"days":30},
+            {"code":"3m_d2","devices":2,"price_rub":0,"days":120}
+        ]});
+        let found = mobile_catalog_plans(&catalog, 2);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0]["code"], "1m_d2");
+        assert_eq!(found[0]["purchase_enabled"], true);
+        assert_eq!(found[1]["purchase_enabled"], false);
+        assert!(mobile_catalog_plans(&catalog, 10).is_empty());
+        assert_eq!(mobile_catalog_plans(&catalog, 5).len(), 1);
+    }
+
+    #[test]
+    fn checkout_url_policy_rejects_untrusted_redirects_and_http() {
+        assert!(payment_url_is_allowed("https://yookassa.ru/checkout/test"));
+        assert!(payment_url_is_allowed("https://payments.yookassa.ru/checkout/test"));
+        assert!(!payment_url_is_allowed("http://yookassa.ru/checkout"));
+        assert!(!payment_url_is_allowed("https://yookassa.ru.attacker.net/"));
+        assert!(!payment_url_is_allowed("https://evil@yookassa.ru/"));
+        assert!(!payment_url_is_allowed("https://yookassa.ru:8443/checkout"));
+    }
+
+    #[test]
+    fn missing_explicit_payment_capability_disables_checkout() {
+        let catalog = json!({"plans":[{"code":"3m_d5","devices":5,"price_rub":396,"days":120}]});
+        let found = mobile_catalog_plans(&catalog, 5);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0]["purchase_enabled"], false);
+        assert_eq!(mobile_plan_duration("3m_d5", 5), Some(120));
+        assert_eq!(mobile_plan_duration("3m_d2", 5), None);
+    }
+
+    #[test]
+    fn telegram_legacy_ticket_query_is_percent_encoded() {
+        let encoded: String = url::form_urlencoded::byte_serialize(b"ab+c/=token").collect();
+        assert_eq!(encoded, "ab%2Bc%2F%3Dtoken");
     }
 
     #[test]

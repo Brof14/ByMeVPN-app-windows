@@ -50,6 +50,7 @@ const state = {
   devicesSupported: false,
   availableDeviceCounts: [],
   paymentBusy: false,
+  trialBusy: false,
   pendingCheckout: null,
   preferredServerCode: 'auto',
   settings: {
@@ -367,7 +368,6 @@ async function loadInitialData() {
   // Plans can be requested without an authenticated user. Never show stale
   // local price constants as a live checkout option.
   // Pricing is nonessential for login: never delay startup on /plans timeout.
-  void loadPricingCatalog();
   let session = null;
   let restoreFailed = false;
   try {
@@ -419,65 +419,55 @@ async function loadAvailableServers() {
   }
 }
 
+// Android V2 offers exact device-scoped SKUs; prices are never extrapolated.
+const VERIFIED_PLAN_TYPES = Object.freeze({
+  month: { sku: '1m', days: 30, months: 1 },
+  quarter: { sku: '3m', days: 120, months: 4 },
+  half_year: { sku: '6m', days: 240, months: 8 },
+  year: { sku: '12m', days: 450, months: 15 }
+});
+
 async function loadPricingCatalog() {
+  const epoch = state.sessionEpoch;
   state.catalogReady = false;
   state.availableDeviceCounts = [];
+  updatePricingMatrixUi();
   try {
+    // The native broker aggregates authenticated Android V2 catalog tiers.
     const plans = await invoke('get_plans');
-    const aliases = { month: '1m', quarter: '3m', half_year: '6m', year: '12m' };
-    const codes = Object.keys(aliases);
-    if (!Array.isArray(plans)) throw new Error('Missing plans');
-
-    // Fail closed on incomplete or invented prices. Older API responses may
-    // explicitly offer ONLY the 2-device variant, never estimated upgrades.
+    if (epoch !== state.sessionEpoch) return;
+    if (!Array.isArray(plans)) throw new Error('Invalid Android V2 catalog');
     const catalog = { 2: {}, 5: {}, 10: {} };
-    let hasDeviceOptions = true;
-    for (const code of codes) {
-      const plan = plans.find(p => p.code === aliases[code] || p.code === code ||
-        p.desktop_code === code);
-      if (!plan) throw new Error(`Missing plan ${code}`);
-      if (Array.isArray(plan.device_options)) {
-        for (const devices of [2, 5, 10]) {
-          const option = plan.device_options.find(item => item.devices === devices);
-          if (!Number.isSafeInteger(option?.price_rub) || option.price_rub <= 0 ||
-              !Number.isSafeInteger(option?.days) || option.days <= 0) {
-            throw new Error('Incomplete device price');
-          }
-          catalog[devices][code] = {
-            price: option.price_rub, days: option.days,
-            note: code === 'month' ? `${option.days} дней` :
-              `${Math.round(option.price_rub / (option.days / 30))} ₽ / месяц`
-          };
-        }
-      } else {
-        hasDeviceOptions = false;
-        if (!Number.isSafeInteger(plan.price_rub) || plan.price_rub <= 0 ||
-            !Number.isSafeInteger(plan.days) || plan.days <= 0) {
-          throw new Error('Incomplete legacy plan');
-        }
-        catalog[2][code] = {
-          price: plan.price_rub, days: plan.days,
-          note: code === 'month' ? `${plan.days} дней` :
-            `${Math.round(plan.price_rub / (plan.days / 30))} ₽ / месяц`
+    for (const devices of [2, 5, 10]) {
+      for (const [key, meta] of Object.entries(VERIFIED_PLAN_TYPES)) {
+        const planCode = meta.sku + '_d' + devices;
+        const offer = plans.find(p => p.code === planCode &&
+          p.devices === devices && p.days === meta.days &&
+          Number.isSafeInteger(p.price_rub) && p.price_rub > 0);
+        if (!offer) continue;
+        catalog[devices][key] = {
+          price: offer.price_rub, days: offer.days, planCode,
+          purchaseEnabled: offer.purchase_enabled === true
         };
       }
     }
-    state.availableDeviceCounts = hasDeviceOptions ? [2, 5, 10] : [2];
-    for (const device of state.availableDeviceCounts) {
-      for (const code of codes) {
-        if (!catalog[device][code]) throw new Error('Incomplete price matrix');
-      }
-    }
-    for (const device of state.availableDeviceCounts) {
-      PRICING_MATRIX[device] = catalog[device];
-    }
+    state.availableDeviceCounts = [2, 5, 10].filter(devices =>
+      Object.keys(catalog[devices]).length > 0);
+    if (!state.availableDeviceCounts.length) throw new Error('No verified mobile V2 plans');
+    for (const devices of [2, 5, 10]) PRICING_MATRIX[devices] = catalog[devices];
     if (!state.availableDeviceCounts.includes(state.selectedDevicesCount)) {
-      state.selectedDevicesCount = 2;
+      state.selectedDevicesCount = state.availableDeviceCounts[0];
+    }
+    if (!catalog[state.selectedDevicesCount][state.selectedPlanCode]) {
+      state.selectedPlanCode = ['year', 'half_year', 'quarter', 'month']
+        .find(code => catalog[state.selectedDevicesCount][code]) || 'month';
     }
     state.catalogReady = true;
   } catch (err) {
+    if (epoch !== state.sessionEpoch) return;
     state.catalogReady = false;
     state.availableDeviceCounts = [];
+    for (const devices of [2, 5, 10]) PRICING_MATRIX[devices] = {};
     showToast('Тарифы сейчас недоступны: оплата временно заблокирована.', true);
   }
   updatePricingMatrixUi();
@@ -507,6 +497,7 @@ function showAppShell() {
   updateVpnUi();
   void refreshAccountSnapshot();
   void loadAvailableServers();
+  void loadPricingCatalog();
 }
 
 // Tab Switching
@@ -605,50 +596,10 @@ function setupEventListeners() {
   // Telegram login buttons
   document.getElementById('btn-tg-login-modal')?.addEventListener('click', startTelegramAuthFlow);
   document.getElementById('btn-tg-register-modal')?.addEventListener('click', startTelegramAuthFlow);
-  document.getElementById('btn-submit-tg-login')?.addEventListener('click', handleTelegramLogin);
-  document.getElementById('btn-toggle-manual-tg')?.addEventListener('click', () => {
-    document.getElementById('tg-manual-box')?.classList.toggle('hidden');
-  });
-
-  // Manual key / subscription link entry (view-auth)
-  document.getElementById('btn-toggle-manual-key')?.addEventListener('click', () => {
-    const pane = document.getElementById('auth-manual-key-pane');
-    const label = document.getElementById('manual-key-btn-text');
-    if (pane) {
-      pane.classList.toggle('hidden');
-      const isHidden = pane.classList.contains('hidden');
-      if (label) {
-        label.textContent = isHidden ? 'Ввести ключ или ссылку вручную ▾' : 'Ввести ключ или ссылку вручную ▴';
-      }
-    }
-  });
-
-  document.getElementById('btn-submit-manual-key')?.addEventListener('click', async () => {
-    const textarea = document.getElementById('input-manual-key-url');
-    const keyUrl = textarea?.value?.trim();
-    if (!keyUrl) {
-      showToast('Вставьте HTTPS-ссылку подписки', true);
-      return;
-    }
-    if (!keyUrl.startsWith('https://')) {
-      showToast('Прямой импорт VLESS-ключей пока не поддерживается.', true);
-      return;
-    }
-    showToast('Проверка ссылки подписки...');
-    try {
-      const res = await invoke('telegram_login', {
-        subscriptionUrl: keyUrl,
-        name: 'Пользователь ByMeVPN'
-      });
-      state.user = res.user;
-      state.subscription = res.subscription;
-      showAppShell();
-      showToast('Ключ успешно активирован!');
-      await refreshAccountSnapshot();
-    } catch (err) {
-      showToast(typeof err === 'string' ? err : 'Неверный формат ключа или ссылки', true);
-    }
-  });
+  // Manual subscription links are not authentication credentials. The
+  // deprecated native telegram_login command was deliberately unregistered
+  // because it fabricated an active account without server verification.
+  // Authenticated bot sessions are the only supported Telegram sign-in flow.
 
   // Sidebar navigation
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
@@ -738,10 +689,7 @@ function setupEventListeners() {
   });
 
   // Paywall modal actions
-  document.getElementById('btn-paywall-trial')?.addEventListener('click', () => {
-    closeModal('modal-paywall');
-    handleActivateTrial();
-  });
+  document.getElementById('btn-paywall-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-paywall-yookassa-action')?.addEventListener('click', () => {
     closeModal('modal-paywall');
     handlePayYooKassa();
@@ -757,6 +705,7 @@ function setupEventListeners() {
       document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       state.selectedPlanCode = card.dataset.pwPlan || 'year';
+      updatePricingMatrixUi();
     });
   });
 
@@ -776,6 +725,7 @@ function setupEventListeners() {
       document.querySelectorAll('.tariff-card[data-plan]').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       state.selectedPlanCode = card.dataset.plan;
+      updatePricingMatrixUi();
     });
   });
 
@@ -905,10 +855,13 @@ let tgPollingGeneration = 0;
 let tgPollingBusy = false;
 let tgStarting = false;
 let tgPollingFailures = 0;
+const TG_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+let tgPollingStartedAt = 0;
 
 function cancelTelegramPolling() {
   const previousToken = tgActiveToken;
   tgActiveToken = null;
+  tgPollingStartedAt = 0;
   if (previousToken) {
     void invoke('telegram_cancel_session', { sessionToken: previousToken }).catch(() => {});
   }
@@ -935,9 +888,10 @@ async function startTelegramAuthFlow() {
       throw new Error('Сервер не вернул сеанс Telegram');
     }
     tgActiveToken = res.session_token;
+    tgPollingStartedAt = Date.now();
     openModal('modal-telegram');
     const statusEl = document.getElementById('tg-polling-status');
-    if (statusEl) statusEl.textContent = 'Ожидаем подтверждение в Telegram...';
+    if (statusEl) statusEl.textContent = uiText('Ожидаем подтверждение в Telegram...', 'Waiting for Telegram confirmation...');
     // All external URLs must pass the Rust allowlist. WebView window.open
     // must never bypass native link validation.
     const openTelegram = () => invoke('open_external_url', { url: res.bot_url });
@@ -949,6 +903,13 @@ async function startTelegramAuthFlow() {
     tgPollingFailures = 0;
     tgPollingInterval = setInterval(async () => {
       if (tgPollingBusy || generation !== tgPollingGeneration) return;
+      if (Date.now() - tgPollingStartedAt >= TG_SESSION_TIMEOUT_MS) {
+        cancelTelegramPolling();
+        if (statusEl) statusEl.textContent = uiText(
+          'Время ожидания истекло. Начните вход заново.',
+          'Sign-in timed out. Start again.');
+        return;
+      }
       tgPollingBusy = true;
       try {
         const check = await invoke('telegram_check_session', { sessionToken: res.session_token });
@@ -966,13 +927,13 @@ async function startTelegramAuthFlow() {
           void refreshAccountSnapshot();
         } else if (check?.status === 'expired') {
           cancelTelegramPolling();
-          if (statusEl) statusEl.textContent = 'Срок ссылки истёк. Начните вход снова.';
+          if (statusEl) statusEl.textContent = uiText('Срок ссылки истёк. Начните вход снова.', 'The login link expired. Start again.');
         }
       } catch (err) {
         if (generation !== tgPollingGeneration) return;
         tgPollingFailures += 1;
         if (tgPollingFailures >= 3 && statusEl) {
-          statusEl.textContent = 'Нет ответа сервера. Продолжаем проверку...';
+          statusEl.textContent = uiText('Нет ответа сервера. Продолжаем проверку...', 'Server unavailable. Retrying...');
         }
       } finally {
         tgPollingBusy = false;
@@ -984,30 +945,6 @@ async function startTelegramAuthFlow() {
     }
   } finally {
     tgStarting = false;
-  }
-}
-
-async function handleTelegramLogin() {
-  const url = document.getElementById('input-tg-sub-url').value.trim();
-  if (!url) {
-    showToast('Вставьте ссылку из Telegram-бота', true);
-    return;
-  }
-
-  showToast('Проверка подписки Telegram...');
-  try {
-    const res = await invoke('telegram_login', {
-      subscriptionUrl: url,
-      name: 'Пользователь Telegram'
-    });
-    state.user = res.user;
-    state.subscription = res.subscription;
-    closeModal('modal-telegram');
-    showAppShell();
-    showToast('Подписка Telegram успешно активирована!');
-    await refreshAccountSnapshot();
-  } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Ошибка проверки ссылки', true);
   }
 }
 
@@ -1299,6 +1236,9 @@ const TOAST_EN = Object.freeze({
   "Тарифы сейчас недоступны. Повторите загрузку позже.": "Plans unavailable. Retry later.",
   "Выбранное число устройств недоступно. Обновите тарифы.": "Selected device count is unavailable. Refresh plans.",
   "Цена тарифа не подтверждена сервером.": "The plan price has not been verified by the server.",
+  "Выбранный тариф недоступен для оплаты. Обновите список.": "The selected plan is unavailable for checkout. Refresh plans.",
+  "Неожиданный платёжный провайдер.": "Unexpected payment provider.",
+  "Сервер не вернул подтверждённые данные счёта": "The server did not return a valid invoice.",
   "Формирование счёта ЮKassa...": "Creating a YooKassa invoice...",
   "Ожидаем подтверждение конкретного счёта от сервера": "Waiting for confirmation of this invoice.",
   "Счёт отменён. Можно создать новый платёж.": "Invoice canceled. You can create a new payment.",
@@ -1376,16 +1316,19 @@ function updateVpnUi() {
   const homeCity = document.getElementById('home-server-city');
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
-  if (nameEl) nameEl.textContent = isConn && state.metrics?.server_name ? state.metrics.server_name : s.name;
+  if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
+    state.metrics.server_name : serverDisplayName(s);
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     document.getElementById(id)?.setAttribute('aria-busy', String(state.connectionBusy));
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
-    uiText('Автоматически', 'Automatic') : s.name.split('•')[0].trim();
-  if (homeCity) homeCity.textContent = s.name.includes('•') ?
-    s.name.split('•')[1].trim() : uiText('Автовыбор', 'Auto select');
+    uiText('Автоматически', 'Automatic') :
+    (state.settings.language === 'en' ? s.country_en : s.country) || serverDisplayName(s);
+  if (homeCity) homeCity.textContent = s.code === 'auto' ?
+    uiText('Автовыбор', 'Auto select') :
+    ((state.settings.language === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
 }
@@ -1570,59 +1513,65 @@ function escapeHtml(str) {
 }
 
 // Pricing Matrix UI Calculation
+function priceNoteForOffer(code, offer) {
+  if (!offer) return uiText('Тариф недоступен', 'Plan unavailable');
+  if (code === 'month') return uiText('30 дней', '30 days');
+  const months = VERIFIED_PLAN_TYPES[code]?.months || 1;
+  return Math.round(offer.price / months) + ' ' +
+    uiText('₽ / месяц', 'RUB / month');
+}
+
 function updatePricingMatrixUi() {
-  document.getElementById('btn-pay-yookassa')?.toggleAttribute('disabled', !state.catalogReady);
-  document.getElementById('btn-paywall-yookassa-action')?.toggleAttribute('disabled', !state.catalogReady);
+  const dev = state.selectedDevicesCount || 2;
+  const matrix = PRICING_MATRIX[dev] || {};
+  const chosen = matrix[state.selectedPlanCode];
+  const canPay = state.catalogReady && chosen?.purchaseEnabled === true && !state.paymentBusy;
+  for (const id of ['btn-pay-yookassa', 'btn-paywall-yookassa-action']) {
+    document.getElementById(id)?.toggleAttribute('disabled', !canPay);
+  }
   document.querySelectorAll('.dev-seg-btn').forEach(btn => {
     const count = Number(btn.dataset.devices);
     btn.disabled = !state.availableDeviceCounts.includes(count);
-    btn.classList.toggle('active', count === state.selectedDevicesCount);
+    btn.classList.toggle('active', count === dev);
   });
-  const dev = state.selectedDevicesCount || 2;
-  const matrix = PRICING_MATRIX[dev] || PRICING_MATRIX[2];
-  if (!state.catalogReady) {
-    for (const card of document.querySelectorAll('.paywall-mini-tariffs .tariff-card')) {
-      const price = card.querySelector('.tariff-price-bold');
-      if (price) price.textContent = '—';
-    }
-    for (const id of ['price-month', 'price-quarter', 'price-half_year', 'price-year']) {
-      const element = document.getElementById(id);
-      if (element) element.textContent = '—';
-    }
-    return;
+  for (const [code, priceId, noteId] of [
+    ['month', 'price-month', 'days-month'],
+    ['quarter', 'price-quarter', 'rate-quarter'],
+    ['half_year', 'price-half_year', 'rate-half_year'],
+    ['year', 'price-year', 'rate-year']
+  ]) {
+    const offer = state.catalogReady ? matrix[code] : null;
+    const price = document.getElementById(priceId);
+    const note = document.getElementById(noteId);
+    if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
+    if (note) note.textContent = priceNoteForOffer(code, offer);
   }
-
-  const pMonth = document.getElementById('price-month');
-  const dMonth = document.getElementById('days-month');
-  const pQuarter = document.getElementById('price-quarter');
-  const rQuarter = document.getElementById('rate-quarter');
-  const pHalf = document.getElementById('price-half_year');
-  const rHalf = document.getElementById('rate-half_year');
-  const pYear = document.getElementById('price-year');
-  const rYear = document.getElementById('rate-year');
-
-  if (pMonth) pMonth.textContent = `${matrix.month.price} ₽`;
-  if (dMonth) dMonth.textContent = matrix.month.note;
-
-  if (pQuarter) pQuarter.textContent = `${matrix.quarter.price} ₽`;
-  if (rQuarter) rQuarter.textContent = matrix.quarter.note;
-
-  if (pHalf) pHalf.textContent = `${matrix.half_year.price} ₽`;
-  if (rHalf) rHalf.textContent = matrix.half_year.note;
-
-  if (pYear) pYear.textContent = `${matrix.year.price} ₽`;
-  if (rYear) rYear.textContent = matrix.year.note;
+  document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
+    const offer = state.catalogReady ? matrix[card.dataset.plan] : null;
+    card.classList.toggle('selected', card.dataset.plan === state.selectedPlanCode);
+    card.classList.toggle('unavailable', !offer);
+    card.setAttribute('aria-disabled', String(!offer));
+  });
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
-    const entry = matrix[card.dataset.pwPlan];
-    if (!entry) return;
+    const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
     const price = card.querySelector('.tariff-price-bold');
     const note = card.querySelector('.tariff-subnote');
-    if (price) price.textContent = `${entry.price} ₽`;
-    if (note) note.textContent = entry.note;
+    if (price) price.textContent = offer ? offer.price + ' ₽' : '—';
+    if (note) note.textContent = priceNoteForOffer(card.dataset.pwPlan, offer);
+    card.classList.toggle('unavailable', !offer);
+    card.classList.toggle('selected', card.dataset.pwPlan === state.selectedPlanCode);
   });
 }
 
 // Render Servers
+function serverDisplayName(server) {
+  if (!server || server.code === 'auto') return uiText('Автоматически', 'Automatic');
+  if (state.settings.language !== 'en') return server.name || server.code;
+  if (server.name_en && server.name_en !== server.country_en) return server.name_en;
+  const country = server.country_en || server.name || server.code;
+  return server.city_en ? country + ' • ' + server.city_en : country;
+}
+
 function renderServersList(filter = '') {
   const container = document.getElementById('servers-dynamic-list');
   if (!container) return;
@@ -1635,7 +1584,8 @@ function renderServersList(filter = '') {
   if (!list.length) {
     const empty = document.createElement('p');
     empty.className = 'server-empty-message';
-    empty.textContent = 'Доступных серверов нет. Проверьте подписку и соединение.';
+    empty.textContent = uiText('Доступных серверов нет. Проверьте подписку и соединение.',
+      'No servers available. Check your subscription and connection.');
     container.appendChild(empty);
     return;
   }
@@ -1653,13 +1603,16 @@ function renderServersList(filter = '') {
     const details = document.createElement('div');
     details.className = 'server-item-text';
     const title = document.createElement('strong');
-    title.textContent = srv.name || srv.code;
+    title.textContent = serverDisplayName(srv);
     const subtitle = document.createElement('span');
-    subtitle.textContent = srv.supported === false ? 'Этот протокол пока не поддерживается' : (srv.country || 'Доступная локация');
+    subtitle.textContent = srv.supported === false ?
+      uiText('Этот протокол пока не поддерживается', 'This protocol is not yet supported') :
+      ((state.settings.language === 'en' ? srv.country_en : srv.country) ||
+        uiText('Доступная локация', 'Available location'));
     details.append(title, subtitle);
     const ping = document.createElement('span');
     ping.className = 'server-ping-badge';
-    ping.textContent = srv.ping > 0 ? `${srv.ping} мс` : '—';
+    ping.textContent = srv.ping > 0 ? (srv.ping + ' ms') : '—';
     const dot = document.createElement('span');
     dot.className = 'radio-selection-dot';
     card.append(flag, details, ping, dot);
@@ -1672,7 +1625,7 @@ function renderServersList(filter = '') {
       document.getElementById('recommended-server-auto')?.setAttribute('aria-pressed', 'false');
       renderServersList(filter);
       updateVpnUi();
-      showToast(`Выбран сервер: ${srv.name || srv.code}`);
+      showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(srv));
       switchTab('tab-home');
     });
     container.appendChild(card);
@@ -1684,22 +1637,99 @@ function filterServers(query) {
 }
 
 // Payment & Trial
+const TRIAL_ACTION_IDS = [
+  'btn-home-activate-trial',
+  'btn-no-plan-trial',
+  'btn-pricing-activate-trial',
+  'btn-paywall-trial'
+];
+
+function setTrialPending(pending) {
+  state.trialBusy = pending;
+  for (const id of TRIAL_ACTION_IDS) {
+    const button = document.getElementById(id);
+    if (button) {
+      button.disabled = pending;
+      button.setAttribute('aria-busy', String(pending));
+    }
+  }
+}
+
+function trialActivationMessage(error) {
+  const raw = String(typeof error === 'string' ? error : error?.message || '');
+  // Match Android's AccountActionErrorMessages: explain recoverable cases
+  // without dumping raw backend payloads or untranslated internal errors.
+  if (/\(HTTP 401\)|\[UNAUTHORIZED\]|Сначала войдите/i.test(raw)) {
+    return uiText('Сеанс завершился. Войдите заново и повторите попытку.',
+      'Your session expired. Sign in again and retry.');
+  }
+  if (/\(HTTP 409\)/.test(raw)) {
+    return uiText('Пробный период уже использован или активирован. Обновите аккаунт.',
+      'Your trial was already used or activated. Refresh your account status.');
+  }
+  if (/\(HTTP 422\)/.test(raw)) {
+    return uiText('Не удалось подтвердить устройство. Перезапустите приложение.',
+      'This device could not be verified. Restart the app.');
+  }
+  if (/\(HTTP 5\d\d\)/.test(raw)) {
+    return uiText('Сервис пробного доступа временно недоступен. Повторите позже.',
+      'The trial service is temporarily unavailable. Try again later.');
+  }
+  if (/связаться|подключени|NETWORK_ERROR|fetch|network|timeout/i.test(raw)) {
+    return uiText('Не удалось связаться с сервером. Проверьте интернет.',
+      'Could not reach the server. Check your internet connection.');
+  }
+  return uiText('Не удалось активировать пробный период. Повторите попытку.',
+    'Could not activate your free trial. Please try again.');
+}
+
 async function handleActivateTrial() {
-  showToast('Активация 3 дней бесплатного доступа...');
+  // Android V2 parity: never issue multiple trial activations for one user.
+  if (state.trialBusy) return;
+  if (!state.user?.id) {
+    showToast(uiText('Войдите в аккаунт для активации пробного периода.', 'Sign in to activate your free trial.'), true);
+    return;
+  }
+  const epoch = state.sessionEpoch;
+  const accountId = String(state.user.id);
+  const sameAccount = () => state.sessionEpoch === epoch &&
+    String(state.user?.id ?? '') === accountId;
+  setTrialPending(true);
+  showToast(uiText('Проверяем пробный доступ...', 'Checking your free trial...'));
   try {
     const res = await invoke('activate_trial');
+    // A successful backend response for a previous signed-in identity must
+    // never overwrite a newly signed-in account after an async race.
+    if (!sameAccount()) return;
     if (!res || !['active', 'trial', 'grace'].includes(res.status)) {
-      throw new Error('Сервер не подтвердил активацию пробного периода');
+      throw new Error(uiText(
+        'Сервер не подтвердил активацию пробного периода.',
+        'The server did not confirm free-trial activation.'
+      ));
     }
     state.subscription = res;
     updateSubscriptionUi();
     updateVpnUi();
-    await loadAvailableServers();
     closeModal('modal-paywall');
-    showToast('Пробный период на 3 дня успешно активирован (0 ₽)!');
     switchTab('tab-home');
+    showToast(uiText('Бесплатный доступ активирован!', 'Your free trial is active!'));
+    // Server discovery may fail independently of successful activation.
+    // Do not report a failed trial or restore paywall after confirmation.
+    try {
+      await loadAvailableServers();
+    } catch (error) {
+      if (sameAccount()) {
+        showToast(uiText(
+          'Доступ активирован, но серверы пока недоступны. Обновите список позже.',
+          'Your trial is active, but servers are unavailable. Retry later.'
+        ), true);
+      }
+    }
   } catch (err) {
-    showToast(typeof err === 'string' ? err : 'Не удалось активировать пробный период', true);
+    if (!sameAccount()) return;
+    showToast(trialActivationMessage(err), true);
+  } finally {
+    setTrialPending(false);
   }
 }
 
@@ -1711,48 +1741,81 @@ async function handlePayYooKassa() {
   }
   const plan = state.selectedPlanCode || 'year';
   const devices = state.selectedDevicesCount || 2;
-  if (!state.availableDeviceCounts.includes(devices)) {
-    showToast('Выбранное число устройств недоступно. Обновите тарифы.', true);
-    return;
-  }
   const selected = PRICING_MATRIX[devices]?.[plan];
-  if (!Number.isSafeInteger(selected?.price) || !Number.isSafeInteger(selected?.days)) {
-    showToast('Цена тарифа не подтверждена сервером.', true);
+  if (!state.availableDeviceCounts.includes(devices) ||
+      !selected?.planCode || selected.purchaseEnabled !== true ||
+      !Number.isSafeInteger(selected.price) || !Number.isSafeInteger(selected.days)) {
+    showToast('Выбранный тариф недоступен для оплаты. Обновите список.', true);
     return;
   }
+  const epoch = state.sessionEpoch;
   state.paymentBusy = true;
-  document.getElementById('btn-pay-yookassa')?.setAttribute('disabled', '');
-  document.getElementById('btn-paywall-yookassa-action')?.setAttribute('disabled', '');
+  updatePricingMatrixUi();
   try {
-    const matches = state.pendingCheckout?.plan === plan && state.pendingCheckout?.devices === devices;
+    // Resume the exact server invoice after a Windows restart. Windows
+    // Credential Manager stores the invoice under the signed-in user.
+    const recovered = await invoke('get_pending_payment');
+    if (epoch !== state.sessionEpoch) return;
+    if (recovered?.plan_code === selected.planCode &&
+        recovered?.devices === devices &&
+        recovered?.invoice_id && recovered?.payment_url && recovered?.request_id) {
+      state.pendingCheckout = {
+        planCode: selected.planCode, devices,
+        accountId: String(state.user?.id),
+        requestId: recovered.request_id,
+        invoiceId: recovered.invoice_id,
+        paymentUrl: recovered.payment_url
+      };
+    }
+    const matches = state.pendingCheckout?.planCode === selected.planCode &&
+      state.pendingCheckout?.devices === devices &&
+      state.pendingCheckout?.accountId === String(state.user?.id);
     if (!matches) {
-      const requestId = `checkout_${window.crypto?.randomUUID?.() ||
-        `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
-      state.pendingCheckout = { plan, devices, requestId, invoiceId: null };
+      const random = window.crypto?.randomUUID?.() ||
+        Date.now() + '_' + Math.random().toString(36).slice(2);
+      state.pendingCheckout = {
+        planCode: selected.planCode, devices,
+        accountId: String(state.user?.id), requestId: 'checkout_' + random,
+        invoiceId: null, paymentUrl: null
+      };
     }
-    showToast('Формирование счёта ЮKassa...');
-    const response = await invoke('create_payment', {
-      planCode: plan, devices, amountRub: selected.price, days: selected.days,
-      requestId: state.pendingCheckout.requestId
-    });
-    const invoiceId = response?.invoice_id;
-    const url = response?.confirmation_url || response?.payment_url;
-    if (!invoiceId || !/^[a-zA-Z0-9_-]{1,128}$/.test(invoiceId) ||
-        typeof url !== 'string' || !url.startsWith('https://')) {
-      throw new Error('Сервер не вернул подтверждённые данные счёта');
+    // Reuse an existing invoice after closing checkout or timing out.
+    if (!state.pendingCheckout.invoiceId) {
+      showToast('Формирование счёта ЮKassa...');
+      const response = await invoke('create_payment', {
+        planCode: selected.planCode, devices,
+        amountRub: selected.price, days: selected.days,
+        requestId: state.pendingCheckout.requestId
+      });
+      if (epoch !== state.sessionEpoch) return;
+      const invoiceId = response?.invoice_id;
+      const url = response?.payment_url || response?.confirmation_url;
+      if (response?.provider && response.provider !== 'yookassa') {
+        throw new Error('Неожиданный платёжный провайдер.');
+      }
+      if (typeof invoiceId !== 'string' ||
+          !/^[a-zA-Z0-9_-]{1,128}$/.test(invoiceId) ||
+          typeof url !== 'string' || !url.startsWith('https://')) {
+        throw new Error('Сервер не вернул подтверждённые данные счёта');
+      }
+      state.pendingCheckout.invoiceId = invoiceId;
+      state.pendingCheckout.paymentUrl = url;
     }
-    state.pendingCheckout.invoiceId = invoiceId;
-    await invoke('open_external_url', { url });
+    await invoke('open_external_url', { url: state.pendingCheckout.paymentUrl });
+    if (epoch !== state.sessionEpoch) return;
     showToast('Ожидаем подтверждение конкретного счёта от сервера');
     for (let attempt = 0; attempt < 24; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 5000));
-      const status = await invoke('check_payment', { invoiceId });
-      if (status?.status === 'failed' || status?.status === 'canceled') {
+      if (epoch !== state.sessionEpoch) return;
+      const status = await invoke('check_payment', { invoiceId: state.pendingCheckout.invoiceId });
+      if (epoch !== state.sessionEpoch) return;
+      const paymentStatus = String(status?.status || '').toLowerCase();
+      if (['failed', 'canceled', 'cancelled', 'expired'].includes(paymentStatus)) {
         state.pendingCheckout = null;
         showToast('Счёт отменён. Можно создать новый платёж.', true);
         return;
       }
-      if (status?.status === 'succeeded' && status.is_active === true) {
+      if (['succeeded', 'paid', 'completed'].includes(paymentStatus) && status?.is_active === true) {
         state.pendingCheckout = null;
         await refreshAccountSnapshot();
         showToast('Оплата подтверждена, подписка обновлена.');
@@ -1761,7 +1824,9 @@ async function handlePayYooKassa() {
     }
     showToast('Счёт ожидает подтверждения. Повторное открытие продолжит его проверку.');
   } catch (err) {
-    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось проверить счёт.', true);
+    if (epoch === state.sessionEpoch) {
+      showToast(typeof err === 'string' ? err : err?.message || 'Не удалось проверить счёт.', true);
+    }
   } finally {
     state.paymentBusy = false;
     updatePricingMatrixUi();
@@ -1827,6 +1892,7 @@ function applyLanguage(lang) {
   updateVpnUi();
   updateSubscriptionUi();
   updateDevicesUi();
+  renderServersList();
 }
 
 // Refresh Account Snapshot

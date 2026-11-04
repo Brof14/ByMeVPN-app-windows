@@ -135,19 +135,7 @@
                 <span class="btn-arrow">›</span>
               </button>
 
-              <!-- Manual Key / Subscription Link Accordion matching Android WelcomeScreen -->
-              <div class="auth-manual-key-toggle-box hidden">
-                <button type="button" id="btn-toggle-manual-key" class="btn-link-key-toggle">
-                  <span id="manual-key-btn-text">Ввести ссылку подписки вручную ▾</span>
-                </button>
-                <div id="auth-manual-key-pane" class="auth-manual-key-pane hidden">
-                  <textarea id="input-manual-key-url" class="textarea-manual-key" placeholder="Вставьте ссылку подписки или vless://..."></textarea>
-                  <button type="button" id="btn-submit-manual-key" class="btn-primary btn-submit-key">
-                    <span>Подключить по ссылке</span>
-                    <span class="btn-arrow">›</span>
-                  </button>
-                </div>
-              </div>
+
             </div>
 
             <button type="button" id="btn-retry-session" class="btn-secondary hidden" style="width:100%;margin-top:8px;">
@@ -579,7 +567,7 @@
                 <div class="glass-card tariff-card" data-plan="month">
                   <span class="tariff-period-name" data-i18n="plan_1m">1 месяц</span>
                   <div class="tariff-price-block">
-                    <strong class="tariff-price-number" id="price-month">89 ₽</strong>
+                    <strong class="tariff-price-number" id="price-month">—</strong>
                     <span class="tariff-period-note" id="days-month">30 дней</span>
                   </div>
                 </div>
@@ -590,8 +578,8 @@
                     <span class="gift-badge" data-i18n="plus_1_gift">+ 1 в подарок</span>
                   </div>
                   <div class="tariff-price-block">
-                    <strong class="tariff-price-number" id="price-quarter">316 ₽</strong>
-                    <span class="tariff-period-note" id="rate-quarter">79 ₽ / месяц</span>
+                    <strong class="tariff-price-number" id="price-quarter">—</strong>
+                    <span class="tariff-period-note" id="rate-quarter">—</span>
                   </div>
                 </div>
 
@@ -601,8 +589,8 @@
                     <span class="gift-badge" data-i18n="plus_2_gift">+ 2 в подарок</span>
                   </div>
                   <div class="tariff-price-block">
-                    <strong class="tariff-price-number" id="price-half_year">552 ₽</strong>
-                    <span class="tariff-period-note" id="rate-half_year">69 ₽ / месяц</span>
+                    <strong class="tariff-price-number" id="price-half_year">—</strong>
+                    <span class="tariff-period-note" id="rate-half_year">—</span>
                   </div>
                 </div>
 
@@ -617,8 +605,8 @@
                     <span class="gift-badge" data-i18n="plus_3_gift">+ 3 в подарок</span>
                   </div>
                   <div class="tariff-price-block">
-                    <strong class="tariff-price-number" id="price-year">885 ₽</strong>
-                    <span class="tariff-period-note" id="rate-year">59 ₽ / месяц</span>
+                    <strong class="tariff-price-number" id="price-year">—</strong>
+                    <span class="tariff-period-note" id="rate-year">—</span>
                   </div>
                 </div>
               </div>
@@ -1274,10 +1262,10 @@
                   <strong>12 месяцев</strong>
                   <span class="gift-badge">+ 3 в подарок</span>
                 </div>
-                <span class="tariff-subnote">59 ₽ / месяц</span>
+                <span class="tariff-subnote">—</span>
               </div>
             </div>
-            <strong class="tariff-price-bold">885 ₽</strong>
+            <strong class="tariff-price-bold">—</strong>
           </div>
           <div class="tariff-card" data-pw-plan="month">
             <div class="tariff-left">
@@ -1289,7 +1277,7 @@
                 <span class="tariff-subnote">30 дней</span>
               </div>
             </div>
-            <strong class="tariff-price-bold">89 ₽</strong>
+            <strong class="tariff-price-bold">—</strong>
           </div>
         </div>
 
@@ -1332,21 +1320,6 @@
               <span class="spinner-mini"></span>
               <span id="tg-polling-status">Ожидание подтверждения от Telegram...</span>
             </div>
-          </div>
-        </div>
-
-        <!-- Optional fallback toggle -->
-        <div class="tg-fallback-accordion hidden">
-          <button type="button" id="btn-toggle-manual-tg" class="text-link-subtle">
-            Вход по ссылке конфигурации (альтернативный способ) ▾
-          </button>
-          <div id="tg-manual-box" class="tg-manual-fields hidden">
-            <div class="input-field-box">
-              <input type="text" id="input-tg-sub-url" placeholder="https://bymevpn.duckdns.org:2096/yay/..." />
-            </div>
-            <button type="button" id="btn-submit-tg-login" class="btn-secondary btn-wide">
-              Войти по ссылке
-            </button>
           </div>
         </div>
 

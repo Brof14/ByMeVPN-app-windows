@@ -58,8 +58,28 @@ async fn query_probe(client: reqwest::Client, endpoint: &'static str) -> Option<
 
 async fn probe_egress(client: reqwest::Client) -> Option<IpAddr> {
     let mut probes = JoinSet::new();
-    for endpoint in PROBES {
-        probes.spawn(query_probe(client.clone(), endpoint));
+    // Stagger the fallback providers: most checks succeed with one of the
+    // first three, so don't open six connections on every watchdog tick.
+    for endpoint in PROBES.iter().take(3) {
+        probes.spawn(query_probe(client.clone(), *endpoint));
+    }
+    let initial = tokio::time::timeout(Duration::from_millis(650), async {
+        while let Some(result) = probes.join_next().await {
+            if let Ok(Some(ip)) = result {
+                return Some(ip);
+            }
+        }
+        None
+    }).await;
+    if let Ok(Some(ip)) = initial {
+        probes.abort_all();
+        return Some(ip);
+    }
+
+    // Existing probes continue if the grace period elapsed. If the primary
+    // providers all failed, start backups immediately without waiting.
+    for endpoint in PROBES.iter().skip(3) {
+        probes.spawn(query_probe(client.clone(), *endpoint));
     }
     while let Some(result) = probes.join_next().await {
         if let Ok(Some(ip)) = result {
@@ -76,8 +96,8 @@ fn probe_client() -> Result<reqwest::Client, String> {
         // Check the OS-installed route, never a browser-configured proxy.
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(6))
+        .connect_timeout(Duration::from_millis(2500))
+        .timeout(Duration::from_millis(4500))
         .build()
         .map_err(|_| "Не удалось подготовить проверку выхода VPN.".to_string())
 }

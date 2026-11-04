@@ -3182,3 +3182,40 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .auth-brand-name { font-size: 27px; }
   .auth-card { padding-top: 4px; }
 }
+
+
+/* Compact native desktop window (960x700 default), responsive down to 800x590.
+   Keep all screens scrollable rather than clipping controls at minimum size. */
+@media (max-width: 1200px) {
+  .app-sidebar { width: 184px; padding: 15px 10px; }
+  .sidebar-brand { padding: 0 8px 16px; }
+  .sidebar-brand-text { font-size: 17px; }
+  .sidebar-nav { gap: 4px; }
+  .sidebar-tab { height: 42px; gap: 9px; padding: 0 10px; font-size: 12.5px; }
+  .app-main-frame { padding: 12px 17px 16px; }
+  .app-top-header { height: 40px; margin-bottom: 9px; }
+  .page-title { font-size: 21px; }
+  .hero-connection-card { min-height: 260px; padding: 12px 14px; margin-bottom: 10px; }
+  .pulse-power-ring { width: 106px; height: 106px; margin-bottom: 9px; }
+  .glass-card { border-radius: 15px; }
+  .auth-view { padding: 10px 14px 18px; gap: 3px; }
+  .auth-hero-side { min-height: 118px; }
+  .hero-shield-emblem { min-height: 66px; }
+  .hero-shield-emblem::after { width: 68px; height: 68px; }
+  .auth-brand-name { font-size: 27px; }
+  .auth-card-side { max-width: 470px; }
+  .auth-card { padding: 5px 14px 18px; }
+  .auth-form-fields { gap: 9px; }
+  .auth-form-fields .input-field-box { min-height: 44px; }
+  .auth-form-fields .btn-primary { min-height: 44px; }
+  .btn-google { min-height: 44px; height: 44px; }
+  .toast-popup { max-width: min(90vw, 680px); border-radius: 14px; text-align: center; }
+}
+@media (max-height: 640px) {
+  .hero-connection-card { min-height: 218px; }
+  .pulse-power-ring { width: 90px; height: 90px; }
+  .auth-hero-side { min-height: 90px; }
+  .hero-shield-emblem { min-height: 52px; }
+  .hero-shield-emblem::after { width: 54px; height: 54px; }
+  .auth-title { font-size: 21px; }
+}

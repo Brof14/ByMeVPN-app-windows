@@ -8,7 +8,7 @@ use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf, sync::Mutex, time::Duration};
+use std::{fs, path::PathBuf, sync::{Mutex, OnceLock}, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use url::Url;
 use uuid::Uuid;
@@ -25,6 +25,9 @@ const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
 static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+// reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
+// TLS/DNS connection pool and new X-HWID file reads for every API request.
+static API_CLIENT: OnceLock<Client> = OnceLock::new();
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
@@ -37,6 +40,8 @@ pub struct ActiveTunnel {
     pub server_host: String,
     pub server_port: u16,
     pub last_egress_probe: std::time::Instant,
+    pub last_ping_probe: std::time::Instant,
+    pub cached_ping_ms: u32,
     pub baseline_ip: std::net::IpAddr,
     pub egress_verified: bool,
 }
@@ -118,6 +123,9 @@ pub struct AuthResult {
 }
 
 fn http(app: &AppHandle) -> Result<Client, String> {
+    if let Some(client) = API_CLIENT.get() {
+        return Ok(client.clone());
+    }
     // Match the 3x-ui HWID gate used by the mobile app and subscription API.
     // One random installation ID is stable across sign-ins on this machine.
     let mut headers = reqwest::header::HeaderMap::new();
@@ -133,6 +141,10 @@ fn http(app: &AppHandle) -> Result<Client, String> {
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .build()
+        .map(|client| {
+            let _ = API_CLIENT.set(client.clone());
+            client
+        })
         .map_err(|e| format!("Не удалось настроить соединение с API: {e}"))
 }
 
@@ -1059,14 +1071,35 @@ pub async fn auth_google_desktop(
     ).await?;
     let nonce = challenge.get("nonce").and_then(Value::as_str)
         .ok_or("Сервер не выдал одноразовый код Google.")?;
-    let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
     let id = install_id(&app)?;
-    let result = request(
-        &app, Method::POST, "/auth/google",
-        Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
-        false, false,
-    ).await?;
-    store_auth(result).await
+    // When configured, let the backend perform the Google token exchange
+    // with the Desktop client credential in server-only environment storage.
+    // The authorization code and PKCE verifier never pass into the WebView.
+    if config.get("server_code_exchange").and_then(Value::as_bool) == Some(true) {
+        let code = crate::google_desktop::acquire_code(client_id, nonce).await?;
+        let result = request(
+            &app, Method::POST, "/auth/google/desktop-exchange",
+            Some(json!({
+                "code": code.code,
+                "code_verifier": code.code_verifier,
+                "redirect_uri": code.redirect_uri,
+                "nonce": nonce,
+                "install_id": id,
+            })),
+            false, false,
+        ).await?;
+        store_auth(result).await
+    } else {
+        // Existing deployments that have not configured server exchange
+        // retain the original PKCE flow and clear provider error codes.
+        let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
+        let result = request(
+            &app, Method::POST, "/auth/google",
+            Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
+            false, false,
+        ).await?;
+        store_auth(result).await
+    }
 }
 
 #[tauri::command]
@@ -1459,11 +1492,23 @@ pub async fn vpn_start(
         });
     }
 
+    // Preserve bounded, local diagnostics for failures that happen only
+    // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
+    // This log is private to the current Windows profile and is reset on
+    // each connection attempt. Never transmit it automatically.
+    let log_path = app_dir.join("xray_startup.log");
+    let xray_log = fs::OpenOptions::new().create(true).write(true).truncate(true)
+        .open(&log_path)
+        .map_err(|e| format!("Не удалось открыть локальный журнал Xray: {e}"))?;
+    let xray_stdout = xray_log.try_clone()
+        .map_err(|e| format!("Не удалось подготовить журнал Xray: {e}"))?;
     let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
         .current_dir(&runtime_dir)
         .env("XRAY_LOCATION_ASSET", &runtime_dir)
         .args(["run", "-config"])
         .arg(&config_path)
+        .stdout(std::process::Stdio::from(xray_stdout))
+        .stderr(std::process::Stdio::from(xray_log))
         .creation_flags(CREATE_NO_WINDOW)
         .spawn() {
             Ok(child) => child,
@@ -1475,8 +1520,11 @@ pub async fn vpn_start(
 
     let mut verified_ip = None;
     let mut fatal_error: Option<&str> = None;
-    for _ in 0..3 {
-        tokio::time::sleep(Duration::from_millis(750)).await;
+    // Two bounded probes during startup. If external probes are unreachable,
+    // keep tunnel state unverified and let native surveillance retry later.
+    // Avoid blocking the Connect button for three full HTTPS timeout windows.
+    for _ in 0..2 {
+        tokio::time::sleep(Duration::from_millis(550)).await;
         match child.try_wait() {
             Ok(Some(_)) => {
                 fatal_error = Some("Xray завершился до установления туннеля.");
@@ -1514,11 +1562,9 @@ pub async fn vpn_start(
 
     let server_port = session.get("port").and_then(Value::as_u64)
         .filter(|port| (1..=65535).contains(port)).unwrap_or(443) as u16;
-    let ping = tokio::task::spawn_blocking({
-        let host = host.to_string();
-        move || measure_real_ping(&host, server_port)
-    }).await.unwrap_or(0);
-
+    // TCP latency measurement is scheduled by vpn_status after connection.
+    // Never delay activation to perform another network round trip.
+    let ping = 0;
     let started_at = std::time::Instant::now();
     let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
     *lock = Some(ActiveTunnel {
@@ -1532,6 +1578,8 @@ pub async fn vpn_start(
         server_host: host.to_string(),
         server_port,
         last_egress_probe: std::time::Instant::now(),
+        last_ping_probe: std::time::Instant::now() - Duration::from_secs(50),
+        cached_ping_ms: ping,
         baseline_ip,
         egress_verified: verified_ip.is_some(),
     });
@@ -1617,6 +1665,26 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             }
         }
     }
+    // Status is polled by the UI and by the native watchdog. A socket ping on
+    // every poll wastes CPU and network traffic; refresh it at most every 45s.
+    let ping_probe = {
+        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        lock.as_ref().and_then(|active| {
+            (active.last_ping_probe.elapsed() >= Duration::from_secs(45))
+                .then(|| (active.started_at, active.server_host.clone(), active.server_port))
+        })
+    };
+    if let Some((started_at, host, port)) = ping_probe {
+        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
+            .await.unwrap_or(0);
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        if let Some(active) = lock.as_mut() {
+            if active.started_at == started_at {
+                active.cached_ping_ms = ping;
+                active.last_ping_probe = std::time::Instant::now();
+            }
+        }
+    }
     let active_info = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let exited = match lock.as_mut() {
@@ -1633,14 +1701,11 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.server_name.clone(),
             active.country.clone(),
             active.server_ip.clone(),
-            active.server_host.clone(),
-            active.server_port,
-            active.egress_verified
+            active.egress_verified,
+            active.cached_ping_ms
         ))
     };
-    if let Some((elapsed, server_name, country, ip, host, port, verified)) = active_info {
-        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
-            .await.unwrap_or(0);
+    if let Some((elapsed, server_name, country, ip, verified, ping)) = active_info {
         return Ok(TunnelMetrics {
             connected: true, verified, connected_seconds: elapsed,
             download_mbps: 0.0, upload_mbps: 0.0,

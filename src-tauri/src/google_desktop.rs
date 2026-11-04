@@ -105,7 +105,7 @@ fn parse_callback(first_line: &str, expected_state: &str) -> Callback {
 
 async fn respond(stream: &mut TcpStream, ok: bool) {
     let body = if ok {
-        "ByMeVPN: Google sign-in confirmed. Return to the application."
+        "ByMeVPN: Google authorization received. Return to the app to finish sign-in."
     } else {
         "ByMeVPN: this request was not accepted."
     };
@@ -158,7 +158,30 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
     Err("Не удалось подтвердить ответ Google. Повторите вход.".into())
 }
 
-pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, String> {
+// Google returns structured OAuth error codes. Never display its arbitrary
+// error_description: it may contain sensitive identifiers or user data.
+fn token_exchange_error(status: reqwest::StatusCode, response: &Value) -> String {
+    match response.get("error").and_then(Value::as_str).unwrap_or("") {
+        "invalid_client" => "Google отклонил Desktop OAuth Client ID (invalid_client). Проверьте, что в Google Cloud выбран клиент типа Desktop app, а не Web application.".into(),
+        "invalid_grant" => "Google отклонил одноразовый код (invalid_grant). Проверьте время Windows, повторите вход и убедитесь, что код используется только один раз.".into(),
+        "redirect_uri_mismatch" => "Google отклонил адрес возврата (redirect_uri_mismatch). Проверьте тип Desktop app и локальный callback.".into(),
+        "unauthorized_client" => "Этот Google OAuth-клиент не разрешён (unauthorized_client). Проверьте проект Google Cloud и экран согласия.".into(),
+        "invalid_request" => "Google отклонил параметры обмена кодом (invalid_request). Проверьте настройки Desktop OAuth и PKCE.".into(),
+        "access_denied" => "Google не предоставил доступ (access_denied). Проверьте тестовых пользователей OAuth и настройки согласия.".into(),
+        "temporarily_unavailable" | "server_error" => "Сервис Google временно недоступен. Попробуйте повторить вход.".into(),
+        _ => format!("Google не выдал токен входа (HTTP {}). Проверьте настройки OAuth и повторите попытку.", status.as_u16()),
+    }
+}
+
+// Auth code and PKCE verifier stay in native Rust. When server-side exchange
+// is enabled, only the backend sees the Desktop OAuth client secret.
+pub struct AuthorizationCode {
+    pub code: String,
+    pub redirect_uri: String,
+    pub code_verifier: String,
+}
+
+pub async fn acquire_code(client_id: &str, nonce: &str) -> Result<AuthorizationCode, String> {
     if !valid_client_id(client_id) || nonce.len() < 24 || nonce.len() > 256 {
         return Err("Google OAuth для Windows настроен неверно.".into());
     }
@@ -171,7 +194,18 @@ pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, St
     let authorization = oauth_url(client_id, &redirect, nonce, &state, &pkce_challenge(&verifier));
     open_google_in_system_browser(&authorization)?;
     let code = wait_for_callback(listener, &state).await?;
+    Ok(AuthorizationCode {
+        code,
+        redirect_uri: redirect,
+        code_verifier: verifier,
+    })
+}
 
+// Backward-compatible local PKCE exchange for servers without the optional
+// server-side code exchange endpoint. Google officially documents the
+// desktop client secret as optional; some deployed projects reject its absence.
+pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, String> {
+    let authorization = acquire_code(client_id, nonce).await?;
     let client = Client::builder().https_only(true)
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(15)).build()
@@ -179,14 +213,16 @@ pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, St
     let response = client.post("https://oauth2.googleapis.com/token")
         .form(&[
             ("client_id", client_id),
-            ("code", code.as_str()),
-            ("redirect_uri", redirect.as_str()),
+            ("code", authorization.code.as_str()),
+            ("redirect_uri", authorization.redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
-            ("code_verifier", verifier.as_str()),
+            ("code_verifier", authorization.code_verifier.as_str()),
         ])
         .send().await.map_err(|_| "Google не ответил при подтверждении входа.".to_string())?;
     if !response.status().is_success() {
-        return Err("Google отклонил авторизацию. Проверьте OAuth Client ID и настройки приложения.".into());
+        let status = response.status();
+        let payload: Value = response.json().await.unwrap_or(Value::Null);
+        return Err(token_exchange_error(status, &payload));
     }
     let payload: Value = response.json().await
         .map_err(|_| "Google вернул некорректный ответ авторизации.".to_string())?;
@@ -215,6 +251,19 @@ mod tests {
         }
         assert_eq!(parse_callback("GET /oauth2/callback?state=secret&error=access_denied HTTP/1.1", "secret"),
             Callback::Denied);
+    }
+
+    #[test]
+    fn token_errors_are_actionable_without_reflecting_google_details() {
+        let response = serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "SECRET_CODE_SHOULD_NOT_APPEAR"
+        });
+        let result = token_exchange_error(reqwest::StatusCode::BAD_REQUEST, &response);
+        assert!(result.contains("invalid_grant"));
+        assert!(!result.contains("SECRET_CODE_SHOULD_NOT_APPEAR"));
+        assert!(token_exchange_error(reqwest::StatusCode::BAD_REQUEST,
+            &serde_json::json!({"error":"invalid_client"})).contains("Desktop"));
     }
 
     #[test]

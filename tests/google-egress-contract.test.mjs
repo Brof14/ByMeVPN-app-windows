@@ -17,6 +17,8 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /https:\/\/www\.cloudflare\.com\/cdn-cgi\/trace/);
   assert.match(probes, /https:\/\/checkip\.amazonaws\.com/);
   assert.match(probes, /JoinSet::new\(\)/);
+  assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
+  assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
   assert.match(rust, /Err\(EgressFailure::Unavailable\) => \{/);
   assert.match(rust, /active\.egress_verified = false/);
   assert.match(rust, /Err\(EgressFailure::Unchanged\) => \{/);
@@ -49,4 +51,45 @@ test('Google login never sends raw tokens through UI and uses native PKCE S256',
   assert.doesNotMatch(ui, /invoke\('auth_google',\s*\{\s*idToken/);
   assert.ok(!ui.includes('Google-вход пока недоступен. Используйте Telegram или Email.'));
   assert.doesNotMatch(css, /display: none; \/\* Google OAuth remains disabled/);
+});
+
+
+test('native Google token failures report OAuth codes without echoing upstream descriptions', () => {
+  assert.match(oauth, /fn token_exchange_error\(/);
+  assert.match(oauth, /"invalid_client"/);
+  assert.match(oauth, /"invalid_grant"/);
+  assert.match(oauth, /"redirect_uri_mismatch"/);
+  assert.match(oauth, /response\.json\(\)\.await\.unwrap_or\(Value::Null\)/);
+  assert.doesNotMatch(oauth, /Google отклонил авторизацию\. Проверьте OAuth Client ID/);
+});
+
+test('VPN startup is bounded, logs native TUN failures, and avoids an eager extra ping', () => {
+  assert.match(rust, /for _ in 0\.\.2 \{/);
+  assert.match(rust, /xray_startup\.log/);
+  assert.match(rust, /cached_ping_ms/);
+  assert.match(rust, /last_ping_probe\.elapsed\(\) >= Duration::from_secs\(45\)/);
+  assert.match(rust, /static API_CLIENT: OnceLock<Client>/);
+  assert.match(probes, /timeout\(Duration::from_millis\(4500\)\)/);
+});
+
+test('desktop opens in a compact resizable window and UI polls conservatively', () => {
+  const config = JSON.parse(read('src-tauri/tauri.conf.json'));
+  const w = config.app.windows[0];
+  assert.ok(w.width <= 1000 && w.height <= 750);
+  assert.ok(w.minWidth <= w.width && w.minHeight <= w.height);
+  assert.notEqual(w.maximized, true);
+  assert.match(ui, /\}, 5000\);\s*\}\s*\/\/ Pause heavy polling/);
+  assert.match(css, /Compact native desktop window/);
+});
+
+
+test('Desktop Google OAuth uses server-side exchange when securely configured', () => {
+  assert.match(oauth, /pub struct AuthorizationCode/);
+  assert.match(oauth, /pub async fn acquire_code\(/);
+  assert.match(rust, /"server_code_exchange"/);
+  assert.match(rust, /"\/auth\/google\/desktop-exchange"/);
+  assert.match(rust, /"code_verifier": code\.code_verifier/);
+  assert.match(rust, /"redirect_uri": code\.redirect_uri/);
+  assert.match(rust, /"nonce": nonce/);
+  assert.doesNotMatch(rust, /GOOGLE_DESKTOP_CLIENT_SECRET/);
 });

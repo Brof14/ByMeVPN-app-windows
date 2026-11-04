@@ -72,6 +72,24 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dn
 
     let mut rules = Vec::new();
 
+    // Windows routes DNS through the virtual TUN adapter. Intercept port 53
+    // before any RU/LAN bypass rule; otherwise the WFP DNS leak blocker can
+    // leave the OS resolver unreachable or send DNS outside the proxy.
+    rules.push(json!({
+        "type": "field",
+        "inboundTag": ["tun"],
+        "port": "53",
+        "network": "tcp,udp",
+        "outboundTag": "dns-out"
+    }));
+    // Built-in DNS lookups must go via the encrypted proxy rather than
+    // matching geolocation bypass rules for their upstream resolver IPs.
+    rules.push(json!({
+        "type": "field",
+        "inboundTag": ["bymevpn-dns-query"],
+        "outboundTag": "proxy"
+    }));
+
     // 1. Anti-recursion: exclude VPN server host from tunnel to prevent routing loops
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         rules.push(json!({
@@ -124,6 +142,11 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dn
 
     Ok(json!({
         "log": {"loglevel": "warning"},
+        "dns": {
+            "servers": dns_servers,
+            "queryStrategy": "UseIP",
+            "tag": "bymevpn-dns-query"
+        },
         "inbounds": [{
             "tag": "tun",
             "protocol": "tun",
@@ -173,6 +196,10 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dn
             {
                 "tag": "block",
                 "protocol": "blackhole"
+            },
+            {
+                "tag": "dns-out",
+                "protocol": "dns"
             }
         ],
         "routing": {
@@ -198,6 +225,14 @@ mod tests {
     fn builds_system_tun_config_from_valid_session() {
         let result = build_tun_config(&session()).unwrap();
         assert_eq!(result["inbounds"][0]["protocol"], "tun");
+        assert_eq!(result["routing"]["rules"][0]["inboundTag"][0], "tun");
+        assert_eq!(result["routing"]["rules"][0]["port"], "53");
+        assert_eq!(result["routing"]["rules"][0]["outboundTag"], "dns-out");
+        assert_eq!(result["routing"]["rules"][1]["inboundTag"][0], "bymevpn-dns-query");
+        assert_eq!(result["routing"]["rules"][1]["outboundTag"], "proxy");
+        assert_eq!(result["outbounds"][3]["protocol"], "dns");
+        assert_eq!(result["dns"]["tag"], "bymevpn-dns-query");
+        assert_eq!(result["dns"]["servers"][0], "1.1.1.1");
         assert_eq!(
             result["inbounds"][0]["settings"]["autoSystemRoutingTable"][0],
             "0.0.0.0/0"

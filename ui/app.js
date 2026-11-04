@@ -563,6 +563,18 @@ function setupEventListeners() {
     showAuthScreen('login');
   });
 
+  // Match Android's tappable cards with accessible desktop keyboard actions.
+  // VPN rings already have dedicated keyboard handling further below.
+  document.querySelectorAll('[role="button"][tabindex="0"]').forEach(element => {
+    if (element.id === 'vpn-power-ring' || element.id === 'vpn-power-ring-off') return;
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        element.click();
+      }
+    });
+  });
+
   // Password visibility toggles
   document.querySelectorAll('.btn-password-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {

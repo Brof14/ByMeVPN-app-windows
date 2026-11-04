@@ -1256,7 +1256,7 @@ const TOAST_EN = Object.freeze({
   "Пароли не совпадают": "Passwords do not match.",
   "Аккаунт создан": "Account created.",
   "Не удалось зарегистрироваться": "Could not create your account.",
-  "Google-вход пока недоступен. Используйте Telegram или Email.": "Google sign-in is unavailable. Use Telegram or email.",
+  "Вход через Google отменён.": "Google sign-in canceled.",
   "Вход через Telegram подтверждён": "Telegram sign-in confirmed.",
   "Не удалось начать вход через Telegram": "Could not start Telegram sign-in.",
   "Дождитесь завершения подключения или отключения": "Wait for VPN connection or disconnection to finish.",

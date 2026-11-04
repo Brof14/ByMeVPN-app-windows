@@ -1188,33 +1188,55 @@ pub async fn delete_account(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// The packaged path must match bundle.resources in tauri.conf.json.
+// Old installers used an array with "../"; Tauri rewrites it to "_up_".
+fn bundled_runtime_candidates(resource_root: &std::path::Path) -> [PathBuf; 2] {
+    [
+        resource_root.join("vendor/runtime/windows-x64"),
+        resource_root.join("_up_/vendor/runtime/windows-x64"),
+    ]
+}
+
+fn find_verified_runtime(candidates: impl IntoIterator<Item = PathBuf>) -> Result<PathBuf, String> {
+    let mut damaged_or_incomplete = false;
+    for directory in candidates {
+        if !directory.join("xray.exe").is_file() && !directory.join("wintun.dll").is_file() {
+            continue;
+        }
+        if verify_runtime(&directory).is_ok() {
+            return Ok(directory);
+        }
+        damaged_or_incomplete = true;
+    }
+    if damaged_or_incomplete {
+        Err("Компоненты VPN повреждены или неполные. Переустановите ByMeVPN из полного установщика (.exe или .msi).".into())
+    } else {
+        Err("Не найдены компоненты Xray и Wintun. Установите ByMeVPN через полный установщик .exe/.msi, а не запускайте отдельный файл bymevpn.exe.".into())
+    }
+}
+
 pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
+    // Prefer the installer's resource directory. Never search an arbitrary
+    // working directory ahead of bundled, hash-verified executables.
+    if let Ok(resources) = app.path().resource_dir() {
+        candidates.extend(bundled_runtime_candidates(&resources));
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            candidates.push(parent.join("vendor/runtime/windows-x64"));
+            candidates.extend(bundled_runtime_candidates(parent));
+            // Preserve support for the fully extracted portable ZIP.
             candidates.push(parent.join("runtime/windows-x64"));
-            candidates.push(parent.join("vendor/runtime"));
-            candidates.push(parent.to_path_buf());
         }
     }
-    candidates.push(PathBuf::from("vendor/runtime/windows-x64"));
-    candidates.push(PathBuf::from("../vendor/runtime/windows-x64"));
-    if let Ok(res) = app.path().resource_dir() {
-        candidates.push(res.join("vendor/runtime/windows-x64"));
-        candidates.push(res.join("runtime/windows-x64"));
-        candidates.push(res.join("vendor/runtime"));
-        candidates.push(res.clone());
+    // Developer cargo run from the repository root.
+    if cfg!(debug_assertions) {
+        candidates.push(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../vendor/runtime/windows-x64"),
+        );
     }
-
-    for dir in candidates {
-        if dir.exists() && dir.join("xray.exe").exists() {
-            if verify_runtime(&dir).is_ok() {
-                return Ok(dir);
-            }
-        }
-    }
-    Err("Не найден проверенный компонент Xray (xray.exe / wintun.dll).".into())
+    find_verified_runtime(candidates)
 }
 
 fn default_settings() -> Value {
@@ -1711,6 +1733,14 @@ pub fn open_external_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packaged_runtime_layout_resolves_new_and_legacy_tauri_paths() {
+        let root = std::path::Path::new("ByMeVPN-installation");
+        let candidates = bundled_runtime_candidates(root);
+        assert_eq!(candidates[0], root.join("vendor/runtime/windows-x64"));
+        assert_eq!(candidates[1], root.join("_up_/vendor/runtime/windows-x64"));
+    }
 
     #[test]
     fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {

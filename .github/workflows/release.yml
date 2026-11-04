@@ -58,6 +58,10 @@ jobs:
         run: |
           npx --yes @tauri-apps/cli@2 build
 
+      - name: Verify MSI contains the runtime at the path the app resolves
+        shell: pwsh
+        run: ./scripts/smoke-msi.ps1
+
       - name: Prepare Artifacts & Calculate Checksums
         id: artifacts
         shell: powershell

@@ -108,7 +108,7 @@
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
                 <input type="password" id="login-password" data-i18n-placeholder="password_placeholder" placeholder="Пароль" required autocomplete="current-password" />
-                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+                <button type="button" class="btn-password-toggle" aria-label="Показать пароль" aria-pressed="false">👁</button>
               </div>
               <button type="submit" id="btn-submit-login" class="btn-primary auth-submit-btn">
                 <span data-i18n="sign_in">Войти</span>
@@ -174,12 +174,12 @@
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
                 <input type="password" id="register-password" data-i18n-placeholder="new_password_placeholder" placeholder="Придумайте пароль" required autocomplete="new-password" />
-                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+                <button type="button" class="btn-password-toggle" aria-label="Показать пароль" aria-pressed="false">👁</button>
               </div>
               <div class="input-field-box">
                 <span class="field-icon">🔒</span>
                 <input type="password" id="register-password-confirm" data-i18n-placeholder="repeat_password_placeholder" placeholder="Повторите пароль" required autocomplete="new-password" />
-                <button type="button" class="btn-password-toggle" tabindex="-1">👁</button>
+                <button type="button" class="btn-password-toggle" aria-label="Показать пароль" aria-pressed="false">👁</button>
               </div>
               <button type="submit" id="btn-submit-register" class="btn-primary auth-submit-btn">
                 <span data-i18n="create_account">Создать аккаунт</span>
@@ -242,7 +242,7 @@
           <nav class="sidebar-nav">
             <button type="button" class="sidebar-tab active" data-tab="tab-home">
               <span class="tab-icon">⏻</span>
-              <span class="tab-label" data-i18n="nav_connection">Подключение</span>
+              <span class="tab-label" data-i18n="nav_connection">Главная</span>
             </button>
             <button type="button" class="sidebar-tab" data-tab="tab-account">
               <span class="tab-icon">👤</span>
@@ -261,7 +261,7 @@
           <!-- Top Navigation Header -->
           <div class="app-top-header">
             <div class="header-left">
-              <h1 id="page-title" class="page-title">Подключение</h1>
+              <h1 id="page-title" class="page-title">Главная</h1>
               <span id="vpn-active-pill" class="badge-active-pill hidden">
                 <span class="dot-green">●</span>
                 <span data-i18n="protection_active">Защита активна</span>
@@ -314,7 +314,7 @@
                     </div>
                     <div class="perk-pill">
                       <span class="perk-icon">🚫</span>
-                      <span>Без рекламы</span>
+                      <span>Без сложных настроек</span>
                     </div>
                   </div>
 
@@ -366,7 +366,7 @@
                       <span id="vpn-live-timer" class="neon-green">00:00:00</span>
                     </div>
 
-                    <div id="btn-active-location-pill" class="location-chip-pill">
+                    <div id="btn-active-location-pill" class="location-chip-pill" role="button" tabindex="0">
                       <span id="conn-flag-chip" class="chip-flag">🌐</span>
                       <span id="conn-location-name">Автоматически</span>
                     </div>
@@ -407,18 +407,18 @@
                       <span class="card-item-icon">🌐</span>
                       <strong data-i18n="card_server">Сервер</strong>
                     </div>
-                    <div class="card-interactive-row" id="row-server-info">
+                    <div class="card-interactive-row" id="row-server-info" role="button" tabindex="0">
                       <div class="card-row-left">
-                        <span id="home-server-flag" class="chip-flag">🇩🇪</span>
+                        <span id="home-server-flag" class="chip-flag">🌐</span>
                         <div class="card-row-texts">
-                          <strong id="home-server-country">Германия</strong>
-                          <span id="home-server-city">Франкфурт</span>
+                          <strong id="home-server-country">Автоматически</strong>
+                          <span id="home-server-city"></span>
                         </div>
                       </div>
                       <span class="card-row-arrow">›</span>
                     </div>
                     <div class="card-divider-line"></div>
-                    <div class="card-interactive-row" id="btn-open-server-picker">
+                    <div class="card-interactive-row" id="btn-open-server-picker" role="button" tabindex="0">
                       <div class="card-row-left">
                         <span class="icon-swap">⇄</span>
                         <strong data-i18n="change_server">Сменить сервер</strong>
@@ -443,7 +443,7 @@
                       <span id="home-sub-badge" class="badge-active-mini" data-i18n="active">Активна</span>
                     </div>
                     <div class="card-divider-line"></div>
-                    <div class="card-interactive-row" id="btn-open-manage-pricing">
+                    <div class="card-interactive-row" id="btn-open-manage-pricing" role="button" tabindex="0">
                       <div class="card-row-left">
                         <span class="icon-gear">⚙</span>
                         <strong data-i18n="manage_sub">Управлять</strong>
@@ -747,7 +747,7 @@
               </div>
 
               <!-- Devices Section -->
-              <div class="account-devices-section" id="btn-acc-open-devices" style="cursor: pointer;">
+              <div class="account-devices-section" id="btn-acc-open-devices" style="cursor: pointer;" role="button" tabindex="0">
                 <div class="devices-head-line">
                   <div class="devices-title-group">
                     <span class="devices-icon">💻</span>
@@ -929,22 +929,22 @@
                   </div>
 
                   <div class="settings-links-grid-2x2">
-                    <div class="setting-link-tile" id="tile-support-telegram">
+                    <div class="setting-link-tile" id="tile-support-telegram" role="button" tabindex="0">
                       <span class="tile-icon">✈</span>
                       <strong data-i18n="tile_telegram">Поддержка в Telegram</strong>
                       <span class="tile-arrow">›</span>
                     </div>
-                    <div class="setting-link-tile" id="tile-privacy-policy">
+                    <div class="setting-link-tile" id="tile-privacy-policy" role="button" tabindex="0">
                       <span class="tile-icon">📄</span>
                       <strong data-i18n="tile_privacy">Политика конфиденциальности</strong>
                       <span class="tile-arrow">›</span>
                     </div>
-                    <div class="setting-link-tile" id="tile-faq-modal">
+                    <div class="setting-link-tile" id="tile-faq-modal" role="button" tabindex="0">
                       <span class="tile-icon">❓</span>
                       <strong data-i18n="tile_faq">Частые вопросы</strong>
                       <span class="tile-arrow">›</span>
                     </div>
-                    <div class="setting-link-tile" id="tile-terms-of-use">
+                    <div class="setting-link-tile" id="tile-terms-of-use" role="button" tabindex="0">
                       <span class="tile-icon">📄</span>
                       <strong data-i18n="tile_terms">Условия использования</strong>
                       <span class="tile-arrow">›</span>
@@ -1070,7 +1070,7 @@
 
               <div class="section-micro-label">ПОЛЕЗНОЕ</div>
               <div class="support-items-grid">
-                <div class="glass-card support-action-card" id="card-support-faq" style="cursor: pointer;">
+                <div class="glass-card support-action-card" id="card-support-faq" style="cursor: pointer;" role="button" tabindex="0">
                   <div class="card-row-left">
                     <span class="support-card-icon">❓</span>
                     <div>
@@ -1081,7 +1081,7 @@
                   <span class="card-row-arrow">›</span>
                 </div>
 
-                <div class="glass-card support-action-card" id="card-support-channel" style="cursor: pointer;">
+                <div class="glass-card support-action-card" id="card-support-channel" style="cursor: pointer;" role="button" tabindex="0">
                   <div class="card-row-left">
                     <span class="support-card-icon">📢</span>
                     <div>

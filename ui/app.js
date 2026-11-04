@@ -110,7 +110,7 @@ const I18N = {
     create_account: 'Создать аккаунт',
     have_account: 'Есть аккаунт?',
     login_link: 'Войти ›',
-    nav_connection: 'Подключение',
+    nav_connection: 'Главная',
     nav_account: 'Аккаунт',
     nav_settings: 'Настройки',
     protection_active: 'Защита активна',
@@ -243,7 +243,7 @@ const I18N = {
     create_account: 'Create Account',
     have_account: 'Already have an account?',
     login_link: 'Sign In ›',
-    nav_connection: 'Connection',
+    nav_connection: 'Home',
     nav_account: 'Account',
     nav_settings: 'Settings',
     protection_active: 'Protection active',
@@ -563,6 +563,18 @@ function setupEventListeners() {
     showAuthScreen('login');
   });
 
+  // Match Android's tappable cards with accessible desktop keyboard actions.
+  // VPN rings already have dedicated keyboard handling further below.
+  document.querySelectorAll('[role="button"][tabindex="0"]').forEach(element => {
+    if (element.id === 'vpn-power-ring' || element.id === 'vpn-power-ring-off') return;
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        element.click();
+      }
+    });
+  });
+
   // Password visibility toggles
   document.querySelectorAll('.btn-password-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -570,13 +582,13 @@ function setupEventListeners() {
       const box = btn.closest('.input-field-box');
       const input = box?.querySelector('input');
       if (input) {
-        if (input.type === 'password') {
-          input.type = 'text';
-          btn.textContent = '🙈';
-        } else {
-          input.type = 'password';
-          btn.textContent = '👁';
-        }
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        btn.textContent = visible ? '🙈' : '👁';
+        btn.setAttribute('aria-pressed', String(visible));
+        btn.setAttribute('aria-label', visible
+          ? uiText('Скрыть пароль', 'Hide password')
+          : uiText('Показать пароль', 'Show password'));
       }
     });
   });
@@ -648,7 +660,13 @@ function setupEventListeners() {
       }
     });
   }
-  document.getElementById('btn-toggle-vpn')?.addEventListener('click', toggleVpn);
+  document.getElementById('btn-toggle-vpn')?.addEventListener('click', () => {
+    if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
+      void refreshAccountSnapshot(true);
+    } else {
+      void toggleVpn();
+    }
+  });
 
   // Server selection triggers
   document.getElementById('btn-open-server-picker')?.addEventListener('click', () => switchTab('tab-servers'));
@@ -1004,6 +1022,10 @@ async function handleDeleteAccount() {
 // VPN Lifecycle & Real-time Metrics
 async function toggleVpn() {
   if (state.connectionBusy) return;
+  if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
+    showToast(uiText('Сначала проверьте подписку.', 'Verify your subscription first.'), true);
+    return;
+  }
   state.connectionBusy = true;
   state.vpnPhase = state.vpnConnected ? 'disconnecting' : 'connecting';
   updateVpnUi();
@@ -1263,7 +1285,8 @@ function localizedToast(text) {
 function updateVpnUi() {
   const isConn = state.vpnConnected;
   const sub = state.subscription;
-  const hasPlan = sub && ['active', 'trial', 'grace', 'unknown'].includes(sub.status);
+  const accessUnknown = !sub || sub.status === 'unknown';
+  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
 
   const noPlanBox = document.getElementById('home-state-no-plan');
   const connectedBox = document.getElementById('home-state-connected');
@@ -1279,6 +1302,20 @@ function updateVpnUi() {
     if (heading) heading.textContent = state.vpnVerified ?
       uiText('VPN подключён', 'VPN connected') :
       uiText('Проверяем состояние VPN', 'Checking VPN connection');
+  } else if (accessUnknown) {
+    // An offline/unknown entitlement is NOT an expired or active plan.
+    // Keep the power control inert; the primary action retries the backend.
+    noPlanBox?.classList.add('hidden');
+    connectedBox?.classList.add('hidden');
+    disconnectedBox?.classList.remove('hidden');
+    activePill?.classList.add('hidden');
+    const heading = document.querySelector('#home-state-disconnected .status-title-text');
+    if (heading) heading.textContent = uiText('Проверяем подписку', 'Checking subscription');
+    const desc = document.getElementById('home-off-desc');
+    if (desc) desc.textContent = uiText('Не удалось подтвердить доступ. Проверьте сеть и повторите проверку.',
+      'Access could not be confirmed. Check your network and retry.');
+    const btn = document.getElementById('vpn-btn-text');
+    if (btn) btn.textContent = uiText('Повторить проверку', 'Retry verification');
   } else if (!hasPlan) {
     // Parity with Android Mockup 03_home_no_plan
     noPlanBox?.classList.remove('hidden');
@@ -1287,6 +1324,8 @@ function updateVpnUi() {
     activePill?.classList.add('hidden');
   } else {
     // Has active plan, disconnected
+    const heading = document.querySelector('#home-state-disconnected .status-title-text');
+    if (heading) heading.textContent = uiText('VPN выключен', 'VPN off');
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.add('hidden');
     disconnectedBox?.classList.remove('hidden');
@@ -1319,7 +1358,10 @@ function updateVpnUi() {
   if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
     state.metrics.server_name : serverDisplayName(s);
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
-    document.getElementById(id)?.setAttribute('aria-busy', String(state.connectionBusy));
+    const ring = document.getElementById(id);
+    ring?.setAttribute('aria-busy', String(state.connectionBusy));
+    ring?.setAttribute('aria-disabled', String(accessUnknown && !isConn));
+    if (ring && id === 'vpn-power-ring-off') ring.tabIndex = accessUnknown ? -1 : 0;
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
@@ -1885,6 +1927,13 @@ function applyLanguage(lang) {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const value = dict[el.dataset.i18nPlaceholder];
     if (typeof value === 'string') el.placeholder = value;
+  });
+
+  document.querySelectorAll('.btn-password-toggle').forEach(btn => {
+    const visible = btn.closest('.input-field-box')?.querySelector('input')?.type === 'text';
+    btn.setAttribute('aria-label', visible
+      ? uiText('Скрыть пароль', 'Hide password')
+      : uiText('Показать пароль', 'Show password'));
   });
 
   // Recompute dynamic server/account/status labels as well as static titles.

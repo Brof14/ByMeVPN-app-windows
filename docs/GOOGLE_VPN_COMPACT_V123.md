@@ -14,14 +14,21 @@ machine. Both require fresh on-device results.
 2. Browser flow uses Desktop client, PKCE S256, random state, and local 127.0.0.1
    callback. The token exchange uses Google's documented optional
    `client_secret` omission; **no OAuth secret is shipped in the Windows app**.
-3. If the exchange fails, Windows reports only a known Google error code such
-   as `invalid_client` or `invalid_grant`. Raw response bodies and tokens
-   are not displayed or logged.
-4. Retest on Windows after installing the **new** build. The specific returned
+3. The backend now optionally advertises `server_code_exchange: true` when
+   `GOOGLE_DESKTOP_CLIENT_SECRET` is configured on VPS. Windows then sends the
+   native authorization code + PKCE verifier + redirect URI + server nonce
+   over the existing HTTPS API to `/auth/google/desktop-exchange`. The server
+   performs the Google token exchange and the **existing** ID-token signature,
+   audience, nonce replay and account checks. No secret ships in Windows.
+4. Until the VPS is updated and configured, Windows retains the legacy native
+   exchange. If the exchange fails, Windows reports only a known Google error
+   code such as `invalid_client` or `invalid_grant`. Raw Google response
+   bodies and tokens are not displayed or logged.
+5. Retest on Windows after installing the **new** build. The specific returned
    code is necessary before choosing any credential/redirect/configuration
    change. Do not change Google Cloud clients based only on the previous
    generic banner.
-5. If the consent screen is in Testing, the signing-in account must be on its
+6. If the consent screen is in Testing, the signing-in account must be on its
    tester list. Confirm both the Web client for Android and Desktop client
    are from the same intended Cloud project.
 
@@ -29,8 +36,11 @@ machine. Both require fresh on-device results.
 
 - A successful Xray process launch does **not** prove protected traffic.
 - Current TUN config requests IPv4+IPv6 OS routes, WFP DNS leak blocking
-  and an automatic external outbound interface. The config is validated
-  using the bundled Xray executable.
+  and an automatic external outbound interface. Based on Android and official
+  Xray TUN guidance, Windows now routes TUN port-53 DNS to an Xray DNS outbound
+  and sends internal upstream DNS requests through VLESS. The config is tested
+  using the bundled Xray executable. This still requires real-world DNS/IPv6
+  leak testing on Windows.
 - External HTTPS egress checks are bounded and concurrent. An unreachable
   probe means **unknown**, not verified. A verified unchanged baseline IP
   means a bypass and stops the tunnel.

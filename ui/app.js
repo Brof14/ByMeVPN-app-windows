@@ -582,13 +582,13 @@ function setupEventListeners() {
       const box = btn.closest('.input-field-box');
       const input = box?.querySelector('input');
       if (input) {
-        if (input.type === 'password') {
-          input.type = 'text';
-          btn.textContent = '🙈';
-        } else {
-          input.type = 'password';
-          btn.textContent = '👁';
-        }
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        btn.textContent = visible ? '🙈' : '👁';
+        btn.setAttribute('aria-pressed', String(visible));
+        btn.setAttribute('aria-label', visible
+          ? uiText('Скрыть пароль', 'Hide password')
+          : uiText('Показать пароль', 'Show password'));
       }
     });
   });
@@ -1927,6 +1927,13 @@ function applyLanguage(lang) {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const value = dict[el.dataset.i18nPlaceholder];
     if (typeof value === 'string') el.placeholder = value;
+  });
+
+  document.querySelectorAll('.btn-password-toggle').forEach(btn => {
+    const visible = btn.closest('.input-field-box')?.querySelector('input')?.type === 'text';
+    btn.setAttribute('aria-label', visible
+      ? uiText('Скрыть пароль', 'Hide password')
+      : uiText('Показать пароль', 'Show password'));
   });
 
   // Recompute dynamic server/account/status labels as well as static titles.

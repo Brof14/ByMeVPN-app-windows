@@ -17,6 +17,8 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /https:\/\/www\.cloudflare\.com\/cdn-cgi\/trace/);
   assert.match(probes, /https:\/\/checkip\.amazonaws\.com/);
   assert.match(probes, /JoinSet::new\(\)/);
+  assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
+  assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
   assert.match(rust, /Err\(EgressFailure::Unavailable\) => \{/);
   assert.match(rust, /active\.egress_verified = false/);
   assert.match(rust, /Err\(EgressFailure::Unchanged\) => \{/);

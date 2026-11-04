@@ -66,3 +66,72 @@ jobs:
         run: |
           $env:BYMEVPN_NO_ADMIN_MANIFEST = "1"
           cargo test --release --manifest-path src-tauri/Cargo.toml
+
+  package-windows:
+    name: Build installers (.exe and .msi)
+    needs: [frontend, test]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Verify VPN runtime assets
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts/setup-runtime.ps1
+      - name: Build Tauri NSIS installer and MSI
+        shell: pwsh
+        run: npx --yes @tauri-apps/cli@2 build
+      - name: Verify MSI can be extracted and carries the VPN runtime
+        shell: pwsh
+        run: ./scripts/smoke-msi.ps1
+      - name: Package validated installers
+        shell: pwsh
+        run: ./scripts/package-installers.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ByMeVPN-Windows-Installers
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  preview-release:
+    name: Publish preview direct downloads
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [package-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ByMeVPN-Windows-Installers
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: preview-${{ github.sha }}
+          name: ByMeVPN Windows Preview ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          draft: false
+          fail_on_unmatched_files: true
+          body: |
+            ## Windows preview — checked CI build
+            Download the NSIS .exe installer for normal installation or the .msi for managed deployments. Both include the verified Xray/Wintun runtime and routing databases.
+
+            WARNING: This is an experimental preview, not an independently verified leak-proof VPN. Real Windows 10/11 network tests, DNS/IPv6 checks, true Kill Switch, sleep/reconnect and code-signing acceptance remain incomplete.
+            The current desktop executable requests Administrator privileges. Never disable Windows security controls to install it.
+
+            See [release blockers](https://github.com/Brof14/ByMeVPN-app-windows/blob/main/docs/RELEASE_BLOCKERS.md).
+          files: |
+            dist/*.exe
+            dist/*.msi
+            dist/SHA256SUMS.txt

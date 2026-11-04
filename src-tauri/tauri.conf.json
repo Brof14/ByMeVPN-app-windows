@@ -34,9 +34,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
-    "resources": [
-      "../vendor/runtime/windows-x64/**/*"
-    ],
+    "resources": {
+      "../vendor/runtime/windows-x64/": "vendor/runtime/windows-x64/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -76,8 +76,8 @@ fn probe_client() -> Result<reqwest::Client, String> {
         // Check the OS-installed route, never a browser-configured proxy.
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(6))
+        .connect_timeout(Duration::from_millis(2500))
+        .timeout(Duration::from_millis(4500))
         .build()
         .map_err(|_| "Не удалось подготовить проверку выхода VPN.".to_string())
 }

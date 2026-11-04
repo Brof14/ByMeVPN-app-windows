@@ -1071,14 +1071,35 @@ pub async fn auth_google_desktop(
     ).await?;
     let nonce = challenge.get("nonce").and_then(Value::as_str)
         .ok_or("Сервер не выдал одноразовый код Google.")?;
-    let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
     let id = install_id(&app)?;
-    let result = request(
-        &app, Method::POST, "/auth/google",
-        Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
-        false, false,
-    ).await?;
-    store_auth(result).await
+    // When configured, let the backend perform the Google token exchange
+    // with the Desktop client credential in server-only environment storage.
+    // The authorization code and PKCE verifier never pass into the WebView.
+    if config.get("server_code_exchange").and_then(Value::as_bool) == Some(true) {
+        let code = crate::google_desktop::acquire_code(client_id, nonce).await?;
+        let result = request(
+            &app, Method::POST, "/auth/google/desktop-exchange",
+            Some(json!({
+                "code": code.code,
+                "code_verifier": code.code_verifier,
+                "redirect_uri": code.redirect_uri,
+                "nonce": nonce,
+                "install_id": id,
+            })),
+            false, false,
+        ).await?;
+        store_auth(result).await
+    } else {
+        // Existing deployments that have not configured server exchange
+        // retain the original PKCE flow and clear provider error codes.
+        let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
+        let result = request(
+            &app, Method::POST, "/auth/google",
+            Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
+            false, false,
+        ).await?;
+        store_auth(result).await
+    }
 }
 
 #[tauri::command]

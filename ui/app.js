@@ -1197,7 +1197,7 @@ function startStatusPolling() {
         state.pollBusy = false;
       }
     }
-  }, 2500);
+  }, 5000);
 }
 
 // Pause heavy polling when app window is hidden/minimized

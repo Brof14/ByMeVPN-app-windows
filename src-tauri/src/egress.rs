@@ -1,77 +1,102 @@
 use std::net::IpAddr;
 use std::time::Duration;
+use tokio::task::JoinSet;
 
-// Public probes explicitly approved by the project owner.
-const PROBES: [&str; 3] = [
+// Independent HTTPS egress endpoints. Any single successful IPv4 reply is
+// sufficient; requests are concurrent, not a 3 * 7-second serial bottleneck.
+// The trace endpoint has a different response format and provider.
+const PROBES: [&str; 6] = [
     "https://api4.ipify.org",
     "https://ipv4.icanhazip.com",
     "https://ifconfig.me/ip",
+    "https://checkip.amazonaws.com",
+    "https://ipinfo.io/ip",
+    "https://www.cloudflare.com/cdn-cgi/trace",
 ];
 
-fn parse_ip(body: &str) -> Result<IpAddr, String> {
-    if body.len() > 128 {
-        return Err("Сервис проверки вернул некорректный ответ.".into());
-    }
-    body.trim()
-        .parse()
-        .map_err(|_| "Сервис проверки вернул некорректный IP-адрес.".into())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressFailure {
+    Unavailable,  // External or DNS/TLS services could not be reached.
+    Unchanged,    // We DID observe the original IPv4, indicating a route leak.
 }
 
-async fn probe_egress(client: &reqwest::Client) -> Result<IpAddr, String> {
-    for endpoint in PROBES {
-        let mut response = match client.get(endpoint).send().await {
-            Ok(response) if response.status().is_success() => response,
-            _ => continue,
-        };
-        if response.content_length().is_some_and(|length| length > 128) {
-            continue;
-        }
-        let mut bytes = Vec::new();
-        let mut valid = true;
-        loop {
-            match response.chunk().await {
-                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 128 => bytes.extend_from_slice(&chunk),
-                Ok(None) => break,
-                _ => { valid = false; break; }
-            }
-        }
-        if valid {
-            if let Ok(body) = std::str::from_utf8(&bytes) {
-                if let Ok(ip) = parse_ip(body) {
-                    // Compare IPv4 before/after: inconsistent IPv4/IPv6 DNS
-                    // preferences could otherwise pass without any IPv4 tunnel.
-                    if ip.is_ipv4() { return Ok(ip); }
-                }
-            }
+fn parse_ip(body: &str) -> Result<IpAddr, String> {
+    if body.len() > 1024 {
+        return Err("Сервис проверки вернул слишком большой ответ.".into());
+    }
+    let plain = body.trim();
+    let candidate = if let Some(line) = plain.lines().find(|line| line.starts_with("ip=")) {
+        line.trim_start_matches("ip=").trim()
+    } else {
+        plain
+    };
+    let ip = candidate.parse::<IpAddr>()
+        .map_err(|_| "Сервис проверки вернул некорректный IP-адрес.".to_string())?;
+    if !ip.is_ipv4() {
+        return Err("Для проверки IPv4 получен адрес другого семейства.".into());
+    }
+    Ok(ip)
+}
+
+async fn query_probe(client: reqwest::Client, endpoint: &'static str) -> Option<IpAddr> {
+    let mut response = client.get(endpoint).send().await.ok()?;
+    if !response.status().is_success() ||
+        response.content_length().is_some_and(|n| n > 1024) {
+        return None;
+    }
+    let mut body = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) if body.len() + chunk.len() <= 1024 => body.extend_from_slice(&chunk),
+            Ok(None) => break,
+            _ => return None,
         }
     }
-    Err("Публичные сервисы проверки IP недоступны.".into())
+    let text = std::str::from_utf8(&body).ok()?;
+    parse_ip(text).ok()
+}
+
+async fn probe_egress(client: reqwest::Client) -> Option<IpAddr> {
+    let mut probes = JoinSet::new();
+    for endpoint in PROBES {
+        probes.spawn(query_probe(client.clone(), endpoint));
+    }
+    while let Some(result) = probes.join_next().await {
+        if let Ok(Some(ip)) = result {
+            probes.abort_all();
+            return Some(ip);
+        }
+    }
+    None
 }
 
 fn probe_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .https_only(true)
+        // Check the OS-installed route, never a browser-configured proxy.
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(4))
-        .timeout(Duration::from_secs(7))
+        .connect_timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(6))
         .build()
         .map_err(|_| "Не удалось подготовить проверку выхода VPN.".to_string())
 }
 
-/// Capture the public network address before changing system routes.
+/// Capture public IPv4 before changing system routes.
 pub async fn public_egress_ip() -> Result<IpAddr, String> {
-    probe_egress(&probe_client()?).await
+    probe_egress(probe_client()?).await.ok_or_else(||
+        "Публичные сервисы проверки IP до подключения недоступны. Проверьте DNS, HTTPS и доступность сети.".to_string()
+    )
 }
 
-/// Require an independently observed public IP different from the original
-/// address. A matching server inbound IP is NOT mandatory.
-pub async fn verify_egress(baseline: IpAddr) -> Result<IpAddr, String> {
-    let observed = probe_egress(&probe_client()?).await?;
-    if observed == baseline {
-        Err("Внешний IP не изменился: трафик не подтверждён через VPN.".into())
-    } else {
-        Ok(observed)
+/// Unchanged is a definite leak signal. Unavailable is only unknown, never
+/// a reason to assert protection OR to assume that Xray itself crashed.
+pub async fn verify_egress(baseline: IpAddr) -> Result<IpAddr, EgressFailure> {
+    let client = probe_client().map_err(|_| EgressFailure::Unavailable)?;
+    match probe_egress(client).await {
+        Some(observed) if observed == baseline => Err(EgressFailure::Unchanged),
+        Some(observed) => Ok(observed),
+        None => Err(EgressFailure::Unavailable),
     }
 }
 
@@ -80,12 +105,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_ip_only_and_rejects_html_or_oversized_results() {
-        assert_eq!(
-            parse_ip(" 192.0.2.1\n").unwrap(),
-            "192.0.2.1".parse::<IpAddr>().unwrap()
-        );
+    fn accepts_plain_ip_and_cloudflare_trace_but_rejects_html_and_ipv6() {
+        assert_eq!(parse_ip(" 192.0.2.1\n").unwrap(), "192.0.2.1".parse().unwrap());
+        let trace = "fl=12f34\nh=www.cloudflare.com\nip=198.51.100.9\nts=1700000000\n";
+        assert_eq!(parse_ip(trace).unwrap(), "198.51.100.9".parse().unwrap());
         assert!(parse_ip("<html>192.0.2.1</html>").is_err());
-        assert!(parse_ip(&"1".repeat(129)).is_err());
+        assert!(parse_ip("2001:db8::1").is_err());
+        assert!(parse_ip(&"1".repeat(1025)).is_err());
     }
 }

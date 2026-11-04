@@ -90,6 +90,9 @@ jobs:
       - name: Build Tauri NSIS installer and MSI
         shell: pwsh
         run: npx --yes @tauri-apps/cli@2 build
+      - name: Verify MSI can be extracted and carries the VPN runtime
+        shell: pwsh
+        run: ./scripts/smoke-msi.ps1
       - name: Package validated installers
         shell: pwsh
         run: ./scripts/package-installers.ps1

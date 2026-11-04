@@ -2,6 +2,7 @@
 
 mod api_transport;
 mod egress;
+mod google_desktop;
 mod service;
 mod tun_config;
 mod tunnel_runtime;
@@ -43,6 +44,7 @@ fn main() {
             service::auth_login,
             service::auth_register,
             service::auth_google,
+            service::auth_google_desktop,
             service::telegram_create_session,
             service::telegram_check_session,
             service::telegram_cancel_session,

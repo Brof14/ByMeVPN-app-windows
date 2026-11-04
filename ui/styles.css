@@ -2988,9 +2988,19 @@ button:disabled, input:disabled {
   pointer-events: none;
   opacity: .72;
 }
-.btn-google, .auth-divider {
-  display: none; /* Google OAuth remains disabled by the server. */
+/* Google uses a native system-browser PKCE login. Do not hide the button. */
+.btn-google {
+  display: flex;
+  align-items: center;
+  background: #eaf8f8;
+  color: #0a2431;
+  border: 1px solid #d7e6e6;
+  border-radius: 15px;
+  min-height: 52px;
 }
+.btn-google:focus-visible { outline: 3px solid #69d3bc; outline-offset: 3px; }
+.btn-google:disabled { opacity: .45; cursor: wait; }
+.auth-divider { display: flex; }
 .auth-form-fields input, input, textarea {
   accent-color: #69d3bc;
 }

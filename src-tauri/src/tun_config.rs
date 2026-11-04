@@ -130,9 +130,13 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dn
             "settings": {
                 "name": "ByMeVPN",
                 "mtu": 1500,
-                "gateway": ["172.31.255.1/30"],
+                // Explicitly route both IP families through TUN. Otherwise
+                // "misconfigtun" blocks IPv6 and dual-stack HTTP/DNS probes
+                // can fail while IPv4 is otherwise connected.
+                "gateway": ["172.31.255.1/30", "fd30:31:255::1/64"],
                 "dns": dns_servers,
-                "autoSystemRoutingTable": ["0.0.0.0/0"],
+                "autoSystemRoutingTable": ["0.0.0.0/0", "::/0"],
+                "autoOutboundsInterface": "auto",
                 "autoSystemWfpBlockLeak": ["dns", "misconfigtun"]
             }
         }],
@@ -198,6 +202,11 @@ mod tests {
             result["inbounds"][0]["settings"]["autoSystemRoutingTable"][0],
             "0.0.0.0/0"
         );
+        assert_eq!(
+            result["inbounds"][0]["settings"]["autoSystemRoutingTable"][1],
+            "::/0"
+        );
+        assert_eq!(result["inbounds"][0]["settings"]["autoOutboundsInterface"], "auto");
         assert_eq!(
             result["outbounds"][0]["settings"]["vnext"][0]["address"],
             "192.0.2.1"

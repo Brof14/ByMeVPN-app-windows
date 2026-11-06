@@ -1045,7 +1045,7 @@ async function handleLogout() {
     uiText('Выход из аккаунта', 'Sign out'),
     uiText('Вы уверены, что хотите выйти из ByMeVPN?', 'Sign out of ByMeVPN?'),
     async () => {
-      if (state.connectionBusy) {
+      if (state.connectionBusy || state.serverSwitchBusy) {
         showToast(uiText('Дождитесь завершения работы VPN', 'Wait for the VPN operation to finish.'), true);
         return;
       }
@@ -1065,6 +1065,8 @@ async function handleLogout() {
       state.vpnConnected = false;
       state.vpnVerified = false;
       state.vpnPhase = 'idle';
+      state.connectionError = null;
+      state.vpnSequence += 1;
       state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
       state.servers = [];
       state.devices = [];
@@ -1123,7 +1125,8 @@ async function toggleVpn(allowServerSwitch = false) {
       updateVpnUi();
       showToast('VPN отключён');
     } catch (err) {
-      showToast(typeof err === 'string' ? err : 'Ошибка отключения', true);
+      state.connectionError = typeof err === 'string' ? err : 'Ошибка отключения';
+      showToast(state.connectionError, true);
     }
   } else {
     // Strict check: active or trial subscription required!
@@ -1395,9 +1398,11 @@ function updateVpnUi() {
       uiText('VPN подключён', 'VPN connected') :
       uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
-    if (description) description.textContent = state.vpnVerified
-      ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
-      : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
+    if (description) description.textContent = state.vpnPhase === 'disconnecting'
+      ? uiText('Завершаем соединение…', 'Closing the connection…')
+      : state.vpnVerified
+        ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
+        : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
   } else if (accessUnknown) {
     // An offline/unknown entitlement is NOT an expired or active plan.
     // Keep the power control inert; the primary action retries the backend.
@@ -1791,6 +1796,7 @@ async function selectServer(server) {
   }
   const previous = state.selectedServer;
   const wasConnected = state.vpnConnected;
+  const epoch = state.sessionEpoch;
   state.serverSwitchBusy = true;
   try {
     if (wasConnected) {
@@ -1798,6 +1804,7 @@ async function selectServer(server) {
       if (state.vpnConnected) return; // Native stop failed; keep the old endpoint.
     }
     await invoke('save_setting', { key: 'selectedServerCode', value: server.code });
+    if (epoch !== state.sessionEpoch) return;
     state.preferredServerCode = server.code;
     state.selectedServer = server;
     const autoButton = document.getElementById('recommended-server-auto');
@@ -1806,14 +1813,15 @@ async function selectServer(server) {
     renderServersList();
     updateVpnUi();
     switchTab('tab-home');
-    if (wasConnected) await toggleVpn(true);
+    if (wasConnected && epoch === state.sessionEpoch) await toggleVpn(true);
     if (state.vpnConnected || !wasConnected) {
       showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(server));
     }
   } catch (error) {
     showToast(uiText('Не удалось сменить сервер. Настройка не сохранена.',
       'Could not switch servers. Selection was not saved.'), true);
-    if (wasConnected && !state.vpnConnected && state.selectedServer === previous) {
+    if (epoch === state.sessionEpoch && wasConnected && !state.vpnConnected &&
+        state.selectedServer === previous) {
       await toggleVpn(true); // Restore the previous active endpoint when possible.
     }
   } finally {

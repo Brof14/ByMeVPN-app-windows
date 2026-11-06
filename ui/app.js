@@ -2083,7 +2083,9 @@ function applySettingsToUi() {
 
 function applyLanguage(lang) {
   document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.lang === lang);
+    const selected = btn.dataset.lang === lang;
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-pressed', String(selected));
   });
 
   const resolved = lang === 'system' ? effectiveLanguage() : lang;

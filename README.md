@@ -8,7 +8,7 @@ A Windows desktop client for the ByMeVPN service, built with **Tauri 2**, **Rust
 
 The current source is built on Windows by GitHub Actions after frontend contract tests, Rust tests, and an MSI extraction check.
 
-- **Direct .exe / .msi downloads:** [GitHub Releases](https://github.com/Brof14/ByMeVPN-app-windows/releases). Choose the newest **Windows Preview** release and its `ByMeVPN_*_x64-setup.exe` (normal installer) or `ByMeVPN_*_x64_en-US.msi` (managed deployment).
+- **Public release:** Not yet available for paid customers. Preview releases generated from `main` are saved as **drafts** until Windows network/security acceptance has been completed.
 - **Builds for open pull requests:** [Actions → CI](https://github.com/Brof14/ByMeVPN-app-windows/actions/workflows/ci.yml). Open a successful run, then download the `ByMeVPN-Windows-Installers` artifact (GitHub downloads Actions artifacts as a ZIP).
 - Verify downloaded files against the release's `SHA256SUMS.txt` (Windows: `Get-FileHash .\\YourInstaller.exe -Algorithm SHA256`).
 - The bare `bymevpn.exe` from a development build **is not portable**; it requires the bundled Xray/Wintun runtime. Download an installer, not a bare executable.
@@ -37,7 +37,7 @@ A production VPN requires an integrity-checked Xray Windows runtime, its matchin
 
 See [`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md) and [`docs/STATUS.md`](docs/STATUS.md) for the verified API contract, parity notes, and remaining work.
 
-For the current Android-to-Windows behavior/design comparison, source-level fixes and remaining release gates, see [`docs/ANDROID_WINDOWS_DELTA_2026-11-06.md`](docs/ANDROID_WINDOWS_DELTA_2026-11-06.md). The Windows build is still experimental, and Rust/Node CI does not establish real tunnel security or pixel-identical UI.
+For the current Android-to-Windows behavior/design comparison, source-level fixes and remaining release gates, see [`docs/ANDROID_WINDOWS_DELTA_2026-11-06.md`](docs/ANDROID_WINDOWS_DELTA_2026-11-06.md) and [the production release gate](docs/PRODUCTION_RELEASE_GATE.md). The Windows build is still experimental, and Rust/Node CI does not establish real tunnel security or pixel-identical UI.
 
 ## Security
 

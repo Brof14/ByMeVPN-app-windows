@@ -31,6 +31,8 @@ static API_CLIENT: OnceLock<Client> = OnceLock::new();
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
+    #[cfg(windows)]
+    pub _job: crate::windows_job::ChildJob,
     pub config_path: PathBuf,
     pub started_at: std::time::Instant,
     pub _node_code: String,
@@ -868,6 +870,9 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = data.get("servers").and_then(Value::as_array)
         .ok_or("Сервер не вернул список доступных локаций.")?;
+    // Avoid spawning an unbounded number of blocking DNS/TCP probes when
+    // the server catalog grows. Rendering remains responsive under load.
+    let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
     let mut tasks = Vec::with_capacity(servers.len());
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
@@ -916,8 +921,14 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
         let supported = config.get("protocol").and_then(Value::as_str).unwrap_or("vless") == "vless"
             && config.get("security").and_then(Value::as_str).unwrap_or("reality") == "reality"
             && matches!(config.get("network").and_then(Value::as_str).unwrap_or("tcp"), "tcp" | "raw");
-        let task = if !host.is_empty() && (1..=65535).contains(&port) {
-            Some(tokio::task::spawn_blocking(move || measure_real_ping(&host, port as u16)))
+        let task = if supported && !host.is_empty() && (1..=65535).contains(&port) {
+            let slots = ping_slots.clone();
+            Some(tauri::async_runtime::spawn(async move {
+                let _permit = slots.acquire_owned().await.ok()?;
+                tauri::async_runtime::spawn_blocking(move ||
+                    measure_real_ping(&host, port as u16)
+                ).await.ok()
+            }))
         } else {
             None
         };
@@ -930,7 +941,7 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     // Concurrent TCP probes; never block the async runtime or measure one by one.
     for (server, task) in normalized.iter_mut().zip(tasks) {
         if let Some(task) = task {
-            server["ping"] = json!(task.await.unwrap_or(0));
+            server["ping"] = json!(task.await.ok().flatten().unwrap_or(0));
         }
     }
     Ok(normalized)
@@ -1430,8 +1441,8 @@ pub async fn vpn_start(
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
 
-    // The baseline does not depend on the backend session. Verify it first:
-    // failed public-IP checks must not allocate a stale /vpn/session remotely.
+    // Verify the original egress BEFORE requesting a server-side session.
+    // Failed public-IP probes must not allocate remote device slots.
     let baseline_ip = crate::egress::public_egress_ip().await
         .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
@@ -1449,27 +1460,18 @@ pub async fn vpn_start(
     .await
     .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
+    // Every failure after creating a server session must revoke the session.
+    // This prevents exhausted device slots after invalid configs, missing
+    // components or unexpected Xray startup failures.
+    let connection_result: Result<TunnelMetrics, String> = async {
     let session = session_val.get("session").unwrap_or(&session_val);
-    let host = match session.get("server").and_then(Value::as_str) {
-        Some(host) => host,
-        None => {
-            let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-            return Err("Сервер не вернул адрес VPN.".into());
-        }
-    };
+    let host = session.get("server").and_then(Value::as_str)
+        .ok_or("Сервер не вернул адрес VPN.")?;
     let server_name = session.get("display_name").or_else(|| session.get("name"))
         .and_then(Value::as_str).unwrap_or(host).to_string();
     let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Server inbound and public egress IP may differ (NAT, relays, reverse proxies).
-    // Close the server-side session if its transport is not compatible with
-    // this Windows runtime (e.g. protocols unsupported by Xray TUN).
-    let xray_config = match build_tun_config_ext(session, bypass_ru, ad_block, dns_mode) {
-        Ok(config) => config,
-        Err(error) => {
-            let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-            return Err(error);
-        }
-    };
+    // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
+    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
@@ -1485,14 +1487,23 @@ pub async fn vpn_start(
     #[cfg(not(windows))]
     const CREATE_NO_WINDOW: u32 = 0;
 
-    let test_res = std::process::Command::new(runtime_dir.join("xray.exe"))
-        .current_dir(&runtime_dir)
-        .env("XRAY_LOCATION_ASSET", &runtime_dir)
-        .args(["run", "-test", "-config"])
-        .arg(&config_path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
+    // Process startup and config validation are blocking Win32 operations.
+    // Keep them off the Tauri async executor so auth, UI and watchdog
+    // requests remain responsive while Xray initializes.
+    let check_runtime = runtime_dir.clone();
+    let check_config = config_path.clone();
+    let test_res = tauri::async_runtime::spawn_blocking(move || {
+        std::process::Command::new(check_runtime.join("xray.exe"))
+            .current_dir(&check_runtime)
+            .env("XRAY_LOCATION_ASSET", &check_runtime)
+            .args(["run", "-test", "-config"])
+            .arg(&check_config)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+    })
+    .await
+    .map_err(|e| format!("Ошибка фоновой проверки Xray: {e}"))?
+    .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
 
     if !test_res.status.success() {
         let _ = fs::remove_file(&config_path);
@@ -1532,6 +1543,18 @@ pub async fn vpn_start(
             }
         };
 
+    // Own Xray with an OS-level job so a force-killed WebView process cannot
+    // leave an orphaned VPN process behind. Failure is fatal, not best-effort.
+    #[cfg(windows)]
+    let child_job = match crate::windows_job::ChildJob::attach(&child) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
+
     let mut verified_ip = None;
     let mut fatal_error: Option<&str> = None;
     // Two bounded probes during startup. If external probes are unreachable,
@@ -1570,7 +1593,6 @@ pub async fn vpn_start(
         let _ = child.kill();
         let _ = child.wait();
         let _ = fs::remove_file(&config_path);
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
         return Err(format!("VPN не подтверждён: {cause}"));
     }
 
@@ -1583,6 +1605,8 @@ pub async fn vpn_start(
     let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
     *lock = Some(ActiveTunnel {
         child,
+        #[cfg(windows)]
+        _job: child_job,
         config_path,
         started_at,
         _node_code: chosen_node,
@@ -1609,6 +1633,14 @@ pub async fn vpn_start(
         country,
         ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
     })
+    }.await;
+    if connection_result.is_err() {
+        if let Ok(dir) = app.path().app_data_dir() {
+            let _ = fs::remove_file(dir.join("active_tunnel.json"));
+        }
+        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    }
+    connection_result
 }
 
 #[tauri::command]
@@ -1638,8 +1670,9 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
     let _probe_guard = state.status_probe_gate.lock().await;
+    let mut revoke_session = false;
     // A check outage is an UNKNOWN health signal, not an observed route leak.
     // If the original (pre-VPN) IP is actually observed, stop Xray.
     // Run outside the process lock to keep disconnect responsive.
@@ -1673,6 +1706,7 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
                         let _ = active.child.wait();
                         if let Some(active) = lock.take() {
                             let _ = fs::remove_file(active.config_path);
+                            revoke_session = true;
                         }
                     }
                 }
@@ -1708,6 +1742,7 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
         if exited {
             if let Some(active) = lock.take() {
                 let _ = fs::remove_file(active.config_path);
+                revoke_session = true;
             }
         }
         lock.as_ref().map(|active| (
@@ -1719,6 +1754,12 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.cached_ping_ms
         ))
     };
+    // A crashed tunnel or an observed routing leak must release its server
+    // session as well as its local process and config. Never await HTTP while
+    // holding the tunnel Mutex.
+    if revoke_session {
+        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    }
     if let Some((elapsed, server_name, country, ip, verified, ping)) = active_info {
         return Ok(TunnelMetrics {
             connected: true, verified, connected_seconds: elapsed,

@@ -6,6 +6,8 @@ mod google_desktop;
 mod service;
 mod tun_config;
 mod tunnel_runtime;
+#[cfg(windows)]
+mod windows_job;
 
 use tauri::{Manager, RunEvent};
 #[cfg(all(debug_assertions, windows))]
@@ -33,7 +35,7 @@ fn main() {
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;
-                    let _ = service::vpn_status(watchdog.state::<service::AppState>()).await;
+                    let _ = service::vpn_status(watchdog.clone(), watchdog.state::<service::AppState>()).await;
                 }
             });
             Ok(())

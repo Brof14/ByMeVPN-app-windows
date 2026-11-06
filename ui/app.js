@@ -64,7 +64,7 @@ const state = {
     adBlock: 'none',
     dnsMode: 'cloudflare',
     killSwitch: false,
-    language: 'ru'
+    language: 'system'
   },
   currentTab: 'tab-home',
   timerInterval: null,
@@ -77,6 +77,7 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    system_language: 'Системный',
     subpage_devices_title: "Мои устройства",
     devices_of: "из",
     devices_stat_label: "Устройства этого аккаунта",
@@ -262,6 +263,7 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    system_language: 'System',
     subpage_devices_title: "My devices",
     devices_of: "of",
     devices_stat_label: "Devices on this account",
@@ -633,7 +635,7 @@ function switchTab(tabId) {
 
   // Update top header title
   const titleEl = document.getElementById('page-title');
-  const lang = state.settings.language || 'ru';
+  const lang = effectiveLanguage();
   const dict = I18N[lang] || I18N.ru;
 
   switch (tabId) {
@@ -1380,9 +1382,18 @@ function formatTime(seconds) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+// Follow Android's System/RU/EN preference. Unsupported OS locales fall back to RU.
+function effectiveLanguage() {
+  const selected = state.settings.language;
+  if (selected === 'ru' || selected === 'en') return selected;
+  const locale = typeof navigator === 'undefined' ? '' :
+    (navigator.languages?.[0] || navigator.language || '');
+  return /^en(?:-|$)/i.test(locale) ? 'en' : 'ru';
+}
+
 // Runtime strings must use the same locale as the Android app.
 function uiText(ru, en) {
-  return state.settings.language === 'en' ? en : ru;
+  return effectiveLanguage() === 'en' ? en : ru;
 }
 
 // Dynamic notifications use the same locale as static data-i18n labels.
@@ -1447,7 +1458,7 @@ const TOAST_EN = Object.freeze({
 });
 function localizedToast(text) {
   const original = String(text || '');
-  if (state.settings.language !== 'en') return original;
+  if (effectiveLanguage() !== 'en') return original;
   if (TOAST_EN[original]) return TOAST_EN[original];
   if (original.startsWith('Выбран сервер: ')) return 'Server selected: ' + original.slice('Выбран сервер: '.length);
   return original;
@@ -1560,10 +1571,10 @@ function updateVpnUi() {
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
     uiText('Автоматически', 'Automatic') :
-    (state.settings.language === 'en' ? s.country_en : s.country) || serverDisplayName(s);
+    (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
     uiText('Автовыбор', 'Auto select') :
-    ((state.settings.language === 'en' ? s.city_en : s.city) || '');
+    ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
 }
@@ -1805,7 +1816,7 @@ function updatePricingMatrixUi() {
 // Render Servers
 function serverDisplayName(server) {
   if (!server || server.code === 'auto') return uiText('Автоматически', 'Automatic');
-  if (state.settings.language !== 'en') return server.name || server.code;
+  if (effectiveLanguage() !== 'en') return server.name || server.code;
   if (server.name_en && server.name_en !== server.country_en) return server.name_en;
   const country = server.country_en || server.name || server.code;
   return server.city_en ? country + ' • ' + server.city_en : country;
@@ -1846,7 +1857,7 @@ function renderServersList(filter = '') {
     const subtitle = document.createElement('span');
     subtitle.textContent = srv.supported === false ?
       uiText('Этот протокол пока не поддерживается', 'This protocol is not yet supported') :
-      ((state.settings.language === 'en' ? srv.country_en : srv.country) ||
+      ((effectiveLanguage() === 'en' ? srv.country_en : srv.country) ||
         uiText('Доступная локация', 'Available location'));
     details.append(title, subtitle);
     const ping = document.createElement('span');
@@ -2159,7 +2170,7 @@ function applySettingsToUi() {
   const adRadio = document.querySelector(`input[name="adblock"][value="${s.adBlock || 'recommended'}"]`);
   if (adRadio) adRadio.checked = true;
 
-  applyLanguage(s.language || 'ru');
+  applyLanguage(s.language || 'system');
 }
 
 function applyLanguage(lang) {
@@ -2167,8 +2178,9 @@ function applyLanguage(lang) {
     btn.classList.toggle('active', btn.dataset.lang === lang);
   });
 
-  const dict = I18N[lang] || I18N.ru;
-  document.documentElement.lang = lang === 'en' ? 'en' : 'ru';
+  const resolved = lang === 'system' ? effectiveLanguage() : lang;
+  const dict = I18N[resolved] || I18N.ru;
+  document.documentElement.lang = resolved === 'en' ? 'en' : 'ru';
   const version = document.querySelector?.('.version-num');
   if (version?.dataset.appVersion) {
     version.textContent = uiText('Версия ', 'Version ') + version.dataset.appVersion;
@@ -2311,7 +2323,7 @@ function openLegalModal(type) {
   const title = document.getElementById('legal-modal-title');
   const body = document.getElementById('legal-modal-body');
   if (!modal || !title || !body) return;
-  const en = state.settings.language === 'en';
+  const en = effectiveLanguage() === 'en';
 
   // This is a concise in-app explanation, not a fabricated audited privacy
   // policy or a substitute for formally published terms.

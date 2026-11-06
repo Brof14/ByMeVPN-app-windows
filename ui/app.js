@@ -77,6 +77,16 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    trial_description_short: "Три дня доступа к доступным серверам. Без оплаты и привязки карты.",
+    paywall_premium: "ПРЕМИУМ",
+    gift_three_months: "+ 3 в подарок",
+    duration_30days: "30 дней",
+    back_to_settings: "Назад к настройкам",
+    back: "Назад",
+    telegram_opened_bot: "Откройте Telegram-бота",
+    telegram_finish_login: "Нажмите START или подтвердите вход в боте.",
+    trial_activate_three: "Активировать 3 дня бесплатно",
+    back_to_account: "Назад к аккаунту",
     settings_headline: "Приложение работает за вас.",
     settings_intro: "Основные настройки уже подобраны. При желании их можно изменить.",
     settings_connection_label: "Подключение",
@@ -298,6 +308,16 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    trial_description_short: "Three days of access to available servers. No payment or card required.",
+    paywall_premium: "PREMIUM",
+    gift_three_months: "+ 3 bonus months",
+    duration_30days: "30 days",
+    back_to_settings: "Back to settings",
+    back: "Back",
+    telegram_opened_bot: "Open Telegram bot",
+    telegram_finish_login: "Press START or confirm the sign-in in the bot.",
+    trial_activate_three: "Activate 3 free days",
+    back_to_account: "Back to account",
     settings_headline: "The app works for you.",
     settings_intro: "The defaults are ready to use. You can change them here.",
     settings_connection_label: "Connection",

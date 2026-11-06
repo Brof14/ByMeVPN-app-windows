@@ -78,7 +78,9 @@ test('desktop opens in a compact resizable window and UI polls conservatively', 
   assert.ok(w.width <= 1000 && w.height <= 750);
   assert.ok(w.minWidth <= w.width && w.minHeight <= w.height);
   assert.notEqual(w.maximized, true);
-  assert.match(ui, /\}, 5000\);\s*\}\s*\/\/ Pause heavy polling/);
+  assert.match(ui, /\}, 5000\);\s*state\.pollInterval = interval;\s*\}\s*\/\/ Pause heavy polling/);
+  assert.match(ui, /sequence !== state\.vpnSequence/);
+  assert.match(ui, /state\.pollInterval !== interval/);
   assert.match(css, /Compact native desktop window/);
 });
 

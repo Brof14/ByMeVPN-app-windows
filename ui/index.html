@@ -239,18 +239,18 @@
             <span class="sidebar-brand-text">ByMe<span class="neon-green">VPN</span></span>
           </div>
 
-          <nav class="sidebar-nav">
-            <button type="button" class="sidebar-tab active" data-tab="tab-home">
-              <span class="tab-icon">⏻</span>
+          <nav class="sidebar-nav" aria-label="ByMeVPN">
+            <button type="button" class="sidebar-tab active" data-tab="tab-home" aria-current="page">
+              <span class="tab-icon" aria-hidden="true">⏻</span>
               <span class="tab-label" data-i18n="nav_connection">Главная</span>
             </button>
-            <button type="button" class="sidebar-tab" data-tab="tab-account">
-              <span class="tab-icon">👤</span>
-              <span class="tab-label" data-i18n="nav_account">Аккаунт</span>
-            </button>
             <button type="button" class="sidebar-tab" data-tab="tab-settings">
-              <span class="tab-icon">⚙</span>
+              <span class="tab-icon" aria-hidden="true">⚙</span>
               <span class="tab-label" data-i18n="nav_settings">Настройки</span>
+            </button>
+            <button type="button" class="sidebar-tab" data-tab="tab-account">
+              <span class="tab-icon" aria-hidden="true">👤</span>
+              <span class="tab-label" data-i18n="nav_account">Аккаунт</span>
             </button>
           </nav>
         </aside>
@@ -990,7 +990,7 @@
                         <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
                       </svg>
                     </div>
-                    <span class="version-text">ByMeVPN <span class="version-num">Версия 1.2.0</span></span>
+                    <span class="version-text">ByMeVPN <span class="version-num">Версия 1.2.3</span></span>
                   </div>
                 </div>
 
@@ -1372,7 +1372,7 @@
               <span class="faq-arrow">▼</span>
             </button>
             <div class="faq-item-body" data-i18n="faq_a1">
-              Протокол маскирует зашифрованный VPN-трафик под обычные TLS-сессии к популярным зарубежным веб-сервисам, делая его неотличимым от посещения защищённых сайтов и устойчивым к блокировкам.
+              VLESS + Reality шифрует соединение и использует TLS-маскировку. Доступность сервера и устойчивость подключения зависят от сети; полную неотличимость трафика гарантировать нельзя.
             </div>
           </div>
           <div class="faq-accordion-item">
@@ -1381,7 +1381,7 @@
               <span class="faq-arrow">▼</span>
             </button>
             <div class="faq-item-body" data-i18n="faq_a2">
-              Сайты с доменами .ru, .рф, .su, российские банки и государственные порталы направляются напрямую минуя VPN, что обеспечивает максимальную скорость и отсутствие капч.
+              При включённой настройке поддерживаемые российские домены и IP-адреса направляются напрямую. Не все сервисы обязательно распознаются; изменение применяется после переподключения.
             </div>
           </div>
           <div class="faq-accordion-item">
@@ -1390,7 +1390,7 @@
               <span class="faq-arrow">▼</span>
             </button>
             <div class="faq-item-body" data-i18n="faq_a3">
-              Отключить автопродление можно в любой момент на вкладке «Аккаунт» -> «Управлять подпиской» без штрафов и скрытых комиссий.
+              Откройте «Аккаунт» → «Управлять подпиской». Если отключение недоступно в приложении, обратитесь в поддержку ByMeVPN. Условия платежей и возвратов зависят от оформленного заказа.
             </div>
           </div>
         </div>

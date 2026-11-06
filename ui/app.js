@@ -1826,6 +1826,8 @@ async function selectServer(server) {
     }
   } finally {
     state.serverSwitchBusy = false;
+    // Re-enable the main connect control after a completed or failed switch.
+    updateVpnUi();
   }
 }
 

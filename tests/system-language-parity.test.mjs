@@ -11,7 +11,7 @@ function localeHarness(language) {
   const document = {
     documentElement: { lang: 'ru' },
     addEventListener() {},
-    getElementById() { return null; },
+    getElementById(id) { return id === 'page-title' ? { textContent: '' } : null; },
     querySelectorAll() { return []; }
   };
   const sandbox = createContext({

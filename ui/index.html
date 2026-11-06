@@ -29,13 +29,13 @@
         <span class="titlebar-brand">ByMe<span class="neon-green">VPN</span></span>
       </div>
       <div class="window-controls">
-        <button id="btn-minimize" class="win-btn" aria-label="Свернуть">
+        <button id="btn-minimize" class="win-btn" aria-label="Свернуть" data-i18n-title="window_minimize">
           <svg width="11" height="1" viewBox="0 0 11 1"><rect width="11" height="1" fill="currentColor"/></svg>
         </button>
-        <button id="btn-maximize" class="win-btn" aria-label="Развернуть">
+        <button id="btn-maximize" class="win-btn" aria-label="Развернуть" data-i18n-title="window_maximize">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor"/></svg>
         </button>
-        <button id="btn-close" class="win-btn win-close" aria-label="Закрыть">
+        <button id="btn-close" class="win-btn win-close" aria-label="Закрыть" data-i18n-title="window_close">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
         </button>
       </div>
@@ -268,7 +268,7 @@
               </span>
             </div>
             <div class="header-right-actions">
-              <button type="button" id="btn-top-help" class="header-circle-btn" title="Помощь">?</button>
+              <button type="button" id="btn-top-help" class="header-circle-btn" title="Помощь" data-i18n-title="help_tooltip">?</button>
               
             </div>
           </div>
@@ -339,7 +339,7 @@
                 <div class="glass-card hero-connection-card">
                   <div class="hero-card-globe-art"></div>
                   <div class="connection-hero-inner">
-                    <div id="vpn-power-ring" role="button" tabindex="0" aria-label="Переключить VPN" aria-busy="false" class="pulse-power-ring ring-connected">
+                    <div id="vpn-power-ring" role="button" tabindex="0" aria-label="Переключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false" class="pulse-power-ring ring-connected">
                       <div class="outer-glow-pulsar"></div>
                       <div class="inner-shield-circle">
                         <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
@@ -454,7 +454,7 @@
                 </div>
 
                 <!-- Bottom Strip -->
-                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick" role="button" tabindex="0" aria-label="Настройки маршрутизации">
+                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick" role="button" tabindex="0" aria-label="Настройки маршрутизации" data-i18n-title="routing_settings_tooltip">
                   <div class="bypass-left">
                     <span class="bypass-antenna-icon">📡</span>
                     <span data-i18n="ru_bypass_label">Российские сервисы работают напрямую</span>
@@ -468,7 +468,7 @@
                 <div class="glass-card hero-connection-card">
                   <div class="hero-card-globe-art"></div>
                   <div class="connection-hero-inner">
-                    <div id="vpn-power-ring-off" role="button" tabindex="0" aria-label="Переключить VPN" aria-busy="false" class="pulse-power-ring ring-off">
+                    <div id="vpn-power-ring-off" role="button" tabindex="0" aria-label="Переключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false" class="pulse-power-ring ring-off">
                       <div class="inner-shield-circle">
                         <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
                           <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="#4a6572" stroke-width="5" stroke-linejoin="round"/>
@@ -491,9 +491,9 @@
                 <!-- Free Trial Promo Box -->
                 <div class="glass-card promo-trial-box">
                   <div class="promo-trial-content">
-                    <span class="dock-badge-gift">🎁 3 ДНЯ БЕСПЛАТНО</span>
+                    <span class="dock-badge-gift" data-i18n="trial_badge_simple">3 ДНЯ БЕСПЛАТНО</span>
                     <h3 class="promo-trial-title">
-                      <span>Попробуйте ByMeVPN бесплатно</span>
+                      <span data-i18n="trial_try_byme">Попробуйте ByMeVPN бесплатно</span>
                     </h3>
                     <p class="promo-trial-desc">
                       3 дня полного доступа ко всем серверам без ограничений скорости. Без привязки карты.
@@ -518,12 +518,12 @@
               <!-- Top Banner -->
               <div class="glass-card promo-trial-banner">
                 <div class="banner-texts">
-                  <span class="dock-badge-gift">🎁 БЕЗ ПРИВЯЗКИ КАРТЫ</span>
+                  <span class="dock-badge-gift" data-i18n="trial_no_card">БЕЗ ПРИВЯЗКИ КАРТЫ</span>
                   <h2 class="banner-headline">
-                    <span>Попробуйте 3 дня бесплатно</span>
+                    <span data-i18n="trial_try_three">Попробуйте 3 дня бесплатно</span>
                   </h2>
-                  <p class="banner-sub">Полный доступ ко всем локациям для новых пользователей</p>
-                  <p class="banner-sub-note">Все серверы сразу • Отмена не требуется • Без скрытых списаний</p>
+                  <p class="banner-sub" data-i18n="trial_all_locations">Полный доступ ко всем локациям для новых пользователей</p>
+                  <p class="banner-sub-note" data-i18n="trial_no_cancel">Все серверы сразу • Без оплаты и карты</p>
                   <button type="button" id="btn-pricing-activate-trial" class="btn-primary btn-glow banner-cta-btn">
                     <span>Активировать 3 дня бесплатно</span>
                     <span class="btn-arrow">›</span>
@@ -856,7 +856,7 @@
                       <span data-i18n="background_desc">Фоновая работа в разработке; закрытие окна сейчас отключает VPN</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" />
+                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" data-i18n-title="background_unavailable_tip" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -917,7 +917,7 @@
                       <span data-i18n="killswitch_desc">Полная аварийная блокировка трафика пока не реализована. Не считайте её активной.</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-killswitch" disabled title="Полная аварийная защита пока в разработке" />
+                      <input type="checkbox" id="set-killswitch" disabled title="Полная аварийная защита пока в разработке" data-i18n-title="killswitch_unavailable_tip" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1041,12 +1041,12 @@
                   </div>
                 </div>
                 <div class="card-divider-line"></div>
-                <p class="renewal-explanation">
+                <p class="renewal-explanation" data-i18n="renewal_disclaimer">
                   Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.
                 </p>
                 <div class="renewal-actions">
                   <button type="button" id="btn-renewal-switch-pricing" class="btn-primary" style="height: 46px;">
-                    <span>Выбрать или продлить тариф</span>
+                    <span data-i18n="renewal_select_plan">Выбрать или продлить тариф</span>
                     <span class="btn-arrow">›</span>
                   </button>
                 </div>
@@ -1065,11 +1065,11 @@
               <div class="glass-card support-hero-card">
                 <div class="support-heart-icon-badge">💬❤️</div>
                 <h2 class="support-hero-title" data-i18n="support_hero_title">Мы рядом, если нужна помощь</h2>
-                <p class="support-hero-subtitle">
+                <p class="support-hero-subtitle" data-i18n="support_bonus_explained">
                   Нашли ошибку или придумали улучшение? Напишите нам: за подтверждённые ошибки и принятые предложения добавим дни к подписке.
                 </p>
                 <button type="button" id="btn-open-telegram-support" class="btn-primary btn-glow btn-wide" style="height: 48px;">
-                  <span>✈ Написать в поддержку</span>
+                  <span data-i18n="support_open_telegram">Написать в поддержку</span>
                   <span class="btn-arrow">›</span>
                 </button>
               </div>
@@ -1204,7 +1204,7 @@
               <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#pwShieldGrad)"/>
             </svg>
           </div>
-          <h2 class="paywall-title">Активируйте ByMeVPN</h2>
+          <h2 class="paywall-title" data-i18n="paywall_activate_title">Активируйте ByMeVPN</h2>
           <p class="paywall-subtitle" data-i18n="paywall_subtitle_safe">Доступ к совместимым VPN-серверам без сложной настройки</p>
         </div>
 
@@ -1246,7 +1246,7 @@
             <span class="gift-icon">🎁</span>
             <div>
               <strong>Попробуйте 3 дня бесплатно</strong>
-              <span>Без привязки карты • Все серверы сразу</span>
+              <span data-i18n="paywall_trial_desc">Без привязки карты • Все серверы сразу</span>
             </div>
           </div>
           <button type="button" id="btn-paywall-trial" class="btn-primary btn-glow btn-wide" style="height: 46px; margin-top: 10px;">
@@ -1255,7 +1255,7 @@
         </div>
 
         <div class="paywall-or-divider" style="margin: 16px 0 10px 0; text-align: center; color: var(--text-muted); font-size: 12px; font-weight: 600;">
-          <span>Или выберите тариф:</span>
+          <span data-i18n="paywall_choose_plan">Или выберите тариф:</span>
         </div>
 
         <!-- Mini Tariffs -->
@@ -1265,7 +1265,7 @@
               <div class="tariff-radio-ring"></div>
               <div class="tariff-titles">
                 <div class="tariff-name-row">
-                  <strong>12 месяцев</strong>
+                  <strong data-i18n="paywall_12months">12 месяцев</strong>
                   <span class="gift-badge">+ 3 в подарок</span>
                 </div>
                 <span class="tariff-subnote">—</span>
@@ -1278,7 +1278,7 @@
               <div class="tariff-radio-ring"></div>
               <div class="tariff-titles">
                 <div class="tariff-name-row">
-                  <strong>1 месяц</strong>
+                  <strong data-i18n="paywall_1month">1 месяц</strong>
                 </div>
                 <span class="tariff-subnote">30 дней</span>
               </div>
@@ -1288,12 +1288,12 @@
         </div>
 
         <button type="button" id="btn-paywall-yookassa-action" class="btn-primary btn-wide" style="height: 48px; margin-top: 14px;">
-          <span>Оплатить через ЮKassa</span>
+          <span data-i18n="paywall_pay_yookassa">Оплатить через ЮKassa</span>
           <span class="btn-arrow">›</span>
         </button>
 
         <button type="button" id="btn-paywall-tg-action" class="btn-secondary btn-wide" style="height: 44px; margin-top: 8px;">
-          <span>✈ Оплатить через Telegram-бота</span>
+          <span data-i18n="paywall_pay_telegram">Оплатить через Telegram-бота</span>
           <span class="btn-arrow">›</span>
         </button>
       </div>
@@ -1313,14 +1313,14 @@
             <div class="radar-ping"></div>
             <div class="radar-core">✈</div>
           </div>
-          <h4 class="tg-oauth-step-title">Подтвердите вход в Telegram-боте</h4>
+          <h4 class="tg-oauth-step-title" data-i18n="telegram_auth_confirm">Подтвердите вход в Telegram-боте</h4>
           <p class="modal-desc">
             Мы открыли Telegram-бота <strong>@ByMeVPNbot</strong>.<br/>
             Нажмите <strong>СТАРТ</strong> (или кнопку подтверждения) в боте для завершения входа.
           </p>
           <div class="tg-oauth-actions">
             <button type="button" id="btn-tg-reopen" class="btn-primary btn-tg-reopen">
-              <span>✈</span> Открыть бота в Telegram
+              <span>✈</span> <span data-i18n="telegram_auth_open">Открыть бота в Telegram</span>
             </button>
             <div class="tg-polling-indicator">
               <span class="spinner-mini"></span>

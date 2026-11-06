@@ -31,6 +31,8 @@ static API_CLIENT: OnceLock<Client> = OnceLock::new();
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
+    #[cfg(windows)]
+    pub _job: crate::windows_job::ChildJob,
     pub config_path: PathBuf,
     pub started_at: std::time::Instant,
     pub _node_code: String,
@@ -1444,6 +1446,10 @@ pub async fn vpn_start(
     .await
     .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
+    // Every failure after creating a server session must revoke the session.
+    // This prevents exhausted device slots after invalid configs, missing
+    // components or unexpected Xray startup failures.
+    let connection_result: Result<TunnelMetrics, String> = async {
     let session = session_val.get("session").unwrap_or(&session_val);
     let host = session.get("server").and_then(Value::as_str)
         .ok_or("Сервер не вернул адрес VPN.")?;
@@ -1518,6 +1524,18 @@ pub async fn vpn_start(
             }
         };
 
+    // Own Xray with an OS-level job so a force-killed WebView process cannot
+    // leave an orphaned VPN process behind. Failure is fatal, not best-effort.
+    #[cfg(windows)]
+    let child_job = match crate::windows_job::ChildJob::attach(&child) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
+
     let mut verified_ip = None;
     let mut fatal_error: Option<&str> = None;
     // Two bounded probes during startup. If external probes are unreachable,
@@ -1556,7 +1574,6 @@ pub async fn vpn_start(
         let _ = child.kill();
         let _ = child.wait();
         let _ = fs::remove_file(&config_path);
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
         return Err(format!("VPN не подтверждён: {cause}"));
     }
 
@@ -1569,6 +1586,8 @@ pub async fn vpn_start(
     let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
     *lock = Some(ActiveTunnel {
         child,
+        #[cfg(windows)]
+        _job: child_job,
         config_path,
         started_at,
         _node_code: chosen_node,
@@ -1595,6 +1614,14 @@ pub async fn vpn_start(
         country,
         ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
     })
+    }.await;
+    if connection_result.is_err() {
+        if let Ok(dir) = app.path().app_data_dir() {
+            let _ = fs::remove_file(dir.join("active_tunnel.json"));
+        }
+        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    }
+    connection_result
 }
 
 #[tauri::command]

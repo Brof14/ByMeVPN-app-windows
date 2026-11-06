@@ -225,7 +225,7 @@ const I18N = {
     faq_q2: 'Как работает обход российских сервисов?',
     faq_a2: 'При включённом обходе поддерживаемые российские домены и адреса направляются напрямую. Фактические маршруты проверяются на устройстве.',
     faq_q3: 'Как отключить автопродление?',
-    faq_a3: 'Управление списаниями через приложение пока не реализовано. Обратитесь в поддержку для проверки и изменения автопродления.',
+    faq_a3: 'Откройте «Аккаунт» → «Управлять подпиской». Пока отключение в приложении недоступно, обратитесь в поддержку. Условия платежей зависят от вашего заказа.',
     cancel: 'Отмена',
     confirm: 'Подтвердить'
   },
@@ -551,9 +551,15 @@ function showAppShell() {
 function switchTab(tabId) {
   state.currentTab = tabId;
 
-  // Update sidebar active buttons
+  // Android keeps the originating bottom tab selected on secondary screens.
+  const rootTab = ['tab-servers', 'tab-pricing'].includes(tabId) ? 'tab-home'
+    : ['tab-devices', 'tab-renewal', 'tab-support'].includes(tabId) ? 'tab-account'
+    : tabId === 'tab-advanced' ? 'tab-settings' : tabId;
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tabId);
+    const selected = btn.dataset.tab === rootTab;
+    btn.classList.toggle('active', selected);
+    if (selected) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
 
   // Update tab content visibility
@@ -844,6 +850,7 @@ function setupEventListeners() {
     filterServers(e.target.value);
   });
 
+  document.addEventListener('keydown', handleModalKeyboard);
   // Modal close buttons
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
@@ -989,7 +996,14 @@ async function startTelegramAuthFlow() {
     const openTelegram = () => invoke('open_external_url', { url: res.bot_url });
     const reopenButton = document.getElementById('btn-tg-reopen');
     if (reopenButton) reopenButton.onclick = openTelegram;
-    await openTelegram();
+    // A blocked browser launch must not strand the modal in a loading state.
+    // Keep the session alive and allow the user to reopen the verified link.
+    try {
+      await openTelegram();
+    } catch (_) {
+      showToast(uiText('Браузер не открылся. Нажмите «Открыть Telegram» ещё раз.',
+        'The browser did not open. Use Open Telegram to retry.'), true);
+    }
     if (generation !== tgPollingGeneration) return;
 
     tgPollingFailures = 0;
@@ -1646,8 +1660,9 @@ function updateDevicesUi() {
 async function handleDeleteDevice(deviceId, name) {
   if (!deviceId) return;
   showConfirm(
-    'Отключение устройства',
-    `Вы действительно хотите отключить устройство "${name || 'Устройство'}" от аккаунта?`,
+    uiText('Отключение устройства', 'Disconnect device'),
+    uiText(`Отключить устройство «${name || 'Устройство'}» от аккаунта?`,
+      `Disconnect "${name || 'Device'}" from your account?`),
     async () => {
       try {
         await invoke('delete_device', { deviceId });
@@ -2035,16 +2050,29 @@ async function handlePayYooKassa() {
 // Settings Persistence
 async function handleSettingChange(key, value) {
   const previous = state.settings[key];
+  let startupChanged = false;
   try {
-    if (key === 'autoStart') await invoke('set_startup', { enabled: value });
+    if (key === 'autoStart') {
+      await invoke('set_startup', { enabled: value });
+      startupChanged = true;
+    }
     await invoke('save_setting', { key, value });
     state.settings[key] = value;
     if (key === 'language') applyLanguage(value);
-    showToast('Настройки сохранены');
+    showToast(key === 'bypassRu'
+      ? uiText('Изменение маршрутизации применится при следующем подключении.',
+        'Routing changes take effect on your next connection.')
+      : uiText('Настройки сохранены', 'Settings saved.'));
   } catch (err) {
+    // Persisting the preference can fail after changing the Windows registry.
+    // Restore the previous startup state so the switch never lies.
+    if (startupChanged) {
+      await invoke('set_startup', { enabled: previous }).catch(() => {});
+    }
     state.settings[key] = previous;
     applySettingsToUi();
-    showToast('Не удалось сохранить настройку. Изменение отменено.', true);
+    showToast(uiText('Не удалось сохранить настройку. Изменение отменено.',
+      'Could not save this setting. The change was reverted.'), true);
   }
 }
 
@@ -2077,6 +2105,10 @@ function applyLanguage(lang) {
 
   const dict = I18N[lang] || I18N.ru;
   document.documentElement.lang = lang === 'en' ? 'en' : 'ru';
+  const version = document.querySelector('.version-num');
+  if (version?.dataset.appVersion) {
+    version.textContent = uiText('Версия ', 'Version ') + version.dataset.appVersion;
+  }
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const value = dict[el.dataset.i18n];
     if (typeof value === 'string') el.textContent = value;
@@ -2140,8 +2172,23 @@ async function handleOpenTelegramSupport() {
 }
 
 // Modal Helpers
+let activeModalId = null;
+let focusBeforeModal = null;
+const modalFocusableSelector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex="0"]';
+
 function openModal(id) {
-  document.getElementById(id)?.classList.remove('hidden');
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  if (!activeModalId) focusBeforeModal = document.activeElement;
+  activeModalId = id;
+  modal.classList.remove('hidden');
+  const dialog = modal.querySelector('.modal-window');
+  if (dialog) {
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+  }
+  const initial = modal.querySelector(modalFocusableSelector);
+  initial?.focus();
 }
 
 function closeModal(id) {
@@ -2151,6 +2198,36 @@ function closeModal(id) {
     if (btn) btn.onclick = null;
   }
   document.getElementById(id)?.classList.add('hidden');
+  if (activeModalId === id) {
+    activeModalId = null;
+    const target = focusBeforeModal;
+    focusBeforeModal = null;
+    if (target?.isConnected) target.focus();
+  }
+}
+
+function handleModalKeyboard(event) {
+  if (!activeModalId) return;
+  const modal = document.getElementById(activeModalId);
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal(activeModalId);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const controls = Array.from(modal.querySelectorAll(modalFocusableSelector))
+    .filter(el => el.getClientRects().length > 0);
+  if (!controls.length) { event.preventDefault(); return; }
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function showConfirm(title, desc, onConfirm) {
@@ -2205,7 +2282,7 @@ function openLegalModal(type) {
       <p><strong>Использование</strong> Запрещены незаконная деятельность, спам, вредоносное ПО и сетевые атаки.</p>
     `;
   }
-  modal.classList.remove('hidden');
+  openModal('modal-legal');
 }
 
 function showToast(text, isError = false) {

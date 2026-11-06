@@ -1441,6 +1441,11 @@ pub async fn vpn_start(
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
 
+    // Verify the original egress BEFORE requesting a server-side session.
+    // Failed public-IP probes must not allocate remote device slots.
+    let baseline_ip = crate::egress::public_egress_ip().await
+        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
+
     let session_val = request(
         &app,
         Method::POST,
@@ -1465,11 +1470,7 @@ pub async fn vpn_start(
     let server_name = session.get("display_name").or_else(|| session.get("name"))
         .and_then(Value::as_str).unwrap_or(host).to_string();
     let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Baseline is observed before installing the route. Server inbound and
-    // public egress IP often differ (NAT, reverse proxies, relay topology).
-    let baseline_ip = crate::egress::public_egress_ip().await
-        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
-
+    // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
     let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;

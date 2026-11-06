@@ -3284,3 +3284,212 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 @media (prefers-reduced-motion: reduce) {
   #btn-toggle-bypass-quick { transition: none; }
 }
+
+
+/* Android Compose navigation parity for the desktop WebView. The Windows
+   title bar remains native, while content and navigation use a centered,
+   single-column mobile layout rather than a stretched two-panel dashboard.
+   This also works at the supported 800x590 minimum window size. */
+.app-shell-layout {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.app-shell-layout .app-main-frame {
+  width: min(100%, 660px);
+  height: calc(100% - 66px);
+  margin: 0 auto;
+  padding: 14px clamp(16px, 3.4vw, 26px) 12px;
+  flex: none;
+}
+.app-shell-layout .app-sidebar {
+  position: absolute;
+  inset: auto 0 0;
+  width: min(100%, 660px);
+  height: 66px;
+  margin: auto;
+  padding: 5px 12px 7px;
+  flex-direction: row;
+  align-items: center;
+  z-index: 20;
+  border-right: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: #101a29;
+}
+.app-shell-layout .sidebar-brand { display: none; }
+.app-shell-layout .sidebar-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  gap: 4px;
+}
+.app-shell-layout .sidebar-tab {
+  min-width: 0;
+  min-height: 52px;
+  height: 52px;
+  padding: 4px 3px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  border-radius: 12px;
+}
+.app-shell-layout .sidebar-tab .tab-icon {
+  font-size: 20px;
+  line-height: 22px;
+  width: auto;
+}
+.app-shell-layout .sidebar-tab.active {
+  background: rgba(105, 211, 188, 0.08);
+  border-color: rgba(105, 211, 188, 0.24);
+}
+.app-shell-layout .sidebar-tab:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: -3px;
+}
+.app-shell-layout .app-tab-pages {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.app-shell-layout .app-top-header { min-height: 46px; }
+.app-shell-layout .page-title { font-size: 23px; letter-spacing: -.4px; }
+.app-shell-layout .home-cards-duo,
+.app-shell-layout .account-top-cards-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.app-shell-layout .home-cards-duo > *,
+.app-shell-layout .account-top-cards-row > * { min-width: 0; }
+.app-shell-layout .hero-connection-card { min-height: 260px; }
+.app-shell-layout .settings-sections-stack { padding-bottom: 4px; }
+.app-shell-layout .settings-links-grid-2x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell-layout .account-settings-button-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell-layout .settings-bottom-bar { flex-wrap: wrap; }
+.app-shell-layout .settings-bottom-bar > * { min-width: 0; }
+@media (max-width: 540px) {
+  .app-shell-layout .app-main-frame { padding-inline: 14px; }
+  .app-shell-layout .settings-links-grid-2x2,
+  .app-shell-layout .account-settings-button-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-height: 640px) {
+  .app-shell-layout .app-sidebar { height: 58px; padding: 3px 10px; }
+  .app-shell-layout .sidebar-tab { min-height: 49px; height: 49px; }
+  .app-shell-layout .app-main-frame { height: calc(100% - 58px); }
+  .app-shell-layout .hero-connection-card { min-height: 215px; }
+}
+
+
+/* Android SettingsScreen.kt: headline, exactly two everyday connection
+   switches and language; desktop-only controls remain in Advanced settings. */
+.android-settings-screen {
+  gap: 0;
+  padding-bottom: 16px;
+}
+.android-settings-heading {
+  padding: 8px 2px 15px;
+}
+.android-settings-heading h2 {
+  margin: 0 0 8px;
+  font-size: 25px;
+  line-height: 1.2;
+  letter-spacing: -.5px;
+  font-weight: 720;
+}
+.android-settings-heading p {
+  color: #8ea4a2;
+  font-size: 12.5px;
+  line-height: 1.48;
+}
+.android-settings-section-label {
+  margin: 8px 2px 10px;
+  font-size: 12px;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: #8ba3a4;
+}
+.android-settings-language {
+  margin-bottom: 16px;
+}
+.android-settings-essential,
+.android-settings-language {
+  padding: 10px 16px;
+  border-radius: 16px;
+}
+.android-settings-essential .setting-item-row { min-height: 64px; }
+.android-settings-essential .setting-copy-column strong {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.android-settings-essential .setting-copy-column span {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.android-settings-essential .card-divider-line { margin-block: 3px; }
+.android-settings-language .lang-selector-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  width: 100%;
+}
+.android-settings-language .lang-globe-icon { grid-column: 1; }
+.android-settings-language .lang-label { grid-column: 2; }
+.android-settings-language .lang-segmented-control {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.android-settings-language .lang-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 37px;
+  padding: 0 5px;
+  justify-content: center;
+  font-size: 12px;
+}
+.android-settings-default-tip {
+  margin: 0 0 17px;
+  padding: 12px 15px;
+  color: #8ea4a2;
+  font-size: 12px;
+  line-height: 1.45;
+  border: 1px solid #263647;
+  border-radius: 13px;
+  background: #101b29;
+}
+.android-settings-advanced-link {
+  min-height: 44px;
+}
+.android-desktop-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+.android-desktop-section-title {
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-size: 17px;
+}
+.android-desktop-section-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.android-desktop-advanced .settings-group-card {
+  padding: 16px 18px;
+}
+.android-desktop-advanced .setting-item-row {
+  flex-wrap: wrap;
+  min-height: 58px;
+}
+.android-desktop-advanced .settings-bottom-bar {
+  padding: 10px 3px 20px;
+}
+@media (max-width: 540px) {
+  .android-settings-heading h2 { font-size: 22px; }
+  .android-settings-essential, .android-settings-language { padding-inline: 12px; }
+  .android-settings-language .lang-btn { font-size: 11px; }
+}

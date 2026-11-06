@@ -1477,14 +1477,23 @@ pub async fn vpn_start(
     #[cfg(not(windows))]
     const CREATE_NO_WINDOW: u32 = 0;
 
-    let test_res = std::process::Command::new(runtime_dir.join("xray.exe"))
-        .current_dir(&runtime_dir)
-        .env("XRAY_LOCATION_ASSET", &runtime_dir)
-        .args(["run", "-test", "-config"])
-        .arg(&config_path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
+    // Process startup and config validation are blocking Win32 operations.
+    // Keep them off the Tauri async executor so auth, UI and watchdog
+    // requests remain responsive while Xray initializes.
+    let check_runtime = runtime_dir.clone();
+    let check_config = config_path.clone();
+    let test_res = tauri::async_runtime::spawn_blocking(move || {
+        std::process::Command::new(check_runtime.join("xray.exe"))
+            .current_dir(&check_runtime)
+            .env("XRAY_LOCATION_ASSET", &check_runtime)
+            .args(["run", "-test", "-config"])
+            .arg(&check_config)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+    })
+    .await
+    .map_err(|e| format!("Ошибка фоновой проверки Xray: {e}"))?
+    .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
 
     if !test_res.status.success() {
         let _ = fs::remove_file(&config_path);

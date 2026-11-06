@@ -1306,7 +1306,7 @@ fn default_settings() -> Value {
         "adBlock": "none",
         "dnsMode": "cloudflare",
         "killSwitch": false,
-        "language": "ru",
+        "language": "system",
         "selectedServerCode": "auto"
     })
 }
@@ -1334,8 +1334,8 @@ fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
             }
         }
         "language" => {
-            if !matches!(value.as_str(), Some("ru" | "en")) {
-                return Err("Приложение поддерживает языки RU и EN.".into());
+            if !matches!(value.as_str(), Some("ru" | "en" | "system")) {
+                return Err("Приложение поддерживает RU, EN и язык системы.".into());
             }
         }
         "selectedServerCode" => {
@@ -1861,6 +1861,8 @@ mod tests {
         assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
         assert!(validate_setting("adBlock", &json!("unknown")).is_err());
         assert!(validate_setting("language", &json!("fr")).is_err());
+        assert!(validate_setting("language", &json!("system")).is_ok());
+        assert_eq!(default_settings()["language"], "system");
         assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
         assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);

@@ -1430,6 +1430,11 @@ pub async fn vpn_start(
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
 
+    // The baseline does not depend on the backend session. Verify it first:
+    // failed public-IP checks must not allocate a stale /vpn/session remotely.
+    let baseline_ip = crate::egress::public_egress_ip().await
+        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
+
     let session_val = request(
         &app,
         Method::POST,
@@ -1445,17 +1450,26 @@ pub async fn vpn_start(
     .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
     let session = session_val.get("session").unwrap_or(&session_val);
-    let host = session.get("server").and_then(Value::as_str)
-        .ok_or("Сервер не вернул адрес VPN.")?;
+    let host = match session.get("server").and_then(Value::as_str) {
+        Some(host) => host,
+        None => {
+            let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+            return Err("Сервер не вернул адрес VPN.".into());
+        }
+    };
     let server_name = session.get("display_name").or_else(|| session.get("name"))
         .and_then(Value::as_str).unwrap_or(host).to_string();
     let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Baseline is observed before installing the route. Server inbound and
-    // public egress IP often differ (NAT, reverse proxies, relay topology).
-    let baseline_ip = crate::egress::public_egress_ip().await
-        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
-
-    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
+    // Server inbound and public egress IP may differ (NAT, relays, reverse proxies).
+    // Close the server-side session if its transport is not compatible with
+    // this Windows runtime (e.g. protocols unsupported by Xray TUN).
+    let xray_config = match build_tun_config_ext(session, bypass_ru, ad_block, dns_mode) {
+        Ok(config) => config,
+        Err(error) => {
+            let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+            return Err(error);
+        }
+    };
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;

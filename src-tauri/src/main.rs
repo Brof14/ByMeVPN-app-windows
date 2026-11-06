@@ -35,7 +35,11 @@ fn main() {
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;
-                    let _ = service::vpn_status(watchdog.clone(), watchdog.state::<service::AppState>()).await;
+                    let _ = service::vpn_status(
+                        watchdog.clone(),
+                        watchdog.state::<service::AppState>(),
+                    )
+                    .await;
                 }
             });
             Ok(())

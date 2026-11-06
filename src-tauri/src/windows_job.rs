@@ -6,8 +6,8 @@ use std::{io, mem, os::windows::io::AsRawHandle, process::Child, ptr};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},
     System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
-        JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     },
 };
@@ -24,7 +24,10 @@ impl ChildJob {
         // job; ownership of the returned handle is transferred to ChildJob.
         let handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
         if handle.is_null() {
-            return Err(format!("Не удалось создать защиту процесса VPN: {}", io::Error::last_os_error()));
+            return Err(format!(
+                "Не удалось создать защиту процесса VPN: {}",
+                io::Error::last_os_error()
+            ));
         }
         let job = Self(handle);
         // SAFETY: Win32 explicitly accepts a zero-initialized extended limits
@@ -40,14 +43,20 @@ impl ChildJob {
             )
         };
         if configured == 0 {
-            return Err(format!("Не удалось включить остановку VPN при сбое приложения: {}", io::Error::last_os_error()));
+            return Err(format!(
+                "Не удалось включить остановку VPN при сбое приложения: {}",
+                io::Error::last_os_error()
+            ));
         }
         // SAFETY: Child owns a valid open Windows process handle.
         // If assignment fails (e.g. job restrictions), caller terminates
         // the child and never shows a successful VPN connection.
         let assigned = unsafe { AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE) };
         if assigned == 0 {
-            return Err(format!("Не удалось привязать процесс VPN к приложению: {}", io::Error::last_os_error()));
+            return Err(format!(
+                "Не удалось привязать процесс VPN к приложению: {}",
+                io::Error::last_os_error()
+            ));
         }
         Ok(job)
     }
@@ -71,7 +80,12 @@ mod tests {
         // Real Win32 semantics, not a mocked contract: an unexpectedly
         // terminated Tauri process closes exactly this job handle.
         let mut child = Command::new("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 30"])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ])
             .creation_flags(0x0800_0000)
             .spawn()
             .expect("Windows must launch a harmless idle test child");

@@ -14,7 +14,9 @@ fn verified_build_runtime_hash() -> String {
     let mut buffer = [0u8; 65_536];
     loop {
         let bytes = file.read(&mut buffer).expect("Read Xray release binary");
-        if bytes == 0 { break; }
+        if bytes == 0 {
+            break;
+        }
         digest.update(&buffer[..bytes]);
     }
     format!("{:x}", digest.finalize())
@@ -23,7 +25,10 @@ fn verified_build_runtime_hash() -> String {
 fn main() {
     println!("cargo:rerun-if-env-changed=BYMEVPN_NO_ADMIN_MANIFEST");
     println!("cargo:rerun-if-changed=../vendor/runtime/windows-x64/xray.exe");
-    println!("cargo:rustc-env=BYMEVPN_XRAY_SHA256={}", verified_build_runtime_hash());
+    println!(
+        "cargo:rustc-env=BYMEVPN_XRAY_SHA256={}",
+        verified_build_runtime_hash()
+    );
     let execution_level = if std::env::var("BYMEVPN_NO_ADMIN_MANIFEST").is_ok() {
         "asInvoker"
     } else {
@@ -73,5 +78,6 @@ fn main() {
     );
 
     let windows = tauri_build::WindowsAttributes::new().app_manifest(manifest);
-    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows)).expect("build failed");
+    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+        .expect("build failed");
 }

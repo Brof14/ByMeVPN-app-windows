@@ -24,7 +24,12 @@ pub fn build_tun_config(session: &Value) -> Result<Value, String> {
     build_tun_config_ext(session, false, "none", "cloudflare")
 }
 
-pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dns_mode: &str) -> Result<Value, String> {
+pub fn build_tun_config_ext(
+    session: &Value,
+    bypass_ru: bool,
+    ad_block: &str,
+    dns_mode: &str,
+) -> Result<Value, String> {
     if text(session, &["protocol"]).unwrap_or("vless") != "vless"
         || text(session, &["security"]).unwrap_or("reality") != "reality"
         || !matches!(text(session, &["network"]).unwrap_or("tcp"), "tcp" | "raw")
@@ -53,7 +58,7 @@ pub fn build_tun_config_ext(session: &Value, bypass_ru: bool, ad_block: &str, dn
     }
     let short_id = text(session, &["short_id"]).unwrap_or("");
     if short_id.len() > 16
-        || short_id.len() % 2 != 0
+        || !short_id.len().is_multiple_of(2)
         || !short_id.bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err("Сервер вернул некорректный Reality short ID.".into());
@@ -228,7 +233,10 @@ mod tests {
         assert_eq!(result["routing"]["rules"][0]["inboundTag"][0], "tun");
         assert_eq!(result["routing"]["rules"][0]["port"], "53");
         assert_eq!(result["routing"]["rules"][0]["outboundTag"], "dns-out");
-        assert_eq!(result["routing"]["rules"][1]["inboundTag"][0], "bymevpn-dns-query");
+        assert_eq!(
+            result["routing"]["rules"][1]["inboundTag"][0],
+            "bymevpn-dns-query"
+        );
         assert_eq!(result["routing"]["rules"][1]["outboundTag"], "proxy");
         assert_eq!(result["outbounds"][3]["protocol"], "dns");
         assert_eq!(result["dns"]["tag"], "bymevpn-dns-query");
@@ -241,7 +249,10 @@ mod tests {
             result["inbounds"][0]["settings"]["autoSystemRoutingTable"][1],
             "::/0"
         );
-        assert_eq!(result["inbounds"][0]["settings"]["autoOutboundsInterface"], "auto");
+        assert_eq!(
+            result["inbounds"][0]["settings"]["autoOutboundsInterface"],
+            "auto"
+        );
         assert_eq!(
             result["outbounds"][0]["settings"]["vnext"][0]["address"],
             "192.0.2.1"
@@ -296,10 +307,14 @@ mod tests {
             "Xray rejected the generated test configuration"
         );
 
-        let path_ext = std::env::temp_dir().join(format!("bymevpn-test-ext-{}.json", Uuid::new_v4()));
+        let path_ext =
+            std::env::temp_dir().join(format!("bymevpn-test-ext-{}.json", Uuid::new_v4()));
         std::fs::write(
             &path_ext,
-            serde_json::to_vec(&build_tun_config_ext(&session(), true, "recommended", "cloudflare").unwrap()).unwrap(),
+            serde_json::to_vec(
+                &build_tun_config_ext(&session(), true, "recommended", "cloudflare").unwrap(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let result_ext = std::process::Command::new(&root)

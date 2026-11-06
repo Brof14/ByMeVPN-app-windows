@@ -2,9 +2,7 @@ use reqwest::{Client, Method, Response};
 use serde_json::Value;
 
 // Production API endpoint with TLS/HTTPS encryption.
-pub const API_BASES: [&str; 1] = [
-    "https://bymevpn.duckdns.org/api/v1",
-];
+pub const API_BASES: [&str; 1] = ["https://bymevpn.duckdns.org/api/v1"];
 
 #[tauri::command]
 pub fn api_transport_encrypted() -> bool {

@@ -2,13 +2,16 @@ use crate::api_transport::{send_to_bases, API_BASES};
 use crate::egress::{verify_egress, EgressFailure};
 use crate::tun_config::build_tun_config_ext;
 use crate::tunnel_runtime::verify_runtime;
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
-use base64::Engine;
 use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf, sync::{Mutex, OnceLock}, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+    time::Duration,
+};
 use tauri::{AppHandle, Manager, State};
 use url::Url;
 use uuid::Uuid;
@@ -131,11 +134,20 @@ fn http(app: &AppHandle) -> Result<Client, String> {
     // Match the 3x-ui HWID gate used by the mobile app and subscription API.
     // One random installation ID is stable across sign-ins on this machine.
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("X-HWID", reqwest::header::HeaderValue::from_str(&install_id(app)?)
-        .map_err(|_| "Некорректный идентификатор устройства.")?);
-    headers.insert("X-Device-OS", reqwest::header::HeaderValue::from_static("Windows"));
+    headers.insert(
+        "X-HWID",
+        reqwest::header::HeaderValue::from_str(&install_id(app)?)
+            .map_err(|_| "Некорректный идентификатор устройства.")?,
+    );
+    headers.insert(
+        "X-Device-OS",
+        reqwest::header::HeaderValue::from_static("Windows"),
+    );
     headers.insert("X-Ver-OS", reqwest::header::HeaderValue::from_static("10+"));
-    headers.insert("X-Device-Model", reqwest::header::HeaderValue::from_static("Windows PC"));
+    headers.insert(
+        "X-Device-Model",
+        reqwest::header::HeaderValue::from_static("Windows PC"),
+    );
     Client::builder()
         .default_headers(headers)
         .user_agent(concat!("ByMeVPN-Windows/", env!("CARGO_PKG_VERSION")))
@@ -143,9 +155,8 @@ fn http(app: &AppHandle) -> Result<Client, String> {
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map(|client| {
+        .inspect(|client| {
             let _ = API_CLIENT.set(client.clone());
-            client
         })
         .map_err(|e| format!("Не удалось настроить соединение с API: {e}"))
 }
@@ -187,9 +198,7 @@ fn clear_pending_payment() {
 
 #[tauri::command]
 pub fn get_pending_payment() -> Option<Value> {
-    if read_secret(ACCESS_KEY).is_none() {
-        return None;
-    }
+    read_secret(ACCESS_KEY)?;
     let raw = read_secret(PENDING_PAYMENT_KEY)?;
     let pending: Value = serde_json::from_str(&raw).ok()?;
     let code = pending.get("plan_code")?.as_str()?;
@@ -197,12 +206,19 @@ pub fn get_pending_payment() -> Option<Value> {
     let invoice = pending.get("invoice_id")?.as_str()?;
     let url = pending.get("payment_url")?.as_str()?;
     let request_id = pending.get("request_id")?.as_str()?;
-    if mobile_plan_duration(code, devices).is_none() ||
-        invoice.is_empty() || invoice.len() > 128 ||
-        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
-        request_id.is_empty() || request_id.len() > 128 ||
-        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) ||
-        !payment_url_is_allowed(url) {
+    if mobile_plan_duration(code, devices).is_none()
+        || invoice.is_empty()
+        || invoice.len() > 128
+        || !invoice
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        || request_id.is_empty()
+        || request_id.len() > 128
+        || !request_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        || !payment_url_is_allowed(url)
+    {
         return None;
     }
     Some(pending)
@@ -218,17 +234,6 @@ fn clear_telegram_session() {
             let _ = e.delete_credential();
         }
     }
-}
-
-fn restore_telegram_session() -> Option<AuthResult> {
-    let profile: UserProfile = serde_json::from_str(&read_secret(TELEGRAM_PROFILE_KEY)?).ok()?;
-    let subscription: Subscription =
-        serde_json::from_str(&read_secret(TELEGRAM_STATUS_KEY)?).ok()?;
-    read_secret(TELEGRAM_SUBSCRIPTION_KEY)?;
-    Some(AuthResult {
-        user: profile,
-        subscription: Some(subscription),
-    })
 }
 
 fn install_id(app: &AppHandle) -> Result<String, String> {
@@ -383,8 +388,15 @@ async fn request(
 // Mirror Android's device-limit fallback when the backend omits max_devices.
 fn normalized_subscription_value(value: &Value) -> Value {
     let mut result = value.clone();
-    if result.get("max_devices").and_then(Value::as_i64).unwrap_or(0) <= 0 {
-        let from_code = result.get("plan_code").and_then(Value::as_str)
+    if result
+        .get("max_devices")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        <= 0
+    {
+        let from_code = result
+            .get("plan_code")
+            .and_then(Value::as_str)
             .and_then(|code| code.rsplit_once("_d"))
             .and_then(|(_, suffix)| suffix.parse::<i64>().ok())
             .filter(|count| matches!(count, 2 | 5 | 10));
@@ -434,136 +446,22 @@ async fn store_auth(value: Value) -> Result<AuthResult, String> {
     clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
     // must never be paired with the previous account's refresh token.
-    let access = value["access"].as_str().or_else(|| value["access_token"].as_str()).unwrap_or("");
-    let refresh = value["refresh"].as_str().or_else(|| value["refresh_token"].as_str()).unwrap_or("");
-    if let Err(error) = save_secret(REFRESH_KEY, refresh).and_then(|_| save_secret(ACCESS_KEY, access)) {
+    let access = value["access"]
+        .as_str()
+        .or_else(|| value["access_token"].as_str())
+        .unwrap_or("");
+    let refresh = value["refresh"]
+        .as_str()
+        .or_else(|| value["refresh_token"].as_str())
+        .unwrap_or("");
+    if let Err(error) =
+        save_secret(REFRESH_KEY, refresh).and_then(|_| save_secret(ACCESS_KEY, access))
+    {
         clear_secrets();
         return Err(error);
     }
     clear_telegram_session();
     Ok(parsed)
-}
-
-fn subscription_contains_servers(raw: &str) -> bool {
-    let trimmed = raw.trim();
-    if trimmed.starts_with("vless://")
-        || trimmed.starts_with("hysteria2://")
-        || trimmed.starts_with("hy2://")
-    {
-        return true;
-    }
-    let compact: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
-    [
-        STANDARD.decode(&compact),
-        STANDARD_NO_PAD.decode(&compact),
-        URL_SAFE.decode(&compact),
-        URL_SAFE_NO_PAD.decode(&compact),
-    ]
-    .into_iter()
-    .filter_map(Result::ok)
-    .any(|bytes| {
-        let decoded = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
-        decoded.contains("vless://")
-            || decoded.contains("hysteria2://")
-            || decoded.contains("hy2://")
-    })
-}
-
-#[tauri::command]
-pub async fn telegram_login(
-    app: AppHandle,
-    subscription_url: String,
-    name: Option<String>,
-) -> Result<AuthResult, String> {
-    let url = Url::parse(subscription_url.trim())
-        .map_err(|_| "Ссылка Telegram повреждена. Запросите новую ссылку в боте.".to_string())?;
-    if url.scheme() != "https"
-        || url.host_str() != Some("bymevpn.duckdns.org")
-        || url.port().is_some_and(|port| port != 2096)
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.fragment().is_some()
-    {
-        return Err("Бот прислал неизвестный адрес подписки. Ссылка отклонена.".into());
-    }
-
-    let client = Client::builder()
-        .https_only(true)
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(8))
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("Не удалось проверить ссылку Telegram: {e}"))?;
-    let response = client
-        .get(url.clone())
-        .header("User-Agent", "ByMeVPN/Windows")
-        .send()
-        .await
-        .map_err(|_| {
-            "Не удалось проверить подписку. Проверьте интернет и запросите вход ещё раз."
-                .to_string()
-        })?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "Ссылка подписки вернула HTTP {}. Запросите актуальную ссылку в Telegram-боте.",
-            response.status().as_u16()
-        ));
-    }
-    let body = response
-        .text()
-        .await
-        .map_err(|_| "Не удалось прочитать ответ подписки.".to_string())?;
-    if body.len() > 1_000_000 || !subscription_contains_servers(&body) {
-        return Err(
-            "По ссылке не найдена действующая конфигурация серверов. Обновите её в Telegram-боте."
-                .into(),
-        );
-    }
-
-    let display_name = name
-        .unwrap_or_default()
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(80)
-        .collect::<String>()
-        .trim()
-        .to_string();
-    let profile = UserProfile {
-        id: json!(install_id(&app)?),
-        email: String::new(),
-        name: if display_name.is_empty() {
-            "Пользователь Telegram".into()
-        } else {
-            display_name
-        },
-        is_google: false,
-        created_at: None,
-    };
-    let subscription = Subscription {
-        status: "active".into(),
-        plan_code: None,
-        plan_name: Some("Доступ ByMeVPN из Telegram".into()),
-        expires_at: None,
-        seconds_remaining: 0,
-        trial_available: false,
-        max_devices: 0,
-        active_devices: 0,
-        auto_renew: None,
-    };
-    let profile_json = serde_json::to_string(&profile).map_err(|e| e.to_string())?;
-    let subscription_json = serde_json::to_string(&subscription).map_err(|e| e.to_string())?;
-    save_secret(TELEGRAM_PROFILE_KEY, &profile_json)?;
-    save_secret(TELEGRAM_STATUS_KEY, &subscription_json)?;
-    save_secret(TELEGRAM_SUBSCRIPTION_KEY, url.as_str())?;
-    for key in [ACCESS_KEY, REFRESH_KEY] {
-        if let Ok(e) = entry(key) {
-            let _ = e.delete_credential();
-        }
-    }
-    Ok(AuthResult {
-        user: profile,
-        subscription: Some(subscription),
-    })
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -611,7 +509,8 @@ pub async fn telegram_create_session(
 /// revoke a newer Telegram login attempt.
 #[tauri::command]
 pub fn telegram_cancel_session(
-    state: State<'_, AppState>, session_token: String,
+    state: State<'_, AppState>,
+    session_token: String,
 ) -> Result<(), String> {
     let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
     if ticket.as_deref() == Some(session_token.as_str()) {
@@ -639,9 +538,15 @@ pub async fn telegram_check_session(
     // POST keeps one-time tickets out of proxy logs. Only a legacy HTTP 405
     // permits the same narrow GET fallback as the current Android client.
     let res = match request(
-        &app, Method::POST, "/auth/telegram/check-session",
-        Some(json!({"token": token})), false, false,
-    ).await {
+        &app,
+        Method::POST,
+        "/auth/telegram/check-session",
+        Some(json!({"token": token})),
+        false,
+        false,
+    )
+    .await
+    {
         Ok(response) => response,
         Err(error) if error.ends_with("(HTTP 405)") => {
             let escaped: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
@@ -655,23 +560,32 @@ pub async fn telegram_check_session(
         .and_then(Value::as_str)
         .unwrap_or("pending");
     if matches!(status, "authenticated" | "approved" | "success") {
-        let access_token = res.get("access_token").or_else(|| res.get("access"))
-            .and_then(Value::as_str).filter(|token| !token.is_empty())
+        let access_token = res
+            .get("access_token")
+            .or_else(|| res.get("access"))
+            .and_then(Value::as_str)
+            .filter(|token| !token.is_empty())
             .ok_or("Telegram не вернул токен доступа.")?;
         let mut user: UserProfile = serde_json::from_value(
-            res.get("user").cloned().ok_or("Telegram не вернул профиль пользователя.")?
-        ).map_err(|_| "Некорректный профиль Telegram.".to_string())?;
-        if user.id.is_null() ||
-            user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
+            res.get("user")
+                .cloned()
+                .ok_or("Telegram не вернул профиль пользователя.")?,
+        )
+        .map_err(|_| "Некорректный профиль Telegram.".to_string())?;
+        if user.id.is_null() || user.id.as_str().is_some_and(|id| id.trim().is_empty()) {
             return Err("Telegram не подтвердил ID пользователя.".into());
         }
         if user.name.trim().is_empty() {
             user.name = "Пользователь Telegram".into();
         }
-        let subscription: Option<Subscription> = res.get("subscription")
+        let subscription: Option<Subscription> = res
+            .get("subscription")
             .and_then(|value| serde_json::from_value(normalized_subscription_value(value)).ok());
-        let refresh_token = res.get("refresh_token").or_else(|| res.get("refresh"))
-            .and_then(Value::as_str).filter(|token| !token.is_empty())
+        let refresh_token = res
+            .get("refresh_token")
+            .or_else(|| res.get("refresh"))
+            .and_then(Value::as_str)
+            .filter(|token| !token.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("ref_{access_token}"));
         // Check cancellation while the HTTP request was in flight. Keep the
@@ -684,7 +598,8 @@ pub async fn telegram_check_session(
         // identity's invoice before saving the new signed-in credentials.
         clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
-            .and_then(|_| save_secret(ACCESS_KEY, access_token)) {
+            .and_then(|_| save_secret(ACCESS_KEY, access_token))
+        {
             clear_secrets();
             return Err(err);
         }
@@ -744,24 +659,27 @@ pub async fn auth_register(
 }
 
 #[tauri::command]
-pub async fn auth_logout(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
     // Logout must not leave the privileged VPN running under a different
     // account. Refuse logout if the OS cannot terminate the tunnel.
     {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
-            let already_exited = active.child.try_wait()
+            let already_exited = active
+                .child
+                .try_wait()
                 .map_err(|e| format!("Не удалось проверить VPN перед выходом: {e}"))?
                 .is_some();
             if !already_exited {
-                active.child.kill().map_err(|e|
-                    format!("Не удалось остановить VPN перед выходом: {e}"))?;
-                active.child.wait().map_err(|e|
-                    format!("Не удалось дождаться остановки VPN: {e}"))?;
+                active
+                    .child
+                    .kill()
+                    .map_err(|e| format!("Не удалось остановить VPN перед выходом: {e}"))?;
+                active
+                    .child
+                    .wait()
+                    .map_err(|e| format!("Не удалось дождаться остановки VPN: {e}"))?;
             }
         }
         if let Some(active) = lock.take() {
@@ -770,18 +688,29 @@ pub async fn auth_logout(
     }
     let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     let _ = request(
-        &app, Method::POST, "/auth/logout", Some(json!({})), true, false,
-    ).await;
+        &app,
+        Method::POST,
+        "/auth/logout",
+        Some(json!({})),
+        true,
+        false,
+    )
+    .await;
     clear_secrets();
     *state.telegram_ticket.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }
 
 fn device_is_current(object: &serde_json::Map<String, Value>, install_id: &str) -> bool {
-    object.get("is_current").and_then(Value::as_bool).unwrap_or_else(|| {
-        object.get("install_id").and_then(Value::as_str)
-            .is_some_and(|id| id == install_id)
-    })
+    object
+        .get("is_current")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| {
+            object
+                .get("install_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == install_id)
+        })
 }
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
@@ -789,17 +718,23 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     // An outage in the subscription panel must not look like invalid login.
     // Unknown is different from "none" and must not trigger a purchase prompt.
     let sub = request(app, Method::GET, "/subscription/status", None, true, false)
-        .await.unwrap_or_else(|_| json!({
-            "status": "unknown",
-            "plan_name": "Не удалось проверить подписку",
-            "trial_available": false
-        }));
+        .await
+        .unwrap_or_else(|_| {
+            json!({
+                "status": "unknown",
+                "plan_name": "Не удалось проверить подписку",
+                "trial_available": false
+            })
+        });
     // Device-management downtime must never break login or session recovery.
-    let devices = request(app, Method::GET, "/devices", None, true, false).await.ok();
+    let devices = request(app, Method::GET, "/devices", None, true, false)
+        .await
+        .ok();
     let user = me.get("user").unwrap_or(&me).clone();
     let subscription = normalized_subscription_value(sub.get("subscription").unwrap_or(&sub));
     let current_install_id = install_id(app)?;
-    let mut device_list = devices.as_ref()
+    let mut device_list = devices
+        .as_ref()
         .and_then(|response| response.get("devices"))
         .and_then(Value::as_array)
         .cloned()
@@ -813,8 +748,10 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
             object.insert("is_current".into(), json!(current));
         }
     }
-    Ok(json!({"user":user,"subscription":subscription,"devices":device_list,
-        "devices_supported": devices.is_some()}))
+    Ok(
+        json!({"user":user,"subscription":subscription,"devices":device_list,
+        "devices_supported": devices.is_some()}),
+    )
 }
 
 #[tauri::command]
@@ -838,7 +775,8 @@ pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, Strin
     let data = snapshot(&app).await?;
     let user: UserProfile = serde_json::from_value(data["user"].clone())
         .map_err(|e| format!("Некорректный профиль: {e}"))?;
-    let subscription = serde_json::from_value(normalized_subscription_value(&data["subscription"])).ok();
+    let subscription =
+        serde_json::from_value(normalized_subscription_value(&data["subscription"])).ok();
     Ok(Some(AuthResult { user, subscription }))
 }
 
@@ -868,7 +806,9 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
 #[tauri::command]
 pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
-    let servers = data.get("servers").and_then(Value::as_array)
+    let servers = data
+        .get("servers")
+        .and_then(Value::as_array)
         .ok_or("Сервер не вернул список доступных локаций.")?;
     // Avoid spawning an unbounded number of blocking DNS/TCP probes when
     // the server catalog grows. Rendering remains responsive under load.
@@ -877,57 +817,118 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
         let config = server.get("config").unwrap_or(server);
-        let code = server.get("node_code").or_else(|| server.get("code"))
-            .and_then(Value::as_str).unwrap_or("");
-        if code.is_empty() { continue; }
-        let code_upper = server.get("country_code").and_then(Value::as_str)
-            .unwrap_or("").to_ascii_uppercase();
+        let code = server
+            .get("node_code")
+            .or_else(|| server.get("code"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if code.is_empty() {
+            continue;
+        }
+        let code_upper = server
+            .get("country_code")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_uppercase();
         let country_fallback = match code_upper.as_str() {
-            "DE" => "Германия", "NL" => "Нидерланды", "US" => "США",
-            "FI" => "Финляндия", "SE" => "Швеция", "GB" => "Великобритания",
+            "DE" => "Германия",
+            "NL" => "Нидерланды",
+            "US" => "США",
+            "FI" => "Финляндия",
+            "SE" => "Швеция",
+            "GB" => "Великобритания",
             _ => "Основной сервер",
         };
         let country_en_fallback = match code_upper.as_str() {
-            "DE" => "Germany", "NL" => "Netherlands", "US" => "USA",
-            "FI" => "Finland", "SE" => "Sweden", "GB" => "United Kingdom",
+            "DE" => "Germany",
+            "NL" => "Netherlands",
+            "US" => "USA",
+            "FI" => "Finland",
+            "SE" => "Sweden",
+            "GB" => "United Kingdom",
             _ => "Main Server",
         };
-        let country = server.get("country").and_then(Value::as_str)
+        let country = server
+            .get("country")
+            .and_then(Value::as_str)
             .filter(|v| !v.is_empty() && *v != "Unknown")
             .unwrap_or(country_fallback);
-        let country_en = server.get("country_en").and_then(Value::as_str)
+        let country_en = server
+            .get("country_en")
+            .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
-            .unwrap_or(if country == country_fallback { country_en_fallback } else { country });
-        let city = server.get("city").and_then(Value::as_str)
-            .filter(|v| *v != "Unknown").unwrap_or("");
-        let city_en = server.get("city_en").and_then(Value::as_str)
-            .filter(|v| !v.is_empty()).unwrap_or(city);
-        let name = server.get("display_name").or_else(|| server.get("name"))
-            .or_else(|| server.get("remark")).and_then(Value::as_str)
+            .unwrap_or(if country == country_fallback {
+                country_en_fallback
+            } else {
+                country
+            });
+        let city = server
+            .get("city")
+            .and_then(Value::as_str)
+            .filter(|v| *v != "Unknown")
+            .unwrap_or("");
+        let city_en = server
+            .get("city_en")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(city);
+        let name = server
+            .get("display_name")
+            .or_else(|| server.get("name"))
+            .or_else(|| server.get("remark"))
+            .and_then(Value::as_str)
             .unwrap_or(code);
-        let name_en = server.get("display_name_en").or_else(|| server.get("name_en"))
-            .and_then(Value::as_str).filter(|v| !v.is_empty())
+        let name_en = server
+            .get("display_name_en")
+            .or_else(|| server.get("name_en"))
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
             .unwrap_or(country_en);
         let flag_fallback = match code_upper.as_str() {
-            "DE" => "🇩🇪", "NL" => "🇳🇱", "US" => "🇺🇸",
-            "FI" => "🇫🇮", "SE" => "🇸🇪", "GB" => "🇬🇧",
-            _ => "🌐"
+            "DE" => "🇩🇪",
+            "NL" => "🇳🇱",
+            "US" => "🇺🇸",
+            "FI" => "🇫🇮",
+            "SE" => "🇸🇪",
+            "GB" => "🇬🇧",
+            _ => "🌐",
         };
-        let flag = server.get("flag").and_then(Value::as_str)
-            .filter(|v| !v.is_empty()).unwrap_or(flag_fallback);
-        let host = config.get("server").or_else(|| config.get("endpoint"))
-            .and_then(Value::as_str).unwrap_or("").to_string();
+        let flag = server
+            .get("flag")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(flag_fallback);
+        let host = config
+            .get("server")
+            .or_else(|| config.get("endpoint"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
-        let supported = config.get("protocol").and_then(Value::as_str).unwrap_or("vless") == "vless"
-            && config.get("security").and_then(Value::as_str).unwrap_or("reality") == "reality"
-            && matches!(config.get("network").and_then(Value::as_str).unwrap_or("tcp"), "tcp" | "raw");
+        let supported = config
+            .get("protocol")
+            .and_then(Value::as_str)
+            .unwrap_or("vless")
+            == "vless"
+            && config
+                .get("security")
+                .and_then(Value::as_str)
+                .unwrap_or("reality")
+                == "reality"
+            && matches!(
+                config
+                    .get("network")
+                    .and_then(Value::as_str)
+                    .unwrap_or("tcp"),
+                "tcp" | "raw"
+            );
         let task = if supported && !host.is_empty() && (1..=65535).contains(&port) {
             let slots = ping_slots.clone();
             Some(tauri::async_runtime::spawn(async move {
                 let _permit = slots.acquire_owned().await.ok()?;
-                tauri::async_runtime::spawn_blocking(move ||
-                    measure_real_ping(&host, port as u16)
-                ).await.ok()
+                tauri::async_runtime::spawn_blocking(move || measure_real_ping(&host, port as u16))
+                    .await
+                    .ok()
             }))
         } else {
             None
@@ -977,14 +978,23 @@ fn confirmed_mobile_plan(plan: &Value, devices: i64, checkout_default: bool) -> 
 }
 
 fn mobile_catalog_plans(catalog: &Value, devices: i64) -> Vec<Value> {
-    let checkout_default = catalog.get("payment_enabled")
-        .and_then(Value::as_bool).unwrap_or(false);
-    let plans = catalog.get("raw_array").or_else(|| catalog.get("plans"))
+    let checkout_default = catalog
+        .get("payment_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let plans = catalog
+        .get("raw_array")
+        .or_else(|| catalog.get("plans"))
         .and_then(Value::as_array);
     // Some backends preserve the catalog as a JSON-encoded string.
-    let raw = catalog.get("raw").and_then(Value::as_str)
+    let raw = catalog
+        .get("raw")
+        .and_then(Value::as_str)
         .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok());
-    plans.cloned().or(raw).unwrap_or_default()
+    plans
+        .cloned()
+        .or(raw)
+        .unwrap_or_default()
         .iter()
         .filter_map(|plan| confirmed_mobile_plan(plan, devices, checkout_default))
         .collect()
@@ -994,19 +1004,24 @@ fn mobile_catalog_plans(catalog: &Value, devices: i64) -> Vec<Value> {
 pub async fn get_plans(app: AppHandle) -> Result<Vec<Value>, String> {
     // Android V2 explicitly scopes pricing to each device tier, and requires auth.
     // Each tier is independent: one unavailable tier should not hide valid offers.
-    let tasks: Vec<_> = [2_i64, 5, 10].into_iter().map(|devices| {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let path = format!("/mobile/v2/plans?devices={devices}");
-            (devices, request(&app, Method::GET, &path, None, true, false).await)
+    let tasks: Vec<_> = [2_i64, 5, 10]
+        .into_iter()
+        .map(|devices| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let path = format!("/mobile/v2/plans?devices={devices}");
+                (
+                    devices,
+                    request(&app, Method::GET, &path, None, true, false).await,
+                )
+            })
         })
-    }).collect();
+        .collect();
     let mut confirmed = Vec::new();
     let mut failure = None;
     for task in tasks {
         match task.await {
-            Ok((devices, Ok(body))) =>
-                confirmed.extend(mobile_catalog_plans(&body, devices)),
+            Ok((devices, Ok(body))) => confirmed.extend(mobile_catalog_plans(&body, devices)),
             Ok((_, Err(error))) => failure = Some(error),
             Err(error) => failure = Some(format!("Не удалось загрузить тарифы: {error}")),
         }
@@ -1050,16 +1065,23 @@ pub async fn auth_google(
     id_token: String,
     nonce: String,
 ) -> Result<AuthResult, String> {
-    if id_token.len() > 16_384 || id_token.split('.').count() != 3
-        || nonce.len() < 24 || nonce.len() > 256 {
+    if id_token.len() > 16_384
+        || id_token.split('.').count() != 3
+        || nonce.len() < 24
+        || nonce.len() > 256
+    {
         return Err("Некорректный токен или одноразовый запрос входа Google.".into());
     }
     let id = install_id(&app)?;
     let result = request(
-        &app, Method::POST, "/auth/google",
+        &app,
+        Method::POST,
+        "/auth/google",
         Some(json!({"id_token": id_token, "nonce": nonce, "install_id": id})),
-        false, false,
-    ).await?;
+        false,
+        false,
+    )
+    .await?;
     store_auth(result).await
 }
 
@@ -1073,14 +1095,30 @@ pub async fn auth_google_desktop(
 ) -> Result<AuthResult, String> {
     let _login_guard = state.google_gate.lock().await;
     let config = request(
-        &app, Method::GET, "/auth/google/desktop-client", None, false, false
-    ).await?;
-    let client_id = config.get("client_id").and_then(Value::as_str)
+        &app,
+        Method::GET,
+        "/auth/google/desktop-client",
+        None,
+        false,
+        false,
+    )
+    .await?;
+    let client_id = config
+        .get("client_id")
+        .and_then(Value::as_str)
         .ok_or("Сервер не настроил Google OAuth Desktop Client ID.")?;
     let challenge = request(
-        &app, Method::POST, "/auth/google/nonce", Some(json!({})), false, false
-    ).await?;
-    let nonce = challenge.get("nonce").and_then(Value::as_str)
+        &app,
+        Method::POST,
+        "/auth/google/nonce",
+        Some(json!({})),
+        false,
+        false,
+    )
+    .await?;
+    let nonce = challenge
+        .get("nonce")
+        .and_then(Value::as_str)
         .ok_or("Сервер не выдал одноразовый код Google.")?;
     let id = install_id(&app)?;
     // When configured, let the backend perform the Google token exchange
@@ -1089,7 +1127,9 @@ pub async fn auth_google_desktop(
     if config.get("server_code_exchange").and_then(Value::as_bool) == Some(true) {
         let code = crate::google_desktop::acquire_code(client_id, nonce).await?;
         let result = request(
-            &app, Method::POST, "/auth/google/desktop-exchange",
+            &app,
+            Method::POST,
+            "/auth/google/desktop-exchange",
             Some(json!({
                 "code": code.code,
                 "code_verifier": code.code_verifier,
@@ -1097,18 +1137,24 @@ pub async fn auth_google_desktop(
                 "nonce": nonce,
                 "install_id": id,
             })),
-            false, false,
-        ).await?;
+            false,
+            false,
+        )
+        .await?;
         store_auth(result).await
     } else {
         // Existing deployments that have not configured server exchange
         // retain the original PKCE flow and clear provider error codes.
         let token = crate::google_desktop::acquire_id_token(client_id, nonce).await?;
         let result = request(
-            &app, Method::POST, "/auth/google",
+            &app,
+            Method::POST,
+            "/auth/google",
             Some(json!({"id_token": token, "nonce": nonce, "install_id": id})),
-            false, false,
-        ).await?;
+            false,
+            false,
+        )
+        .await?;
         store_auth(result).await
     }
 }
@@ -1129,7 +1175,8 @@ pub async fn activate_trial(app: AppHandle) -> Result<Subscription, String> {
     )
     .await?;
     let sub = res.get("subscription").unwrap_or(&res);
-    serde_json::from_value(normalized_subscription_value(sub)).map_err(|e| format!("Некорректный статус: {e}"))
+    serde_json::from_value(normalized_subscription_value(sub))
+        .map_err(|e| format!("Некорректный статус: {e}"))
 }
 
 #[tauri::command]
@@ -1147,30 +1194,43 @@ pub async fn create_payment(
     }
     let canonical_days = mobile_plan_duration(&plan_code, dev)
         .ok_or("Неизвестный тариф Android V2 для выбранного числа устройств.")?;
-    let submitted_days = days.filter(|days| *days > 0)
+    let submitted_days = days
+        .filter(|days| *days > 0)
         .ok_or("Не загружен срок тарифа.")?;
-    let submitted_price = amount_rub.filter(|price| *price > 0)
+    let submitted_price = amount_rub
+        .filter(|price| *price > 0)
         .ok_or("Не загружена цена тарифа.")?;
     if submitted_days != canonical_days {
         return Err("Срок тарифа не соответствует проверенному каталогу.".into());
     }
     let request_id = request_id.unwrap_or_else(|| format!("req_{}", Uuid::new_v4().simple()));
-    if request_id.len() < 8 || request_id.len() > 128 ||
-        !request_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+    if request_id.len() < 8
+        || request_id.len() > 128
+        || !request_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
         return Err("Некорректный идентификатор платежа.".into());
     }
 
     // Revalidate server-owned price, duration, tier and checkout capability.
     // A stale or tampered desktop UI must never initiate an unknown payment.
-    let catalog = request(&app, Method::GET,
-        &format!("/mobile/v2/plans?devices={dev}"), None, true, false).await?;
-    let matching = mobile_catalog_plans(&catalog, dev).into_iter()
+    let catalog = request(
+        &app,
+        Method::GET,
+        &format!("/mobile/v2/plans?devices={dev}"),
+        None,
+        true,
+        false,
+    )
+    .await?;
+    let matching = mobile_catalog_plans(&catalog, dev)
+        .into_iter()
         .find(|p| p.get("code").and_then(Value::as_str) == Some(plan_code.as_str()));
-    let plan = matching.ok_or(
-        "Выбранный тариф больше не доступен. Обновите список тарифов."
-    )?;
-    if plan.get("price_rub").and_then(Value::as_i64) != Some(submitted_price) ||
-        plan.get("days").and_then(Value::as_i64) != Some(submitted_days) {
+    let plan = matching.ok_or("Выбранный тариф больше не доступен. Обновите список тарифов.")?;
+    if plan.get("price_rub").and_then(Value::as_i64) != Some(submitted_price)
+        || plan.get("days").and_then(Value::as_i64) != Some(submitted_days)
+    {
         return Err("Цена или срок тарифа изменились. Обновите тарифы перед оплатой.".into());
     }
     if plan.get("purchase_enabled").and_then(Value::as_bool) != Some(true) {
@@ -1190,20 +1250,33 @@ pub async fn create_payment(
         })),
         true,
         false,
-    ).await?;
-    let invoice = result.get("invoice_id").and_then(Value::as_str)
+    )
+    .await?;
+    let invoice = result
+        .get("invoice_id")
+        .and_then(Value::as_str)
         .ok_or("Сервер оплаты не вернул идентификатор счёта.")?;
-    if invoice.is_empty() || invoice.len() > 128 ||
-        !invoice.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+    if invoice.is_empty()
+        || invoice.len() > 128
+        || !invoice
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
         return Err("Сервер оплаты вернул некорректный номер счёта.".into());
     }
-    let payment_url = result.get("payment_url").or_else(|| result.get("confirmation_url"))
-        .and_then(Value::as_str).ok_or("Сервер не вернул ссылку на оплату.")?;
+    let payment_url = result
+        .get("payment_url")
+        .or_else(|| result.get("confirmation_url"))
+        .and_then(Value::as_str)
+        .ok_or("Сервер не вернул ссылку на оплату.")?;
     if !payment_url_is_allowed(payment_url) {
         return Err("Ссылка оплаты не принадлежит проверенному провайдеру.".into());
     }
-    if result.get("provider").and_then(Value::as_str)
-        .is_some_and(|provider| provider != "yookassa") {
+    if result
+        .get("provider")
+        .and_then(Value::as_str)
+        .is_some_and(|provider| provider != "yookassa")
+    {
         return Err("Сервер вернул неожиданного платёжного провайдера.".into());
     }
     let pending = json!({
@@ -1216,45 +1289,59 @@ pub async fn create_payment(
 }
 
 fn payment_url_is_allowed(url: &str) -> bool {
-    let Ok(parsed) = Url::parse(url) else { return false; };
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
     let host = parsed.host_str().unwrap_or_default();
-    parsed.scheme() == "https" &&
-    (host == "yookassa.ru" || host.ends_with(".yookassa.ru") ||
-        host == "yoomoney.ru" || host.ends_with(".yoomoney.ru")) &&
-    parsed.port().is_none_or(|port| port == 443) &&
-    parsed.username().is_empty() && parsed.password().is_none()
+    parsed.scheme() == "https"
+        && (host == "yookassa.ru"
+            || host.ends_with(".yookassa.ru")
+            || host == "yoomoney.ru"
+            || host.ends_with(".yoomoney.ru"))
+        && parsed.port().is_none_or(|port| port == 443)
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
 }
 
 /// Query invoice-specific fulfillment; an active prior subscription does not
 /// prove that this invoice was paid.
 #[tauri::command]
 pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
-    if invoice_id.is_empty() || invoice_id.len() > 128 ||
-        !invoice_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+    if invoice_id.is_empty()
+        || invoice_id.len() > 128
+        || !invoice_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
         return Err("Некорректный номер счёта.".into());
     }
     let result = request(
-        &app, Method::GET,
+        &app,
+        Method::GET,
         &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
-        None, true, false,
-    ).await?;
-    let paid = matches!(result.get("status").and_then(Value::as_str),
-        Some("succeeded" | "paid" | "completed")) &&
-        result.get("is_active").and_then(Value::as_bool) == Some(true);
-    let failed = matches!(result.get("status").and_then(Value::as_str),
-        Some("failed" | "canceled" | "cancelled" | "expired"));
-    if (paid || failed) && get_pending_payment().as_ref()
-        .and_then(|p| p.get("invoice_id")).and_then(Value::as_str) == Some(invoice_id.as_str()) {
+        None,
+        true,
+        false,
+    )
+    .await?;
+    let paid = matches!(
+        result.get("status").and_then(Value::as_str),
+        Some("succeeded" | "paid" | "completed")
+    ) && result.get("is_active").and_then(Value::as_bool) == Some(true);
+    let failed = matches!(
+        result.get("status").and_then(Value::as_str),
+        Some("failed" | "canceled" | "cancelled" | "expired")
+    );
+    if (paid || failed)
+        && get_pending_payment()
+            .as_ref()
+            .and_then(|p| p.get("invoice_id"))
+            .and_then(Value::as_str)
+            == Some(invoice_id.as_str())
+    {
         clear_pending_payment();
     }
     Ok(result)
-}
-
-#[tauri::command]
-pub async fn delete_account(app: AppHandle) -> Result<(), String> {
-    let _ = request(&app, Method::DELETE, "/me", None, true, false).await?;
-    clear_secrets();
-    Ok(())
 }
 
 // The packaged path must match bundle.resources in tauri.conf.json.
@@ -1301,8 +1388,7 @@ pub fn get_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
     // Developer cargo run from the repository root.
     if cfg!(debug_assertions) {
         candidates.push(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../vendor/runtime/windows-x64"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vendor/runtime/windows-x64"),
         );
     }
     find_verified_runtime(candidates)
@@ -1351,8 +1437,12 @@ fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
         }
         "selectedServerCode" => {
             let code = value.as_str().ok_or("Некорректный код сервера.")?;
-            if code.is_empty() || code.len() > 128 ||
-                !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+            if code.is_empty()
+                || code.len() > 128
+                || !code
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+            {
                 return Err("Некорректный код сервера.".into());
             }
         }
@@ -1421,11 +1511,17 @@ pub async fn vpn_start(
 
     // Check that user has an active or trial subscription before launching tunnel
     let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
-        .await.map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
+        .await
+        .map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
     let subscription = sub_status.get("subscription").unwrap_or(&sub_status);
-    let status = subscription.get("status").and_then(Value::as_str).unwrap_or("unknown");
+    let status = subscription
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
     if status == "unknown" {
-        return Err("Статус подписки пока неизвестен. Повторите проверку при доступной сети.".into());
+        return Err(
+            "Статус подписки пока неизвестен. Повторите проверку при доступной сети.".into(),
+        );
     }
     if !matches!(status, "active" | "trial" | "grace") {
         return Err("Для подключения требуется активная подписка ByMeVPN. Активируйте пробный доступ или выберите тариф.".into());
@@ -1434,16 +1530,26 @@ pub async fn vpn_start(
     let runtime_dir = get_runtime_dir(&app)?;
 
     let settings = load_settings(&app);
-    let bypass_ru = settings.get("bypassRu").and_then(Value::as_bool).unwrap_or(true);
-    let ad_block = settings.get("adBlock").and_then(Value::as_str).unwrap_or("none");
-    let dns_mode = settings.get("dnsMode").and_then(Value::as_str).unwrap_or("cloudflare");
+    let bypass_ru = settings
+        .get("bypassRu")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let ad_block = settings
+        .get("adBlock")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    let dns_mode = settings
+        .get("dnsMode")
+        .and_then(Value::as_str)
+        .unwrap_or("cloudflare");
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
 
     // Verify the original egress BEFORE requesting a server-side session.
     // Failed public-IP probes must not allocate remote device slots.
-    let baseline_ip = crate::egress::public_egress_ip().await
+    let baseline_ip = crate::egress::public_egress_ip()
+        .await
         .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
 
     let session_val = request(
@@ -1464,78 +1570,96 @@ pub async fn vpn_start(
     // This prevents exhausted device slots after invalid configs, missing
     // components or unexpected Xray startup failures.
     let connection_result: Result<TunnelMetrics, String> = async {
-    let session = session_val.get("session").unwrap_or(&session_val);
-    let host = session.get("server").and_then(Value::as_str)
-        .ok_or("Сервер не вернул адрес VPN.")?;
-    let server_name = session.get("display_name").or_else(|| session.get("name"))
-        .and_then(Value::as_str).unwrap_or(host).to_string();
-    let country = session.get("country").and_then(Value::as_str).unwrap_or("").to_string();
-    // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
-    let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
+        let session = session_val.get("session").unwrap_or(&session_val);
+        let host = session
+            .get("server")
+            .and_then(Value::as_str)
+            .ok_or("Сервер не вернул адрес VPN.")?;
+        let server_name = session
+            .get("display_name")
+            .or_else(|| session.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or(host)
+            .to_string();
+        let country = session
+            .get("country")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
+        let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
 
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
-    let config_path = app_dir.join("active_tunnel.json");
-    fs::write(
-        &config_path,
-        serde_json::to_vec_pretty(&xray_config).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+        let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+        let config_path = app_dir.join("active_tunnel.json");
+        fs::write(
+            &config_path,
+            serde_json::to_vec_pretty(&xray_config).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
 
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    #[cfg(not(windows))]
-    const CREATE_NO_WINDOW: u32 = 0;
+        #[cfg(windows)]
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        #[cfg(not(windows))]
+        const CREATE_NO_WINDOW: u32 = 0;
 
-    // Process startup and config validation are blocking Win32 operations.
-    // Keep them off the Tauri async executor so auth, UI and watchdog
-    // requests remain responsive while Xray initializes.
-    let check_runtime = runtime_dir.clone();
-    let check_config = config_path.clone();
-    let test_res = tauri::async_runtime::spawn_blocking(move || {
-        std::process::Command::new(check_runtime.join("xray.exe"))
-            .current_dir(&check_runtime)
-            .env("XRAY_LOCATION_ASSET", &check_runtime)
-            .args(["run", "-test", "-config"])
-            .arg(&check_config)
+        // Process startup and config validation are blocking Win32 operations.
+        // Keep them off the Tauri async executor so auth, UI and watchdog
+        // requests remain responsive while Xray initializes.
+        let check_runtime = runtime_dir.clone();
+        let check_config = config_path.clone();
+        let test_res = tauri::async_runtime::spawn_blocking(move || {
+            std::process::Command::new(check_runtime.join("xray.exe"))
+                .current_dir(&check_runtime)
+                .env("XRAY_LOCATION_ASSET", &check_runtime)
+                .args(["run", "-test", "-config"])
+                .arg(&check_config)
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        })
+        .await
+        .map_err(|e| format!("Ошибка фоновой проверки Xray: {e}"))?
+        .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
+
+        if !test_res.status.success() {
+            let _ = fs::remove_file(&config_path);
+            // Xray emits actionable parser/config diagnostics on stderr.
+            let cause = String::from_utf8_lossy(&test_res.stderr);
+            let detail: String = cause.trim().chars().take(500).collect();
+            return Err(if detail.is_empty() {
+                format!(
+                    "Конфигурация Xray отклонена (код {:?}).",
+                    test_res.status.code()
+                )
+            } else {
+                format!("Ошибка конфигурации Xray: {detail}")
+            });
+        }
+
+        // Preserve bounded, local diagnostics for failures that happen only
+        // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
+        // This log is private to the current Windows profile and is reset on
+        // each connection attempt. Never transmit it automatically.
+        let log_path = app_dir.join("xray_startup.log");
+        let xray_log = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+            .map_err(|e| format!("Не удалось открыть локальный журнал Xray: {e}"))?;
+        let xray_stdout = xray_log
+            .try_clone()
+            .map_err(|e| format!("Не удалось подготовить журнал Xray: {e}"))?;
+        let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
+            .current_dir(&runtime_dir)
+            .env("XRAY_LOCATION_ASSET", &runtime_dir)
+            .args(["run", "-config"])
+            .arg(&config_path)
+            .stdout(std::process::Stdio::from(xray_stdout))
+            .stderr(std::process::Stdio::from(xray_log))
             .creation_flags(CREATE_NO_WINDOW)
-            .output()
-    })
-    .await
-    .map_err(|e| format!("Ошибка фоновой проверки Xray: {e}"))?
-    .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
-
-    if !test_res.status.success() {
-        let _ = fs::remove_file(&config_path);
-        // Xray emits actionable parser/config diagnostics on stderr.
-        let cause = String::from_utf8_lossy(&test_res.stderr);
-        let detail: String = cause.trim().chars().take(500).collect();
-        return Err(if detail.is_empty() {
-            format!("Конфигурация Xray отклонена (код {:?}).", test_res.status.code())
-        } else {
-            format!("Ошибка конфигурации Xray: {detail}")
-        });
-    }
-
-    // Preserve bounded, local diagnostics for failures that happen only
-    // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
-    // This log is private to the current Windows profile and is reset on
-    // each connection attempt. Never transmit it automatically.
-    let log_path = app_dir.join("xray_startup.log");
-    let xray_log = fs::OpenOptions::new().create(true).write(true).truncate(true)
-        .open(&log_path)
-        .map_err(|e| format!("Не удалось открыть локальный журнал Xray: {e}"))?;
-    let xray_stdout = xray_log.try_clone()
-        .map_err(|e| format!("Не удалось подготовить журнал Xray: {e}"))?;
-    let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
-        .current_dir(&runtime_dir)
-        .env("XRAY_LOCATION_ASSET", &runtime_dir)
-        .args(["run", "-config"])
-        .arg(&config_path)
-        .stdout(std::process::Stdio::from(xray_stdout))
-        .stderr(std::process::Stdio::from(xray_log))
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn() {
+            .spawn()
+        {
             Ok(child) => child,
             Err(e) => {
                 let _ = fs::remove_file(&config_path);
@@ -1543,97 +1667,101 @@ pub async fn vpn_start(
             }
         };
 
-    // Own Xray with an OS-level job so a force-killed WebView process cannot
-    // leave an orphaned VPN process behind. Failure is fatal, not best-effort.
-    #[cfg(windows)]
-    let child_job = match crate::windows_job::ChildJob::attach(&child) {
-        Ok(job) => job,
-        Err(error) => {
+        // Own Xray with an OS-level job so a force-killed WebView process cannot
+        // leave an orphaned VPN process behind. Failure is fatal, not best-effort.
+        #[cfg(windows)]
+        let child_job = match crate::windows_job::ChildJob::attach(&child) {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+        };
+
+        let mut verified_ip = None;
+        let mut fatal_error: Option<&str> = None;
+        // Two bounded probes during startup. If external probes are unreachable,
+        // keep tunnel state unverified and let native surveillance retry later.
+        // Avoid blocking the Connect button for three full HTTPS timeout windows.
+        for _ in 0..2 {
+            tokio::time::sleep(Duration::from_millis(550)).await;
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    fatal_error = Some("Xray завершился до установления туннеля.");
+                    break;
+                }
+                Err(_) => {
+                    fatal_error = Some("Не удалось проверить процесс Xray.");
+                    break;
+                }
+                Ok(None) => {}
+            }
+            match verify_egress(baseline_ip).await {
+                Ok(ip) => {
+                    verified_ip = Some(ip);
+                    break;
+                }
+                Err(EgressFailure::Unchanged) => {
+                    // A real, observed original IP is evidence of a bypass.
+                    fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
+                    break;
+                }
+                Err(EgressFailure::Unavailable) => {
+                    // Unknown is not evidence of a leak or a healthy tunnel.
+                    // Do NOT claim protection; keep Xray running for a retry.
+                }
+            }
+        }
+        if let Some(cause) = fatal_error {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(error);
+            let _ = fs::remove_file(&config_path);
+            return Err(format!("VPN не подтверждён: {cause}"));
         }
-    };
 
-    let mut verified_ip = None;
-    let mut fatal_error: Option<&str> = None;
-    // Two bounded probes during startup. If external probes are unreachable,
-    // keep tunnel state unverified and let native surveillance retry later.
-    // Avoid blocking the Connect button for three full HTTPS timeout windows.
-    for _ in 0..2 {
-        tokio::time::sleep(Duration::from_millis(550)).await;
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                fatal_error = Some("Xray завершился до установления туннеля.");
-                break;
-            }
-            Err(_) => {
-                fatal_error = Some("Не удалось проверить процесс Xray.");
-                break;
-            }
-            Ok(None) => {}
-        }
-        match verify_egress(baseline_ip).await {
-            Ok(ip) => {
-                verified_ip = Some(ip);
-                break;
-            }
-            Err(EgressFailure::Unchanged) => {
-                // A real, observed original IP is evidence of a bypass.
-                fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
-                break;
-            }
-            Err(EgressFailure::Unavailable) => {
-                // Unknown is not evidence of a leak or a healthy tunnel.
-                // Do NOT claim protection; keep Xray running for a retry.
-            }
-        }
+        let server_port = session
+            .get("port")
+            .and_then(Value::as_u64)
+            .filter(|port| (1..=65535).contains(port))
+            .unwrap_or(443) as u16;
+        // TCP latency measurement is scheduled by vpn_status after connection.
+        // Never delay activation to perform another network round trip.
+        let ping = 0;
+        let started_at = std::time::Instant::now();
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        *lock = Some(ActiveTunnel {
+            child,
+            #[cfg(windows)]
+            _job: child_job,
+            config_path,
+            started_at,
+            _node_code: chosen_node,
+            server_name: server_name.clone(),
+            country: country.clone(),
+            server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
+            server_host: host.to_string(),
+            server_port,
+            last_egress_probe: std::time::Instant::now(),
+            last_ping_probe: std::time::Instant::now() - Duration::from_secs(50),
+            cached_ping_ms: ping,
+            baseline_ip,
+            egress_verified: verified_ip.is_some(),
+        });
+
+        Ok(TunnelMetrics {
+            connected: true,
+            verified: verified_ip.is_some(),
+            connected_seconds: 0,
+            download_mbps: 0.0,
+            upload_mbps: 0.0,
+            ping_ms: ping,
+            server_name,
+            country,
+            ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
+        })
     }
-    if let Some(cause) = fatal_error {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = fs::remove_file(&config_path);
-        return Err(format!("VPN не подтверждён: {cause}"));
-    }
-
-    let server_port = session.get("port").and_then(Value::as_u64)
-        .filter(|port| (1..=65535).contains(port)).unwrap_or(443) as u16;
-    // TCP latency measurement is scheduled by vpn_status after connection.
-    // Never delay activation to perform another network round trip.
-    let ping = 0;
-    let started_at = std::time::Instant::now();
-    let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-    *lock = Some(ActiveTunnel {
-        child,
-        #[cfg(windows)]
-        _job: child_job,
-        config_path,
-        started_at,
-        _node_code: chosen_node,
-        server_name: server_name.clone(),
-        country: country.clone(),
-        server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
-        server_host: host.to_string(),
-        server_port,
-        last_egress_probe: std::time::Instant::now(),
-        last_ping_probe: std::time::Instant::now() - Duration::from_secs(50),
-        cached_ping_ms: ping,
-        baseline_ip,
-        egress_verified: verified_ip.is_some(),
-    });
-
-    Ok(TunnelMetrics {
-        connected: true,
-        verified: verified_ip.is_some(),
-        connected_seconds: 0,
-        download_mbps: 0.0,
-        upload_mbps: 0.0,
-        ping_ms: ping,
-        server_name,
-        country,
-        ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
-    })
-    }.await;
+    .await;
     if connection_result.is_err() {
         if let Ok(dir) = app.path().app_data_dir() {
             let _ = fs::remove_file(dir.join("active_tunnel.json"));
@@ -1649,14 +1777,21 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let maybe_active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
-            let already_stopped = active.child.try_wait()
-                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?.is_some();
+            let already_stopped = active
+                .child
+                .try_wait()
+                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?
+                .is_some();
             if !already_stopped {
                 // Do not clear connected state until the OS confirms termination.
-                active.child.kill().map_err(|e|
-                    format!("Не удалось остановить VPN-процесс: {e}"))?;
-                active.child.wait().map_err(|e|
-                    format!("Не удалось дождаться остановки Xray: {e}"))?;
+                active
+                    .child
+                    .kill()
+                    .map_err(|e| format!("Не удалось остановить VPN-процесс: {e}"))?;
+                active
+                    .child
+                    .wait()
+                    .map_err(|e| format!("Не удалось дождаться остановки Xray: {e}"))?;
             }
         }
         lock.take()
@@ -1670,7 +1805,10 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+pub async fn vpn_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TunnelMetrics, String> {
     let _probe_guard = state.status_probe_gate.lock().await;
     let mut revoke_session = false;
     // A check outage is an UNKNOWN health signal, not an observed route leak.
@@ -1680,13 +1818,13 @@ pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<Tu
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
             (active.last_egress_probe.elapsed() >= Duration::from_secs(20))
-                .then(|| (active.started_at, active.baseline_ip))
+                .then_some((active.started_at, active.baseline_ip))
         })
     };
     if let Some((started_at, baseline_ip)) = probe {
-        let result = tokio::time::timeout(
-            Duration::from_secs(9), verify_egress(baseline_ip)
-        ).await.unwrap_or(Err(EgressFailure::Unavailable));
+        let result = tokio::time::timeout(Duration::from_secs(9), verify_egress(baseline_ip))
+            .await
+            .unwrap_or(Err(EgressFailure::Unavailable));
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
@@ -1718,13 +1856,19 @@ pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<Tu
     let ping_probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
-            (active.last_ping_probe.elapsed() >= Duration::from_secs(45))
-                .then(|| (active.started_at, active.server_host.clone(), active.server_port))
+            (active.last_ping_probe.elapsed() >= Duration::from_secs(45)).then(|| {
+                (
+                    active.started_at,
+                    active.server_host.clone(),
+                    active.server_port,
+                )
+            })
         })
     };
     if let Some((started_at, host, port)) = ping_probe {
         let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
-            .await.unwrap_or(0);
+            .await
+            .unwrap_or(0);
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
@@ -1736,7 +1880,11 @@ pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<Tu
     let active_info = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let exited = match lock.as_mut() {
-            Some(active) => active.child.try_wait().map(|status| status.is_some()).unwrap_or(true),
+            Some(active) => active
+                .child
+                .try_wait()
+                .map(|status| status.is_some())
+                .unwrap_or(true),
             None => false,
         };
         if exited {
@@ -1745,14 +1893,16 @@ pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<Tu
                 revoke_session = true;
             }
         }
-        lock.as_ref().map(|active| (
-            active.started_at.elapsed().as_secs(),
-            active.server_name.clone(),
-            active.country.clone(),
-            active.server_ip.clone(),
-            active.egress_verified,
-            active.cached_ping_ms
-        ))
+        lock.as_ref().map(|active| {
+            (
+                active.started_at.elapsed().as_secs(),
+                active.server_name.clone(),
+                active.country.clone(),
+                active.server_ip.clone(),
+                active.egress_verified,
+                active.cached_ping_ms,
+            )
+        })
     };
     // A crashed tunnel or an observed routing leak must release its server
     // session as well as its local process and config. Never await HTTP while
@@ -1762,16 +1912,27 @@ pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<Tu
     }
     if let Some((elapsed, server_name, country, ip, verified, ping)) = active_info {
         return Ok(TunnelMetrics {
-            connected: true, verified, connected_seconds: elapsed,
-            download_mbps: 0.0, upload_mbps: 0.0,
-            ping_ms: ping, server_name, country, ip
+            connected: true,
+            verified,
+            connected_seconds: elapsed,
+            download_mbps: 0.0,
+            upload_mbps: 0.0,
+            ping_ms: ping,
+            server_name,
+            country,
+            ip,
         });
     }
     Ok(TunnelMetrics {
-        connected: false, verified: false, connected_seconds: 0,
-        download_mbps: 0.0, upload_mbps: 0.0,
-        ping_ms: 0, server_name: String::new(),
-        country: String::new(), ip: String::new()
+        connected: false,
+        verified: false,
+        connected_seconds: 0,
+        download_mbps: 0.0,
+        upload_mbps: 0.0,
+        ping_ms: 0,
+        server_name: String::new(),
+        country: String::new(),
+        ip: String::new(),
     })
 }
 
@@ -1863,8 +2024,10 @@ pub fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
 pub fn open_external_url(url: String) -> Result<(), String> {
     let parsed = reqwest::Url::parse(&url).map_err(|_| "Некорректная ссылка.".to_string())?;
     let host = parsed.host_str().unwrap_or_default();
-    let is_allowed_host = matches!(host, "t.me" | "bymevpn-site.duckdns.org" | "bymevpn.duckdns.org")
-        || host == "yookassa.ru"
+    let is_allowed_host = matches!(
+        host,
+        "t.me" | "bymevpn-site.duckdns.org" | "bymevpn.duckdns.org"
+    ) || host == "yookassa.ru"
         || host.ends_with(".yookassa.ru")
         || host == "yoomoney.ru"
         || host.ends_with(".yoomoney.ru");
@@ -1876,7 +2039,8 @@ pub fn open_external_url(url: String) -> Result<(), String> {
         || parsed.password().is_some()
     {
         return Err(
-            "Разрешено открывать только официальные HTTPS-ссылки ByMeVPN, Telegram и оплаты.".into(),
+            "Разрешено открывать только официальные HTTPS-ссылки ByMeVPN, Telegram и оплаты."
+                .into(),
         );
     }
 
@@ -1924,7 +2088,6 @@ mod tests {
         assert_eq!(default_settings()["adBlock"], "none");
     }
 
-
     #[test]
     fn login_accepts_null_name_and_uses_email_as_display_name() {
         let auth = parse_auth(&json!({"access":"access", "refresh":"refresh", "user":{
@@ -1940,7 +2103,8 @@ mod tests {
             "access":"access", "refresh":"refresh",
             "user":{"user_id":42, "email":"tester@example.com","name":null},
             "subscription":{"status":"active","plan_code":"12m_d5","auto_renew":true}
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(auth.user.id, json!(42));
         let sub = auth.subscription.unwrap();
         assert_eq!(sub.max_devices, 5);
@@ -1957,11 +2121,20 @@ mod tests {
         let obj = confirmed.as_object().unwrap();
         assert!(device_is_current(obj, "local-install-uuid"));
         let others = json!({"id":"43","is_current":false,"install_id":"local-install-uuid"});
-        assert!(!device_is_current(others.as_object().unwrap(), "local-install-uuid"));
+        assert!(!device_is_current(
+            others.as_object().unwrap(),
+            "local-install-uuid"
+        ));
         let legacy = json!({"id":"44","install_id":"local-install-uuid"});
-        assert!(device_is_current(legacy.as_object().unwrap(), "local-install-uuid"));
+        assert!(device_is_current(
+            legacy.as_object().unwrap(),
+            "local-install-uuid"
+        ));
         let unknown = json!({"id":"45"});
-        assert!(!device_is_current(unknown.as_object().unwrap(), "local-install-uuid"));
+        assert!(!device_is_current(
+            unknown.as_object().unwrap(),
+            "local-install-uuid"
+        ));
     }
 
     #[test]
@@ -1987,7 +2160,9 @@ mod tests {
     #[test]
     fn checkout_url_policy_rejects_untrusted_redirects_and_http() {
         assert!(payment_url_is_allowed("https://yookassa.ru/checkout/test"));
-        assert!(payment_url_is_allowed("https://payments.yookassa.ru/checkout/test"));
+        assert!(payment_url_is_allowed(
+            "https://payments.yookassa.ru/checkout/test"
+        ));
         assert!(!payment_url_is_allowed("http://yookassa.ru/checkout"));
         assert!(!payment_url_is_allowed("https://yookassa.ru.attacker.net/"));
         assert!(!payment_url_is_allowed("https://evil@yookassa.ru/"));

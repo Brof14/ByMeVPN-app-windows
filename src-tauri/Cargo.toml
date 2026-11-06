@@ -24,6 +24,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+windows-sys = { version = "0.60.2", features = ["Win32_Foundation", "Win32_System_JobObjects"] }
 
 [profile.release]
 opt-level = 3

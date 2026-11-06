@@ -1669,8 +1669,9 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
+pub async fn vpn_status(app: AppHandle, state: State<'_, AppState>) -> Result<TunnelMetrics, String> {
     let _probe_guard = state.status_probe_gate.lock().await;
+    let mut revoke_session = false;
     // A check outage is an UNKNOWN health signal, not an observed route leak.
     // If the original (pre-VPN) IP is actually observed, stop Xray.
     // Run outside the process lock to keep disconnect responsive.
@@ -1704,6 +1705,7 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
                         let _ = active.child.wait();
                         if let Some(active) = lock.take() {
                             let _ = fs::remove_file(active.config_path);
+                            revoke_session = true;
                         }
                     }
                 }
@@ -1739,6 +1741,7 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
         if exited {
             if let Some(active) = lock.take() {
                 let _ = fs::remove_file(active.config_path);
+                revoke_session = true;
             }
         }
         lock.as_ref().map(|active| (
@@ -1750,6 +1753,12 @@ pub async fn vpn_status(state: State<'_, AppState>) -> Result<TunnelMetrics, Str
             active.cached_ping_ms
         ))
     };
+    // A crashed tunnel or an observed routing leak must release its server
+    // session as well as its local process and config. Never await HTTP while
+    // holding the tunnel Mutex.
+    if revoke_session {
+        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    }
     if let Some((elapsed, server_name, country, ip, verified, ping)) = active_info {
         return Ok(TunnelMetrics {
             connected: true, verified, connected_seconds: elapsed,

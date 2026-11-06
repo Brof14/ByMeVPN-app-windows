@@ -3279,3 +3279,97 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 @media (prefers-reduced-motion: reduce) {
   #btn-toggle-bypass-quick { transition: none; }
 }
+
+
+/* Android Compose navigation parity for the desktop WebView. The Windows
+   title bar remains native, while content and navigation use a centered,
+   single-column mobile layout rather than a stretched two-panel dashboard.
+   This also works at the supported 800x590 minimum window size. */
+.app-shell-layout {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.app-shell-layout .app-main-frame {
+  width: min(100%, 660px);
+  height: calc(100% - 66px);
+  margin: 0 auto;
+  padding: 14px clamp(16px, 3.4vw, 26px) 12px;
+  flex: none;
+}
+.app-shell-layout .app-sidebar {
+  position: absolute;
+  inset: auto 0 0;
+  width: min(100%, 660px);
+  height: 66px;
+  margin: auto;
+  padding: 5px 12px 7px;
+  flex-direction: row;
+  align-items: center;
+  z-index: 20;
+  border-right: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: #101a29;
+}
+.app-shell-layout .sidebar-brand { display: none; }
+.app-shell-layout .sidebar-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  gap: 4px;
+}
+.app-shell-layout .sidebar-tab {
+  min-width: 0;
+  min-height: 52px;
+  height: 52px;
+  padding: 4px 3px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  border-radius: 12px;
+}
+.app-shell-layout .sidebar-tab .tab-icon {
+  font-size: 20px;
+  line-height: 22px;
+  width: auto;
+}
+.app-shell-layout .sidebar-tab.active {
+  background: rgba(105, 211, 188, 0.08);
+  border-color: rgba(105, 211, 188, 0.24);
+}
+.app-shell-layout .sidebar-tab:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: -3px;
+}
+.app-shell-layout .app-tab-pages {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.app-shell-layout .app-top-header { min-height: 46px; }
+.app-shell-layout .page-title { font-size: 23px; letter-spacing: -.4px; }
+.app-shell-layout .home-cards-duo,
+.app-shell-layout .account-top-cards-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.app-shell-layout .home-cards-duo > *,
+.app-shell-layout .account-top-cards-row > * { min-width: 0; }
+.app-shell-layout .hero-connection-card { min-height: 260px; }
+.app-shell-layout .settings-sections-stack { padding-bottom: 4px; }
+.app-shell-layout .settings-links-grid-2x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell-layout .account-settings-button-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell-layout .settings-bottom-bar { flex-wrap: wrap; }
+.app-shell-layout .settings-bottom-bar > * { min-width: 0; }
+@media (max-width: 540px) {
+  .app-shell-layout .app-main-frame { padding-inline: 14px; }
+  .app-shell-layout .settings-links-grid-2x2,
+  .app-shell-layout .account-settings-button-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-height: 640px) {
+  .app-shell-layout .app-sidebar { height: 58px; padding: 3px 10px; }
+  .app-shell-layout .sidebar-tab { min-height: 49px; height: 49px; }
+  .app-shell-layout .app-main-frame { height: calc(100% - 58px); }
+  .app-shell-layout .hero-connection-card { min-height: 215px; }
+}

@@ -64,7 +64,7 @@ const state = {
     adBlock: 'none',
     dnsMode: 'cloudflare',
     killSwitch: false,
-    language: 'ru'
+    language: 'system'
   },
   currentTab: 'tab-home',
   timerInterval: null,
@@ -77,6 +77,84 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    trial_description_short: "Три дня доступа к доступным серверам. Без оплаты и привязки карты.",
+    paywall_premium: "ПРЕМИУМ",
+    gift_three_months: "+ 3 в подарок",
+    duration_30days: "30 дней",
+    back_to_settings: "Назад к настройкам",
+    back: "Назад",
+    telegram_opened_bot: "Откройте Telegram-бота",
+    telegram_finish_login: "Нажмите START или подтвердите вход в боте.",
+    trial_activate_three: "Активировать 3 дня бесплатно",
+    back_to_account: "Назад к аккаунту",
+    settings_headline: "Приложение работает за вас.",
+    settings_intro: "Основные настройки уже подобраны. При желании их можно изменить.",
+    settings_connection_label: "Подключение",
+    settings_language_section: "Язык приложения",
+    settings_default_tip: "Не уверены, что выбрать? Оставьте настройки по умолчанию.",
+    settings_more_title: "Дополнительные настройки",
+    advanced_desktop_title: "Настройки Windows",
+    advanced_desktop_intro: "Дополнительные параметры для компьютера.",
+    window_minimize: "Свернуть",
+    window_maximize: "Развернуть",
+    window_close: "Закрыть",
+    help_tooltip: "Помощь",
+    vpn_toggle_label: "Переключить VPN",
+    routing_settings_tooltip: "Настройки маршрутизации",
+    trial_badge_simple: "3 ДНЯ БЕСПЛАТНО",
+    trial_try_byme: "Попробуйте ByMeVPN бесплатно",
+    trial_no_card: "БЕЗ ПРИВЯЗКИ КАРТЫ",
+    trial_try_three: "Попробуйте 3 дня бесплатно",
+    trial_all_locations: "Полный доступ ко всем локациям для новых пользователей",
+    trial_no_cancel: "Все серверы сразу • Без оплаты и карты",
+    background_unavailable_tip: "Фоновый режим требует Windows Service",
+    killswitch_unavailable_tip: "Полная аварийная защита пока не реализована",
+    renewal_disclaimer: "Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.",
+    renewal_select_plan: "Выбрать или продлить тариф",
+    support_bonus_explained: "Нашли ошибку или придумали улучшение? Напишите нам в поддержку.",
+    support_open_telegram: "Написать в поддержку",
+    paywall_activate_title: "Активируйте ByMeVPN",
+    paywall_trial_desc: "Без привязки карты • Все серверы сразу",
+    paywall_choose_plan: "Или выберите тариф:",
+    paywall_pay_yookassa: "Оплатить через ЮKassa",
+    paywall_pay_telegram: "Оплатить через Telegram-бота",
+    telegram_auth_confirm: "Подтвердите вход в Telegram-боте",
+    telegram_auth_open: "Открыть бота в Telegram",
+    paywall_12months: "12 месяцев",
+    paywall_1month: "1 месяц",
+    system_language: 'Системный',
+    subpage_devices_title: "Мои устройства",
+    devices_of: "из",
+    devices_stat_label: "Устройства этого аккаунта",
+    devices_stat_hint: "Количество подключённых устройств ограничено вашим тарифом.",
+    devices_connected_label: "ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА",
+    renewal_title: "Автопродление",
+    renewal_heading: "Автопродление подписки",
+    renewal_unavailable: "Статус уточняется",
+    support_page_title: "Помощь",
+    support_hero_title: "Мы рядом, если нужна помощь",
+    support_resources: "ПОЛЕЗНОЕ",
+    support_faq_title: "Ответы на вопросы",
+    support_faq_desc: "Оплата, подключение и устройства",
+    support_news_title: "Новости ByMeVPN",
+    support_news_desc: "Обновления и новые локации",
+    advanced_page_title: "Дополнительные настройки",
+    advanced_engine_title: "Параметры Xray и Wintun",
+    advanced_engine_desc: "Сведения о системном VPN-туннеле",
+    advanced_driver_title: "Сетевой драйвер Wintun",
+    advanced_driver_desc: "Драйвер TUN для Windows x64",
+    advanced_dns_wfp_title: "Защита DNS (WFP)",
+    advanced_dns_wfp_desc: "Работа DNS зависит от маршрутов Windows; требуется проверка",
+    advanced_unverified: "Не проверено",
+    advanced_route_title: "Маршрут к VPN-серверу",
+    advanced_route_desc: "Прямое соединение с VPN-сервером, чтобы избежать зацикливания",
+    advanced_configured: "Настроено в Xray",
+    advanced_lan_title: "Локальные сети напрямую",
+    advanced_lan_desc: "Частные IP-адреса открываются напрямую",
+    paywall_speed_claim: "Скорость зависит от сети и сервера",
+    paywall_dns_claim: "DNS-фильтрация зависит от выбранного режима",
+    paywall_subtitle_safe: "Доступ к совместимым VPN-серверам без сложной настройки",
+
     no_plan_title_line1: "Свободный интернет.",
     no_plan_title_line2: "Одно касание.",
     no_plan_desc: "Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.",
@@ -225,11 +303,89 @@ const I18N = {
     faq_q2: 'Как работает обход российских сервисов?',
     faq_a2: 'При включённом обходе поддерживаемые российские домены и адреса направляются напрямую. Фактические маршруты проверяются на устройстве.',
     faq_q3: 'Как отключить автопродление?',
-    faq_a3: 'Управление списаниями через приложение пока не реализовано. Обратитесь в поддержку для проверки и изменения автопродления.',
+    faq_a3: 'Откройте «Аккаунт» → «Управлять подпиской». Пока отключение в приложении недоступно, обратитесь в поддержку. Условия платежей зависят от вашего заказа.',
     cancel: 'Отмена',
     confirm: 'Подтвердить'
   },
   en: {
+    trial_description_short: "Three days of access to available servers. No payment or card required.",
+    paywall_premium: "PREMIUM",
+    gift_three_months: "+ 3 bonus months",
+    duration_30days: "30 days",
+    back_to_settings: "Back to settings",
+    back: "Back",
+    telegram_opened_bot: "Open Telegram bot",
+    telegram_finish_login: "Press START or confirm the sign-in in the bot.",
+    trial_activate_three: "Activate 3 free days",
+    back_to_account: "Back to account",
+    settings_headline: "The app works for you.",
+    settings_intro: "The defaults are ready to use. You can change them here.",
+    settings_connection_label: "Connection",
+    settings_language_section: "App language",
+    settings_default_tip: "Not sure? Keep the default settings.",
+    settings_more_title: "Advanced settings",
+    advanced_desktop_title: "Windows settings",
+    advanced_desktop_intro: "More options for your computer.",
+    window_minimize: "Minimize",
+    window_maximize: "Maximize",
+    window_close: "Close",
+    help_tooltip: "Help",
+    vpn_toggle_label: "Toggle VPN",
+    routing_settings_tooltip: "Routing settings",
+    trial_badge_simple: "3 DAYS FREE",
+    trial_try_byme: "Try ByMeVPN for free",
+    trial_no_card: "NO CREDIT CARD",
+    trial_try_three: "Try 3 days free",
+    trial_all_locations: "Access all available locations for new users",
+    trial_no_cancel: "All servers • No payment or card",
+    background_unavailable_tip: "Background mode requires Windows Service",
+    killswitch_unavailable_tip: "A full kill switch is not implemented yet",
+    renewal_disclaimer: "Renewal terms depend on your checkout. Contact support if in-app management is unavailable.",
+    renewal_select_plan: "Choose or renew a plan",
+    support_bonus_explained: "Found a bug or have an improvement idea? Contact support.",
+    support_open_telegram: "Contact support",
+    paywall_activate_title: "Activate ByMeVPN",
+    paywall_trial_desc: "No card required • All servers",
+    paywall_choose_plan: "Or choose a plan:",
+    paywall_pay_yookassa: "Pay with YooKassa",
+    paywall_pay_telegram: "Pay via Telegram bot",
+    telegram_auth_confirm: "Confirm sign-in in Telegram",
+    telegram_auth_open: "Open Telegram bot",
+    paywall_12months: "12 months",
+    paywall_1month: "1 month",
+    system_language: 'System',
+    subpage_devices_title: "My devices",
+    devices_of: "of",
+    devices_stat_label: "Devices on this account",
+    devices_stat_hint: "Your plan limits the number of connected devices.",
+    devices_connected_label: "CONNECTED DEVICES",
+    renewal_title: "Auto-renewal",
+    renewal_heading: "Subscription auto-renewal",
+    renewal_unavailable: "Status unavailable",
+    support_page_title: "Support",
+    support_hero_title: "We are here to help",
+    support_resources: "USEFUL LINKS",
+    support_faq_title: "Frequently asked questions",
+    support_faq_desc: "Payments, connection and devices",
+    support_news_title: "ByMeVPN news",
+    support_news_desc: "Updates and new locations",
+    advanced_page_title: "Advanced settings",
+    advanced_engine_title: "Xray and Wintun settings",
+    advanced_engine_desc: "System VPN tunnel details",
+    advanced_driver_title: "Wintun network driver",
+    advanced_driver_desc: "TUN driver for Windows x64",
+    advanced_dns_wfp_title: "DNS protection (WFP)",
+    advanced_dns_wfp_desc: "DNS routing depends on Windows and requires testing",
+    advanced_unverified: "Not verified",
+    advanced_route_title: "VPN server route",
+    advanced_route_desc: "Direct VPN server route to avoid tunneling loops",
+    advanced_configured: "Configured in Xray",
+    advanced_lan_title: "Direct local networks",
+    advanced_lan_desc: "Private IP addresses use direct routes",
+    paywall_speed_claim: "Speed depends on your network and server",
+    paywall_dns_claim: "DNS filtering depends on the selected mode",
+    paywall_subtitle_safe: "Compatible VPN servers without complex setup",
+
     no_plan_title_line1: "An open internet.",
     no_plan_title_line2: "One tap away.",
     no_plan_desc: "Access familiar services with ByMeVPN, without complicated setup.",
@@ -401,10 +557,19 @@ function setupWindowControls() {
 // Initial Data Loader
 async function loadInitialData() {
   const epoch = state.sessionEpoch;
-  const savedSettings = await invoke('get_settings').catch(() => null);
+  // Autostart is owned by the Windows Run registry key, not by settings.json.
+  // Read both without delaying startup with sequential calls; never report a
+  // stale enabled switch when Windows has disabled that executable.
+  const [savedSettings, nativeStartupEnabled] = await Promise.all([
+    invoke('get_settings').catch(() => null),
+    invoke('startup_enabled').catch(() => null)
+  ]);
   if (savedSettings) {
     state.settings = { ...state.settings, ...savedSettings };
     state.preferredServerCode = savedSettings.selectedServerCode || 'auto';
+  }
+  if (typeof nativeStartupEnabled === 'boolean') {
+    state.settings.autoStart = nativeStartupEnabled;
   }
   applySettingsToUi();
 
@@ -551,9 +716,15 @@ function showAppShell() {
 function switchTab(tabId) {
   state.currentTab = tabId;
 
-  // Update sidebar active buttons
+  // Android keeps the originating bottom tab selected on secondary screens.
+  const rootTab = ['tab-servers', 'tab-pricing'].includes(tabId) ? 'tab-home'
+    : ['tab-devices', 'tab-renewal', 'tab-support'].includes(tabId) ? 'tab-account'
+    : tabId === 'tab-advanced' ? 'tab-settings' : tabId;
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tabId);
+    const selected = btn.dataset.tab === rootTab;
+    btn.classList.toggle('active', selected);
+    if (selected) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
 
   // Update tab content visibility
@@ -563,7 +734,7 @@ function switchTab(tabId) {
 
   // Update top header title
   const titleEl = document.getElementById('page-title');
-  const lang = state.settings.language || 'ru';
+  const lang = effectiveLanguage();
   const dict = I18N[lang] || I18N.ru;
 
   switch (tabId) {
@@ -844,6 +1015,7 @@ function setupEventListeners() {
     filterServers(e.target.value);
   });
 
+  document.addEventListener('keydown', handleModalKeyboard);
   // Modal close buttons
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
@@ -989,7 +1161,14 @@ async function startTelegramAuthFlow() {
     const openTelegram = () => invoke('open_external_url', { url: res.bot_url });
     const reopenButton = document.getElementById('btn-tg-reopen');
     if (reopenButton) reopenButton.onclick = openTelegram;
-    await openTelegram();
+    // A blocked browser launch must not strand the modal in a loading state.
+    // Keep the session alive and allow the user to reopen the verified link.
+    try {
+      await openTelegram();
+    } catch (_) {
+      showToast(uiText('Браузер не открылся. Нажмите «Открыть Telegram» ещё раз.',
+        'The browser did not open. Use Open Telegram to retry.'), true);
+    }
     if (generation !== tgPollingGeneration) return;
 
     tgPollingFailures = 0;
@@ -1302,9 +1481,18 @@ function formatTime(seconds) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+// Follow Android's System/RU/EN preference. Unsupported OS locales fall back to RU.
+function effectiveLanguage() {
+  const selected = state.settings.language;
+  if (selected === 'ru' || selected === 'en') return selected;
+  const locale = typeof navigator === 'undefined' ? '' :
+    (navigator.languages?.[0] || navigator.language || '');
+  return /^en(?:-|$)/i.test(locale) ? 'en' : 'ru';
+}
+
 // Runtime strings must use the same locale as the Android app.
 function uiText(ru, en) {
-  return state.settings.language === 'en' ? en : ru;
+  return effectiveLanguage() === 'en' ? en : ru;
 }
 
 // Dynamic notifications use the same locale as static data-i18n labels.
@@ -1369,7 +1557,7 @@ const TOAST_EN = Object.freeze({
 });
 function localizedToast(text) {
   const original = String(text || '');
-  if (state.settings.language !== 'en') return original;
+  if (effectiveLanguage() !== 'en') return original;
   if (TOAST_EN[original]) return TOAST_EN[original];
   if (original.startsWith('Выбран сервер: ')) return 'Server selected: ' + original.slice('Выбран сервер: '.length);
   return original;
@@ -1482,10 +1670,10 @@ function updateVpnUi() {
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
     uiText('Автоматически', 'Automatic') :
-    (state.settings.language === 'en' ? s.country_en : s.country) || serverDisplayName(s);
+    (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
     uiText('Автовыбор', 'Auto select') :
-    ((state.settings.language === 'en' ? s.city_en : s.city) || '');
+    ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
 }
@@ -1646,8 +1834,9 @@ function updateDevicesUi() {
 async function handleDeleteDevice(deviceId, name) {
   if (!deviceId) return;
   showConfirm(
-    'Отключение устройства',
-    `Вы действительно хотите отключить устройство "${name || 'Устройство'}" от аккаунта?`,
+    uiText('Отключение устройства', 'Disconnect device'),
+    uiText(`Отключить устройство «${name || 'Устройство'}» от аккаунта?`,
+      `Disconnect "${name || 'Device'}" from your account?`),
     async () => {
       try {
         await invoke('delete_device', { deviceId });
@@ -1726,7 +1915,7 @@ function updatePricingMatrixUi() {
 // Render Servers
 function serverDisplayName(server) {
   if (!server || server.code === 'auto') return uiText('Автоматически', 'Automatic');
-  if (state.settings.language !== 'en') return server.name || server.code;
+  if (effectiveLanguage() !== 'en') return server.name || server.code;
   if (server.name_en && server.name_en !== server.country_en) return server.name_en;
   const country = server.country_en || server.name || server.code;
   return server.city_en ? country + ' • ' + server.city_en : country;
@@ -1767,7 +1956,7 @@ function renderServersList(filter = '') {
     const subtitle = document.createElement('span');
     subtitle.textContent = srv.supported === false ?
       uiText('Этот протокол пока не поддерживается', 'This protocol is not yet supported') :
-      ((state.settings.language === 'en' ? srv.country_en : srv.country) ||
+      ((effectiveLanguage() === 'en' ? srv.country_en : srv.country) ||
         uiText('Доступная локация', 'Available location'));
     details.append(title, subtitle);
     const ping = document.createElement('span');
@@ -2035,16 +2224,29 @@ async function handlePayYooKassa() {
 // Settings Persistence
 async function handleSettingChange(key, value) {
   const previous = state.settings[key];
+  let startupChanged = false;
   try {
-    if (key === 'autoStart') await invoke('set_startup', { enabled: value });
+    if (key === 'autoStart') {
+      await invoke('set_startup', { enabled: value });
+      startupChanged = true;
+    }
     await invoke('save_setting', { key, value });
     state.settings[key] = value;
     if (key === 'language') applyLanguage(value);
-    showToast('Настройки сохранены');
+    showToast(key === 'bypassRu'
+      ? uiText('Изменение маршрутизации применится при следующем подключении.',
+        'Routing changes take effect on your next connection.')
+      : uiText('Настройки сохранены', 'Settings saved.'));
   } catch (err) {
+    // Persisting the preference can fail after changing the Windows registry.
+    // Restore the previous startup state so the switch never lies.
+    if (startupChanged) {
+      await invoke('set_startup', { enabled: previous }).catch(() => {});
+    }
     state.settings[key] = previous;
     applySettingsToUi();
-    showToast('Не удалось сохранить настройку. Изменение отменено.', true);
+    showToast(uiText('Не удалось сохранить настройку. Изменение отменено.',
+      'Could not save this setting. The change was reverted.'), true);
   }
 }
 
@@ -2067,7 +2269,7 @@ function applySettingsToUi() {
   const adRadio = document.querySelector(`input[name="adblock"][value="${s.adBlock || 'recommended'}"]`);
   if (adRadio) adRadio.checked = true;
 
-  applyLanguage(s.language || 'ru');
+  applyLanguage(s.language || 'system');
 }
 
 function applyLanguage(lang) {
@@ -2075,8 +2277,13 @@ function applyLanguage(lang) {
     btn.classList.toggle('active', btn.dataset.lang === lang);
   });
 
-  const dict = I18N[lang] || I18N.ru;
-  document.documentElement.lang = lang === 'en' ? 'en' : 'ru';
+  const resolved = lang === 'system' ? effectiveLanguage() : lang;
+  const dict = I18N[resolved] || I18N.ru;
+  document.documentElement.lang = resolved === 'en' ? 'en' : 'ru';
+  const version = document.querySelector?.('.version-num');
+  if (version?.dataset.appVersion) {
+    version.textContent = uiText('Версия ', 'Version ') + version.dataset.appVersion;
+  }
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const value = dict[el.dataset.i18n];
     if (typeof value === 'string') el.textContent = value;
@@ -2140,8 +2347,23 @@ async function handleOpenTelegramSupport() {
 }
 
 // Modal Helpers
+let activeModalId = null;
+let focusBeforeModal = null;
+const modalFocusableSelector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex="0"]';
+
 function openModal(id) {
-  document.getElementById(id)?.classList.remove('hidden');
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  if (!activeModalId) focusBeforeModal = document.activeElement;
+  activeModalId = id;
+  modal.classList.remove('hidden');
+  const dialog = modal.querySelector?.('.modal-window');
+  if (dialog) {
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+  }
+  const initial = modal.querySelector?.(modalFocusableSelector);
+  initial?.focus();
 }
 
 function closeModal(id) {
@@ -2151,6 +2373,36 @@ function closeModal(id) {
     if (btn) btn.onclick = null;
   }
   document.getElementById(id)?.classList.add('hidden');
+  if (activeModalId === id) {
+    activeModalId = null;
+    const target = focusBeforeModal;
+    focusBeforeModal = null;
+    if (target?.isConnected) target.focus();
+  }
+}
+
+function handleModalKeyboard(event) {
+  if (!activeModalId) return;
+  const modal = document.getElementById(activeModalId);
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal(activeModalId);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const controls = Array.from(modal.querySelectorAll(modalFocusableSelector))
+    .filter(el => el.getClientRects().length > 0);
+  if (!controls.length) { event.preventDefault(); return; }
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function showConfirm(title, desc, onConfirm) {
@@ -2170,7 +2422,7 @@ function openLegalModal(type) {
   const title = document.getElementById('legal-modal-title');
   const body = document.getElementById('legal-modal-body');
   if (!modal || !title || !body) return;
-  const en = state.settings.language === 'en';
+  const en = effectiveLanguage() === 'en';
 
   // This is a concise in-app explanation, not a fabricated audited privacy
   // policy or a substitute for formally published terms.
@@ -2205,7 +2457,7 @@ function openLegalModal(type) {
       <p><strong>Использование</strong> Запрещены незаконная деятельность, спам, вредоносное ПО и сетевые атаки.</p>
     `;
   }
-  modal.classList.remove('hidden');
+  openModal('modal-legal');
 }
 
 function showToast(text, isError = false) {

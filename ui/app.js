@@ -77,6 +77,14 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    settings_headline: "Приложение работает за вас.",
+    settings_intro: "Основные настройки уже подобраны. При желании их можно изменить.",
+    settings_connection_label: "Подключение",
+    settings_language_section: "Язык приложения",
+    settings_default_tip: "Не уверены, что выбрать? Оставьте настройки по умолчанию.",
+    settings_more_title: "Дополнительные настройки",
+    advanced_desktop_title: "Настройки Windows",
+    advanced_desktop_intro: "Дополнительные параметры для компьютера.",
     window_minimize: "Свернуть",
     window_maximize: "Развернуть",
     window_close: "Закрыть",
@@ -290,6 +298,14 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    settings_headline: "The app works for you.",
+    settings_intro: "The defaults are ready to use. You can change them here.",
+    settings_connection_label: "Connection",
+    settings_language_section: "App language",
+    settings_default_tip: "Not sure? Keep the default settings.",
+    settings_more_title: "Advanced settings",
+    advanced_desktop_title: "Windows settings",
+    advanced_desktop_intro: "More options for your computer.",
     window_minimize: "Minimize",
     window_maximize: "Maximize",
     window_close: "Close",

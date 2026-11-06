@@ -521,10 +521,19 @@ function setupWindowControls() {
 // Initial Data Loader
 async function loadInitialData() {
   const epoch = state.sessionEpoch;
-  const savedSettings = await invoke('get_settings').catch(() => null);
+  // Autostart is owned by the Windows Run registry key, not by settings.json.
+  // Read both without delaying startup with sequential calls; never report a
+  // stale enabled switch when Windows has disabled that executable.
+  const [savedSettings, nativeStartupEnabled] = await Promise.all([
+    invoke('get_settings').catch(() => null),
+    invoke('startup_enabled').catch(() => null)
+  ]);
   if (savedSettings) {
     state.settings = { ...state.settings, ...savedSettings };
     state.preferredServerCode = savedSettings.selectedServerCode || 'auto';
+  }
+  if (typeof nativeStartupEnabled === 'boolean') {
+    state.settings.autoStart = nativeStartupEnabled;
   }
   applySettingsToUi();
 

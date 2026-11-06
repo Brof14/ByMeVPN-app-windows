@@ -113,3 +113,29 @@ test('version text follows the chosen language without changing the real build n
   assert.equal(version.textContent, 'Версия 1.2.3');
   assert.match(html, /data-app-version="1\.2\.3"/);
 });
+
+test('Android system locale resolves English variants and defaults to Russian otherwise', () => {
+  for (const [locale, expected] of [
+    ['en', 'en'], ['en-US', 'en'], ['EN-gb', 'en'],
+    ['ru-RU', 'ru'], ['de-DE', 'ru'], ['', 'ru']
+  ]) {
+    const app = harness();
+    app.eval("state.settings.language = 'system'");
+    app.eval('navigator.language = ' + JSON.stringify(locale));
+    assert.equal(app.eval('effectiveLanguage()'), expected, 'locale ' + locale);
+    assert.equal(app.eval("uiText('Привет', 'Hello')"), expected === 'en' ? 'Hello' : 'Привет');
+  }
+  assert.match(read('src-tauri/src/service.rs'), /"language": "system"/);
+  assert.match(read('ui/index.html'), /data-lang="system"/);
+});
+
+test('translation resources cover all visible data-i18n anchors', () => {
+  const keys = [...new Set([...html.matchAll(/data-i18n="([^"]+)"/g)].map(match => match[1]))];
+  const app = harness();
+  for (const locale of ['ru', 'en']) {
+    for (const key of keys) {
+      assert.equal(typeof app.eval('I18N.' + locale + '[' + JSON.stringify(key) + ']'),
+        'string', 'missing ' + locale + ' translation: ' + key);
+    }
+  }
+});

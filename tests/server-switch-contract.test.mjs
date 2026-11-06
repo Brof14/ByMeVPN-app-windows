@@ -63,8 +63,8 @@ test('switching a live Windows connection stops first, persists the new node, th
   connected(client);
   await client.eval('selectServer(state.servers[1])');
   assert.deepEqual(client.calls.map(c => c.name), ['vpn_stop', 'save_setting', 'vpn_start']);
-  assert.deepEqual(client.calls[1].args, {key: 'selectedServerCode', value: 'nl'});
-  assert.deepEqual(client.calls[2].args, {nodeCode: 'nl'});
+  assert.deepEqual(JSON.parse(JSON.stringify(client.calls[1].args)), {key: 'selectedServerCode', value: 'nl'});
+  assert.deepEqual(JSON.parse(JSON.stringify(client.calls[2].args)), {nodeCode: 'nl'});
   assert.equal(client.eval('state.vpnConnected'), true);
   assert.equal(client.eval('state.vpnVerified'), true);
   assert.equal(client.eval('state.selectedServer.code'), 'nl');

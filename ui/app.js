@@ -2169,7 +2169,7 @@ function applyLanguage(lang) {
 
   const dict = I18N[lang] || I18N.ru;
   document.documentElement.lang = lang === 'en' ? 'en' : 'ru';
-  const version = document.querySelector('.version-num');
+  const version = document.querySelector?.('.version-num');
   if (version?.dataset.appVersion) {
     version.textContent = uiText('Версия ', 'Version ') + version.dataset.appVersion;
   }
@@ -2246,12 +2246,12 @@ function openModal(id) {
   if (!activeModalId) focusBeforeModal = document.activeElement;
   activeModalId = id;
   modal.classList.remove('hidden');
-  const dialog = modal.querySelector('.modal-window');
+  const dialog = modal.querySelector?.('.modal-window');
   if (dialog) {
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
   }
-  const initial = modal.querySelector(modalFocusableSelector);
+  const initial = modal.querySelector?.(modalFocusableSelector);
   initial?.focus();
 }
 

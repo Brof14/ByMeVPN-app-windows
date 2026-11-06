@@ -176,9 +176,11 @@ test('Windows never allocates a VPN session before checking the original egress 
   const session = rust.indexOf('"/vpn/session"', start);
   assert.ok(start > 0 && baseline > start && session > baseline);
   const startup = rust.slice(session, rust.indexOf('pub async fn vpn_stop', session));
-  // Cleanup is centralized around the fallible startup block, rather than
-  // repeated in each error branch. This includes invalid Xray config.
-  assert.match(startup, /let xray_config = build_tun_config_ext/);
-  assert.match(startup, /let connection_result: Result<TunnelMetrics, String> = async \\{/);
-  assert.match(startup, /if connection_result\\.is_err\\(\\) \\{[\\s\\S]*Method::DELETE, "\\/vpn\\/session"/);
+  // Any post-session failure, including invalid Xray config, must revoke it.
+  assert.ok(startup.includes('let xray_config = build_tun_config_ext('));
+  assert.ok(startup.includes('let connection_result: Result<TunnelMetrics, String> = async {'));
+  const rollback = startup.indexOf('if connection_result.is_err() {');
+  assert.ok(rollback > 0, 'missing shared startup-failure handler');
+  assert.ok(startup.slice(rollback).includes('Method::DELETE, "/vpn/session"'));
+
 });

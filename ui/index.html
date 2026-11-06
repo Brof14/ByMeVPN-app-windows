@@ -300,13 +300,13 @@
                   </div>
 
                   <span class="no-plan-brand-pill">BYMEVPN</span>
-                  <h2 class="no-plan-headline">Свободный интернет.<br/>Одно касание.</h2>
-                  <p class="no-plan-desc">Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.</p>
+                  <h2 class="no-plan-headline"><span data-i18n="no_plan_title_line1">Свободный интернет.</span><br/><span data-i18n="no_plan_title_line2">Одно касание.</span></h2>
+                  <p class="no-plan-desc" data-i18n="no_plan_desc">Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.</p>
 
                   <div class="no-plan-perks-row">
                     <div class="perk-pill">
                       <span class="perk-icon">⚡</span>
-                      <span>Защищённое соединение</span>
+                      <span data-i18n="no_plan_perk_connection">Защищённое соединение</span>
                     </div>
                     <div class="perk-pill">
                       <span class="perk-icon">🛡️</span>
@@ -314,20 +314,20 @@
                     </div>
                     <div class="perk-pill">
                       <span class="perk-icon">🚫</span>
-                      <span>Без сложных настроек</span>
+                      <span data-i18n="no_plan_perk_simple">Без сложных настроек</span>
                     </div>
                   </div>
 
                   <div class="no-plan-trial-dock">
-                    <div class="dock-badge-gift">🎁 3 ДНЯ БЕСПЛАТНО</div>
-                    <h3>Попробуйте сервис перед покупкой</h3>
-                    <p>Пробный доступ на 3 дня ко всем серверам без ограничений скорости. Без привязки карты.</p>
+                    <div class="dock-badge-gift" data-i18n="no_plan_trial_badge">3 ДНЯ БЕСПЛАТНО</div>
+                    <h3 data-i18n="no_plan_trial_heading">Попробуйте сервис перед покупкой</h3>
+                    <p data-i18n="no_plan_trial_desc">Пробный доступ на 3 дня ко всем серверам без ограничений скорости. Без привязки карты.</p>
                     <button type="button" id="btn-no-plan-trial" class="btn-primary btn-glow btn-wide">
-                      <span>Попробовать бесплатно</span>
+                      <span data-i18n="no_plan_trial_button">Попробовать бесплатно</span>
                       <span class="btn-arrow">›</span>
                     </button>
                     <button type="button" id="btn-no-plan-pricing" class="btn-link-pricing">
-                      <span>Посмотреть все тарифы</span>
+                      <span data-i18n="no_plan_pricing_button">Посмотреть все тарифы</span>
                       <span>›</span>
                     </button>
                   </div>
@@ -454,7 +454,7 @@
                 </div>
 
                 <!-- Bottom Strip -->
-                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick">
+                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick" role="button" tabindex="0" aria-label="Настройки маршрутизации">
                   <div class="bypass-left">
                     <span class="bypass-antenna-icon">📡</span>
                     <span data-i18n="ru_bypass_label">Российские сервисы работают напрямую</span>
@@ -479,6 +479,7 @@
 
                     <h2 class="status-title-text" data-i18n="vpn_off">VPN выключен</h2>
                     <p id="home-off-desc" class="connection-substatus" data-i18n="vpn_off_desc">Нажмите, чтобы подключиться</p>
+                    <p id="home-connection-error" class="connection-error hidden" role="alert" aria-live="polite"></p>
                     
                     <button type="button" id="btn-toggle-vpn" class="btn-primary vpn-big-cta">
                       <span id="vpn-btn-text" data-i18n="connect">Подключиться</span>
@@ -564,7 +565,7 @@
 
               <!-- 4 Tariff Cards Grid -->
               <div class="pricing-cards-grid">
-                <div class="glass-card tariff-card" data-plan="month">
+                <div class="glass-card tariff-card" data-plan="month" role="button" tabindex="0" aria-pressed="false">
                   <span class="tariff-period-name" data-i18n="plan_1m">1 месяц</span>
                   <div class="tariff-price-block">
                     <strong class="tariff-price-number" id="price-month">—</strong>
@@ -572,7 +573,7 @@
                   </div>
                 </div>
 
-                <div class="glass-card tariff-card" data-plan="quarter">
+                <div class="glass-card tariff-card" data-plan="quarter" role="button" tabindex="0" aria-pressed="false">
                   <div class="tariff-head-line">
                     <span class="tariff-period-name" data-i18n="plan_3m">3 месяца</span>
                     <span class="gift-badge" data-i18n="plus_1_gift">+ 1 в подарок</span>
@@ -583,7 +584,7 @@
                   </div>
                 </div>
 
-                <div class="glass-card tariff-card" data-plan="half_year">
+                <div class="glass-card tariff-card" data-plan="half_year" role="button" tabindex="0" aria-pressed="false">
                   <div class="tariff-head-line">
                     <span class="tariff-period-name" data-i18n="plan_6m">6 месяцев</span>
                     <span class="gift-badge" data-i18n="plus_2_gift">+ 2 в подарок</span>
@@ -595,7 +596,7 @@
                 </div>
 
                 <!-- Best Value Card (Selected by default) -->
-                <div class="glass-card tariff-card selected best-value" data-plan="year">
+                <div class="glass-card tariff-card selected best-value" data-plan="year" role="button" tabindex="0" aria-pressed="true">
                   <div class="best-badge-crown">
                     <span class="crown-icon">👑</span>
                     <span data-i18n="best_price">Лучшая цена</span>
@@ -616,29 +617,29 @@
                 <div class="pricing-perk-item">
                   <span class="perk-bullet">⚡</span>
                   <div>
-                    <strong>Скорость зависит от сервера и сети</strong>
-                    <span>YouTube 4K, Reels, игры и скачивание без задержек</span>
+                    <strong data-i18n="feature_speed_title">Скорость зависит от сервера и сети</strong>
+                    <span data-i18n="feature_speed_desc">Реальная скорость зависит от вашего подключения</span>
                   </div>
                 </div>
                 <div class="pricing-perk-item">
                   <span class="perk-bullet">🛡️</span>
                   <div>
-                    <strong>VLESS Reality & Hysteria 2</strong>
-                    <span>Полная маскировка трафика от блокировок</span>
+                    <strong data-i18n="feature_protocol_title">VLESS + Reality</strong>
+                    <span data-i18n="feature_protocol_desc">Доступен на совместимых серверах Windows</span>
                   </div>
                 </div>
                 <div class="pricing-perk-item">
                   <span class="perk-bullet">🚫</span>
                   <div>
-                    <strong>Блокировка рекламы</strong>
-                    <span>AdGuard DNS защищает от баннеров и трекеров</span>
+                    <strong data-i18n="feature_adblock_title">Блокировка рекламы</strong>
+                    <span data-i18n="feature_adblock_desc">Выберите режим фильтрации в настройках</span>
                   </div>
                 </div>
                 <div class="pricing-perk-item">
                   <span class="perk-bullet">📱</span>
                   <div>
-                    <strong>До 10 устройств на аккаунт</strong>
-                    <span>Телефон, ПК, планшет, Smart TV</span>
+                    <strong data-i18n="feature_devices_title">Тарифы на 2, 5 и 10 устройств</strong>
+                    <span data-i18n="feature_devices_desc">Лимит зависит от выбранного тарифа</span>
                   </div>
                 </div>
               </div>
@@ -651,7 +652,7 @@
                 </button>
                 <button type="button" id="btn-pay-telegram-bot" class="btn-secondary btn-pay-tg-bot" style="width: 100%; margin-top: 10px; height: 50px;">
                   <span class="tg-paperplane-icon">✈</span>
-                  <span>Оплатить через Telegram-бота</span>
+                  <span data-i18n="pay_telegram_bot">Оплатить через Telegram-бота</span>
                   <span class="btn-arrow">›</span>
                 </button>
               </div>
@@ -1208,28 +1209,28 @@
             <span class="pf-icon">⚡</span>
             <div>
               <strong>Скорость до 1 Гбит/с</strong>
-              <span>YouTube 4K, Reels, игры и скачивание без задержек</span>
+              <span data-i18n="feature_speed_desc">Реальная скорость зависит от вашего подключения</span>
             </div>
           </div>
           <div class="paywall-feature-row">
             <span class="pf-icon">🛡️</span>
             <div>
-              <strong>VLESS Reality & Hysteria 2</strong>
-              <span>Полная маскировка трафика от блокировок</span>
+              <strong data-i18n="feature_protocol_title">VLESS + Reality</strong>
+              <span data-i18n="feature_protocol_desc">Доступен на совместимых серверах Windows</span>
             </div>
           </div>
           <div class="paywall-feature-row">
             <span class="pf-icon">🚫</span>
             <div>
-              <strong>Блокировка рекламы</strong>
+              <strong data-i18n="feature_adblock_title">Блокировка рекламы</strong>
               <span>AdGuard DNS защищает от баннеров и слежки</span>
             </div>
           </div>
           <div class="paywall-feature-row">
             <span class="pf-icon">📱</span>
             <div>
-              <strong>До 10 устройств на аккаунт</strong>
-              <span>Телефон, ПК, планшет, Smart TV</span>
+              <strong data-i18n="feature_devices_title">Тарифы на 2, 5 и 10 устройств</strong>
+              <span data-i18n="feature_devices_desc">Лимит зависит от выбранного тарифа</span>
             </div>
           </div>
         </div>

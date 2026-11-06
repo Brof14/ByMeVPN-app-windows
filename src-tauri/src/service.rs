@@ -1306,7 +1306,7 @@ fn default_settings() -> Value {
         "adBlock": "none",
         "dnsMode": "cloudflare",
         "killSwitch": false,
-        "language": "ru",
+        "language": "system",
         "selectedServerCode": "auto"
     })
 }
@@ -1334,8 +1334,8 @@ fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
             }
         }
         "language" => {
-            if !matches!(value.as_str(), Some("ru" | "en")) {
-                return Err("Приложение поддерживает языки RU и EN.".into());
+            if !matches!(value.as_str(), Some("ru" | "en" | "system")) {
+                return Err("Приложение поддерживает RU, EN и язык системы.".into());
             }
         }
         "selectedServerCode" => {

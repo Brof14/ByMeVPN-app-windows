@@ -152,3 +152,19 @@ test('startup switch reflects Windows registry instead of stale settings.json', 
   assert.equal(app.eval('state.settings.autoStart'), false);
   assert.ok(app.calls.some(call => call.command === 'startup_enabled'));
 });
+
+test('Android primary settings contains only everyday connection toggles and language', () => {
+  const primary = html.split('id="tab-settings"')[1].split('id="tab-devices"')[0];
+  const advanced = html.split('id="tab-advanced"')[1].split('<!-- MODALS')[0];
+  for (const id of ['set-autoconnect', 'set-bypass']) {
+    assert.match(primary, new RegExp('id="' + id + '"'));
+    assert.doesNotMatch(advanced, new RegExp('id="' + id + '"'));
+  }
+  for (const id of ['set-autostart', 'set-background', 'set-killswitch', 'adblock-group', 'set-dns-mode']) {
+    assert.match(advanced, new RegExp('id="' + id + '"'));
+    assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));
+  }
+  assert.match(primary, /class="lang-segmented-control"/);
+  assert.match(primary, /id="row-open-advanced-settings"/);
+  assert.match(css, /\.android-settings-essential \.setting-item-row/);
+});

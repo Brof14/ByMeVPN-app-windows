@@ -139,3 +139,16 @@ test('translation resources cover all visible data-i18n anchors', () => {
     }
   }
 });
+
+test('startup switch reflects Windows registry instead of stale settings.json', async () => {
+  const app = harness(async command => {
+    if (command === 'get_settings') return { autoStart: true, autoConnect: false, language: 'ru' };
+    if (command === 'startup_enabled') return false;
+    if (command === 'restore_session') return null;
+    if (command === 'vpn_status') return { connected: false, verified: false };
+    return null;
+  });
+  await app.eval('loadInitialData()');
+  assert.equal(app.eval('state.settings.autoStart'), false);
+  assert.ok(app.calls.some(call => call.command === 'startup_enabled'));
+});

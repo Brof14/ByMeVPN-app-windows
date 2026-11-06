@@ -3219,3 +3219,63 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .hero-shield-emblem::after { width: 54px; height: 54px; }
   .auth-title { font-size: 21px; }
 }
+
+/* Android V2 interaction parity: persistent error feedback and keyboard focus.
+   These overrides are scoped so the native Windows layout stays compact. */
+#home-connection-error.connection-error {
+  width: min(100%, 460px);
+  margin: 10px auto 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(227, 162, 154, .45);
+  border-radius: 12px;
+  background: #2b2424;
+  color: #f0b9b1;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+#btn-toggle-bypass-quick {
+  cursor: pointer;
+  transition: border-color .18s ease, background-color .18s ease;
+}
+#btn-toggle-bypass-quick:hover { border-color: #346071; }
+#btn-toggle-bypass-quick:focus-visible,
+.tariff-card[role="button"]:focus-visible,
+.btn-refresh-servers:focus-visible {
+  outline: 3px solid #69d3bc;
+  outline-offset: 3px;
+}
+.tariff-card[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .6;
+}
+.tariff-card[aria-disabled="true"]:hover {
+  border-color: var(--border-subtle);
+}
+.btn-refresh-servers {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  color: #eef4f4;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #172536;
+  border: 1px solid #2b4051;
+  border-radius: 12px;
+}
+.btn-refresh-servers:hover { border-color: #69d3bc; }
+.btn-refresh-servers > [aria-hidden="true"] { font-size: 20px; }
+@media (max-width: 900px) {
+  .servers-top-bar { flex-wrap: wrap; }
+  .servers-top-bar .search-input-box { flex: 1 1 220px; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #btn-toggle-bypass-quick { transition: none; }
+}

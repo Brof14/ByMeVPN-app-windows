@@ -37,6 +37,8 @@ A production VPN requires an integrity-checked Xray Windows runtime, its matchin
 
 See [`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md) and [`docs/STATUS.md`](docs/STATUS.md) for the verified API contract, parity notes, and remaining work.
 
+For the current Android-to-Windows behavior/design comparison, source-level fixes and remaining release gates, see [`docs/ANDROID_WINDOWS_DELTA_2026-11-06.md`](docs/ANDROID_WINDOWS_DELTA_2026-11-06.md). The Windows build is still experimental, and Rust/Node CI does not establish real tunnel security or pixel-identical UI.
+
 ## Security
 
 Never commit passwords, API tokens, subscription URLs, or VPN keys. Store user credentials with Windows Credential Manager. Do not run unsigned driver installers or disable TLS verification.

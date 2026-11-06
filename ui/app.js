@@ -40,6 +40,9 @@ const state = {
     ping_ms: 0
   },
   connectionBusy: false,
+  serverSwitchBusy: false,
+  vpnSequence: 0,
+  connectionError: null,
   authBusy: false,
   sessionEpoch: 0,
   vpnVerified: false,
@@ -74,6 +77,26 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    no_plan_title_line1: "Свободный интернет.",
+    no_plan_title_line2: "Одно касание.",
+    no_plan_desc: "Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.",
+    no_plan_perk_connection: "VPN-подключение",
+    no_plan_perk_simple: "Простое управление",
+    no_plan_trial_badge: "3 ДНЯ БЕСПЛАТНО",
+    no_plan_trial_heading: "Попробуйте сервис перед покупкой",
+    no_plan_trial_desc: "3 дня без оплаты и привязки банковской карты.",
+    no_plan_trial_button: "Попробовать бесплатно",
+    no_plan_pricing_button: "Посмотреть все тарифы",
+    pay_telegram_bot: "Оплатить через Telegram-бота",
+    feature_speed_title: "Скорость зависит от сервера и сети",
+    feature_speed_desc: "Реальная скорость зависит от вашего подключения",
+    feature_protocol_title: "VLESS + Reality",
+    feature_protocol_desc: "Доступен на совместимых серверах Windows",
+    feature_adblock_title: "Блокировка рекламы",
+    feature_adblock_desc: "Выберите режим фильтрации в настройках",
+    feature_devices_title: "Тарифы на 2, 5 и 10 устройств",
+    feature_devices_desc: "Лимит зависит от выбранного тарифа",
+    refresh_servers: "Обновить серверы",
     terms_prefix: "Нажимая «Оплатить», вы соглашаетесь с ",
     terms_link: "Условиями использования",
     terms_and: " и ",
@@ -207,6 +230,26 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    no_plan_title_line1: "An open internet.",
+    no_plan_title_line2: "One tap away.",
+    no_plan_desc: "Access familiar services with ByMeVPN, without complicated setup.",
+    no_plan_perk_connection: "VPN connection",
+    no_plan_perk_simple: "Simple controls",
+    no_plan_trial_badge: "3 DAYS FREE",
+    no_plan_trial_heading: "Try the service before you buy",
+    no_plan_trial_desc: "3 days free, with no payment card required.",
+    no_plan_trial_button: "Start free trial",
+    no_plan_pricing_button: "Explore all plans",
+    pay_telegram_bot: "Pay via Telegram bot",
+    feature_speed_title: "Speed depends on your server and network",
+    feature_speed_desc: "Actual speeds depend on your connection",
+    feature_protocol_title: "VLESS + Reality",
+    feature_protocol_desc: "Available on compatible Windows servers",
+    feature_adblock_title: "Ad blocking",
+    feature_adblock_desc: "Choose a filtering mode in Settings",
+    feature_devices_title: "Plans for 2, 5 or 10 devices",
+    feature_devices_desc: "The limit depends on your plan",
+    refresh_servers: "Refresh servers",
     terms_prefix: "By selecting Pay, you accept the ",
     terms_link: "Terms of Service",
     terms_and: " and ",
@@ -403,9 +446,13 @@ async function loadAvailableServers() {
     if (epoch !== state.sessionEpoch) return;
     state.servers = Array.isArray(servers) ? servers : [];
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
-    state.selectedServer = preferred || {
-      code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0
-    };
+    // Never relabel a live tunnel when the server catalog refreshes.
+    // The selected endpoint changes only after a successful stop/switch flow.
+    if (!state.vpnConnected && !state.connectionBusy) {
+      state.selectedServer = preferred || {
+        code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0
+      };
+    }
     const autoButton = document.getElementById('recommended-server-auto');
     autoButton?.classList.toggle('selected', state.selectedServer.code === 'auto');
     autoButton?.setAttribute('aria-pressed', String(state.selectedServer.code === 'auto'));
@@ -673,15 +720,23 @@ function setupEventListeners() {
   document.getElementById('btn-active-location-pill')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('row-server-info')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('btn-back-from-servers')?.addEventListener('click', () => switchTab('tab-home'));
-  document.getElementById('recommended-server-auto')?.addEventListener('click', () => {
-    state.preferredServerCode = 'auto';
-    state.selectedServer = { code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 };
-    void invoke('save_setting', { key: 'selectedServerCode', value: 'auto' }).catch(() =>
-      showToast('Не удалось сохранить выбор сервера', true));
-    renderServersList();
-    updateVpnUi();
-    switchTab('tab-home');
+  document.getElementById('btn-refresh-servers')?.addEventListener('click', async () => {
+    const button = document.getElementById('btn-refresh-servers');
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+      await loadAvailableServers();
+    } finally {
+      if (button) button.disabled = false;
+    }
   });
+  document.getElementById('recommended-server-auto')?.addEventListener('click', () => {
+    void selectServer({ code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 });
+  });
+  // The quick bypass strip must not be a dead end: Android exposes the
+  // corresponding switch under Settings > Connection.
+  document.getElementById('btn-toggle-bypass-quick')?.addEventListener('click', () =>
+    switchTab('tab-settings'));
 
   // Pricing / Subscription triggers
   document.getElementById('btn-home-activate-trial')?.addEventListener('click', handleActivateTrial);
@@ -740,8 +795,7 @@ function setupEventListeners() {
   // Tariff cards selection
   document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     card.addEventListener('click', () => {
-      document.querySelectorAll('.tariff-card[data-plan]').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
+      if (card.getAttribute('aria-disabled') === 'true') return;
       state.selectedPlanCode = card.dataset.plan;
       updatePricingMatrixUi();
     });
@@ -991,7 +1045,7 @@ async function handleLogout() {
     uiText('Выход из аккаунта', 'Sign out'),
     uiText('Вы уверены, что хотите выйти из ByMeVPN?', 'Sign out of ByMeVPN?'),
     async () => {
-      if (state.connectionBusy) {
+      if (state.connectionBusy || state.serverSwitchBusy) {
         showToast(uiText('Дождитесь завершения работы VPN', 'Wait for the VPN operation to finish.'), true);
         return;
       }
@@ -1011,6 +1065,8 @@ async function handleLogout() {
       state.vpnConnected = false;
       state.vpnVerified = false;
       state.vpnPhase = 'idle';
+      state.connectionError = null;
+      state.vpnSequence += 1;
       state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
       state.servers = [];
       state.devices = [];
@@ -1040,13 +1096,15 @@ async function handleDeleteAccount() {
 }
 
 // VPN Lifecycle & Real-time Metrics
-async function toggleVpn() {
-  if (state.connectionBusy) return;
+async function toggleVpn(allowServerSwitch = false) {
+  if (state.connectionBusy || (state.serverSwitchBusy && allowServerSwitch !== true)) return;
   if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
     showToast(uiText('Сначала проверьте подписку.', 'Verify your subscription first.'), true);
     return;
   }
   state.connectionBusy = true;
+  state.vpnSequence += 1;
+  state.connectionError = null;
   state.vpnPhase = state.vpnConnected ? 'disconnecting' : 'connecting';
   updateVpnUi();
   try {
@@ -1067,7 +1125,8 @@ async function toggleVpn() {
       updateVpnUi();
       showToast('VPN отключён');
     } catch (err) {
-      showToast(typeof err === 'string' ? err : 'Ошибка отключения', true);
+      state.connectionError = typeof err === 'string' ? err : 'Ошибка отключения';
+      showToast(state.connectionError, true);
     }
   } else {
     // Strict check: active or trial subscription required!
@@ -1113,6 +1172,7 @@ async function toggleVpn() {
       state.vpnConnected = false;
       state.vpnVerified = false;
       const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
+      state.connectionError = errMsg;
       showToast(errMsg, true);
       // HTTP 403 may be caused by HWID or unavailable 3x-ui; never erase
       // entitlement or advertise a new purchase solely because VPN failed.
@@ -1128,10 +1188,12 @@ async function toggleVpn() {
 }
 
 async function checkVpnStatus() {
+  if (state.connectionBusy) return;
   const epoch = state.sessionEpoch;
+  const sequence = state.vpnSequence;
   try {
     const status = await invoke('vpn_status');
-    if (epoch !== state.sessionEpoch) return;
+    if (epoch !== state.sessionEpoch || sequence !== state.vpnSequence || state.connectionBusy) return;
     if (status && status.connected) {
       state.vpnVerified = status.verified === true;
       state.vpnConnected = true;
@@ -1160,17 +1222,19 @@ async function checkVpnStatus() {
 function startStatusPolling() {
   if (state.pollInterval) clearInterval(state.pollInterval);
   const epoch = state.sessionEpoch;
-  state.pollInterval = setInterval(async () => {
-    if (epoch !== state.sessionEpoch) {
-      clearInterval(state.pollInterval);
-      state.pollInterval = null;
+  const interval = setInterval(async () => {
+    if (epoch !== state.sessionEpoch || state.pollInterval !== interval) {
+      clearInterval(interval);
+      if (state.pollInterval === interval) state.pollInterval = null;
       return;
     }
-    if (state.vpnConnected && !document.hidden && !state.pollBusy) {
+    if (state.vpnConnected && !state.connectionBusy && !document.hidden && !state.pollBusy) {
+      const sequence = state.vpnSequence;
       state.pollBusy = true;
       try {
         const status = await invoke('vpn_status');
-        if (epoch !== state.sessionEpoch) return;
+        if (epoch !== state.sessionEpoch || sequence !== state.vpnSequence ||
+            state.connectionBusy || state.pollInterval !== interval) return;
         state.pollFailures = 0;
         state.vpnVerified = status?.connected === true && status?.verified === true;
         if (status) {
@@ -1180,24 +1244,30 @@ function startStatusPolling() {
           state.connectedSeconds = status.connected_seconds || 0;
           if (wasConnected && !state.vpnConnected) {
             clearInterval(state.timerInterval);
-            clearInterval(state.pollInterval);
+            clearInterval(interval);
             state.timerInterval = null;
-            state.pollInterval = null;
-            showToast('Соединение VPN прервано. Защита не подтверждена.', true);
+            if (state.pollInterval === interval) state.pollInterval = null;
+            state.connectionError = uiText('Соединение VPN прервано. Проверьте сеть и повторите попытку.',
+              'VPN connection interrupted. Check your network and retry.');
+            showToast(state.connectionError, true);
           }
           updateVpnUi();
         }
       } catch (err) {
-        state.pollFailures += 1;
-        if (state.pollFailures >= 3) {
-          state.vpnVerified = false;
-          updateVpnUi();
+        if (epoch === state.sessionEpoch && sequence === state.vpnSequence &&
+            state.pollInterval === interval && !state.connectionBusy) {
+          state.pollFailures += 1;
+          if (state.pollFailures >= 3) {
+            state.vpnVerified = false;
+            updateVpnUi();
+          }
         }
       } finally {
         state.pollBusy = false;
       }
     }
   }, 5000);
+  state.pollInterval = interval;
 }
 
 // Pause heavy polling when app window is hidden/minimized
@@ -1321,15 +1391,18 @@ function updateVpnUi() {
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.remove('hidden');
     disconnectedBox?.classList.add('hidden');
-    activePill?.classList.toggle('hidden', !state.vpnVerified);
+    activePill?.classList.toggle('hidden', !state.vpnVerified || state.connectionBusy);
     const heading = document.querySelector('#home-state-connected .status-title-text');
-    if (heading) heading.textContent = state.vpnVerified ?
+    if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
+      ? uiText('Отключаем VPN…', 'Disconnecting VPN…') : state.vpnVerified ?
       uiText('VPN подключён', 'VPN connected') :
       uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
-    if (description) description.textContent = state.vpnVerified
-      ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
-      : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
+    if (description) description.textContent = state.vpnPhase === 'disconnecting'
+      ? uiText('Завершаем соединение…', 'Closing the connection…')
+      : state.vpnVerified
+        ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
+        : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
   } else if (accessUnknown) {
     // An offline/unknown entitlement is NOT an expired or active plan.
     // Keep the power control inert; the primary action retries the backend.
@@ -1374,6 +1447,20 @@ function updateVpnUi() {
     promoBox?.classList.add('hidden');
   }
 
+  const bypassStrip = document.getElementById('btn-toggle-bypass-quick');
+  const bypassLabel = bypassStrip?.querySelector('[data-i18n="ru_bypass_label"]');
+  if (bypassLabel) bypassLabel.textContent = state.settings.bypassRu
+    ? uiText('Российские сайты напрямую', 'Russian sites routed directly')
+    : uiText('Обход российских сайтов выключен', 'Direct Russian routing is off');
+  bypassStrip?.setAttribute('aria-label', uiText('Настройки маршрутизации', 'Routing settings'));
+
+  const connectionError = document.getElementById('home-connection-error');
+  if (connectionError) {
+    const showError = !isConn && hasPlan && !accessUnknown && !!state.connectionError;
+    connectionError.textContent = showError ? state.connectionError : '';
+    connectionError.classList.toggle('hidden', !showError);
+  }
+
   // Update Server info in card
   const s = state.selectedServer;
   const flagEl = document.getElementById('conn-flag-chip');
@@ -1391,7 +1478,7 @@ function updateVpnUi() {
     ring?.setAttribute('aria-disabled', String(accessUnknown && !isConn));
     if (ring && id === 'vpn-power-ring-off') ring.tabIndex = accessUnknown ? -1 : 0;
   }
-  document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy);
+  document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
     uiText('Автоматически', 'Automatic') :
@@ -1618,9 +1705,12 @@ function updatePricingMatrixUi() {
   }
   document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.plan] : null;
-    card.classList.toggle('selected', card.dataset.plan === state.selectedPlanCode);
+    const selected = !!offer && card.dataset.plan === state.selectedPlanCode;
+    card.classList.toggle('selected', selected);
     card.classList.toggle('unavailable', !offer);
     card.setAttribute('aria-disabled', String(!offer));
+    card.setAttribute('aria-pressed', String(selected));
+    card.tabIndex = offer ? 0 : -1;
   });
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
@@ -1648,8 +1738,8 @@ function renderServersList(filter = '') {
   container.replaceChildren();
   const q = filter.toLocaleLowerCase().trim();
   const list = state.servers.filter(s =>
-    !q || String(s.name || '').toLocaleLowerCase().includes(q) ||
-    String(s.country || '').toLocaleLowerCase().includes(q)
+    !q || [s.name, s.name_en, s.country, s.country_en, s.city, s.city_en, s.code]
+      .some(value => String(value || '').toLocaleLowerCase().includes(q))
   );
   if (!list.length) {
     const empty = document.createElement('p');
@@ -1686,20 +1776,59 @@ function renderServersList(filter = '') {
     const dot = document.createElement('span');
     dot.className = 'radio-selection-dot';
     card.append(flag, details, ping, dot);
-    card.addEventListener('click', () => {
-      state.selectedServer = srv;
-      state.preferredServerCode = srv.code;
-      void invoke('save_setting', { key: 'selectedServerCode', value: srv.code }).catch(() =>
-        showToast('Не удалось сохранить выбор сервера', true));
-      document.getElementById('recommended-server-auto')?.classList.remove('selected');
-      document.getElementById('recommended-server-auto')?.setAttribute('aria-pressed', 'false');
-      renderServersList(filter);
-      updateVpnUi();
-      showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(srv));
-      switchTab('tab-home');
-    });
+    card.addEventListener('click', () => void selectServer(srv));
     container.appendChild(card);
   });
+}
+
+// Android reconnects when a different server is selected during an active
+// session. Keep the displayed endpoint tied to the actual tunnel: stop first,
+// persist the selection, then establish and verify the new session.
+async function selectServer(server) {
+  if (state.connectionBusy || state.serverSwitchBusy) {
+    showToast(uiText('Дождитесь завершения подключения.', 'Wait for the VPN operation to finish.'), true);
+    return;
+  }
+  if (server.code !== 'auto' && server.supported === false) return;
+  if (server.code === state.selectedServer.code) {
+    switchTab('tab-home');
+    return;
+  }
+  const previous = state.selectedServer;
+  const wasConnected = state.vpnConnected;
+  const epoch = state.sessionEpoch;
+  state.serverSwitchBusy = true;
+  try {
+    if (wasConnected) {
+      await toggleVpn(true);
+      if (state.vpnConnected) return; // Native stop failed; keep the old endpoint.
+    }
+    await invoke('save_setting', { key: 'selectedServerCode', value: server.code });
+    if (epoch !== state.sessionEpoch) return;
+    state.preferredServerCode = server.code;
+    state.selectedServer = server;
+    const autoButton = document.getElementById('recommended-server-auto');
+    autoButton?.classList.toggle('selected', server.code === 'auto');
+    autoButton?.setAttribute('aria-pressed', String(server.code === 'auto'));
+    renderServersList();
+    updateVpnUi();
+    switchTab('tab-home');
+    if (wasConnected && epoch === state.sessionEpoch) await toggleVpn(true);
+    if (state.vpnConnected || !wasConnected) {
+      showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(server));
+    }
+  } catch (error) {
+    showToast(uiText('Не удалось сменить сервер. Настройка не сохранена.',
+      'Could not switch servers. Selection was not saved.'), true);
+    if (epoch === state.sessionEpoch && wasConnected && !state.vpnConnected &&
+        state.selectedServer === previous) {
+      await toggleVpn(true); // Restore the previous active endpoint when possible.
+    }
+  } finally {
+    state.serverSwitchBusy = false;
+    // Re-enable the main connect control after a completed or failed switch.
+    updateVpnUi();
+  }
 }
 
 function filterServers(query) {
@@ -1955,6 +2084,13 @@ function applyLanguage(lang) {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const value = dict[el.dataset.i18nPlaceholder];
     if (typeof value === 'string') el.placeholder = value;
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const value = dict[el.dataset.i18nTitle];
+    if (typeof value === 'string') {
+      el.title = value;
+      el.setAttribute('aria-label', value);
+    }
   });
 
   document.querySelectorAll('.btn-password-toggle').forEach(btn => {

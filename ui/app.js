@@ -77,6 +77,26 @@ const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
 // Translations Dictionary (RU / EN)
 const I18N = {
   ru: {
+    no_plan_title_line1: "Свободный интернет.",
+    no_plan_title_line2: "Одно касание.",
+    no_plan_desc: "Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.",
+    no_plan_perk_connection: "VPN-подключение",
+    no_plan_perk_simple: "Простое управление",
+    no_plan_trial_badge: "3 ДНЯ БЕСПЛАТНО",
+    no_plan_trial_heading: "Попробуйте сервис перед покупкой",
+    no_plan_trial_desc: "3 дня без оплаты и привязки банковской карты.",
+    no_plan_trial_button: "Попробовать бесплатно",
+    no_plan_pricing_button: "Посмотреть все тарифы",
+    pay_telegram_bot: "Оплатить через Telegram-бота",
+    feature_speed_title: "Скорость зависит от сервера и сети",
+    feature_speed_desc: "Реальная скорость зависит от вашего подключения",
+    feature_protocol_title: "VLESS + Reality",
+    feature_protocol_desc: "Доступен на совместимых серверах Windows",
+    feature_adblock_title: "Блокировка рекламы",
+    feature_adblock_desc: "Выберите режим фильтрации в настройках",
+    feature_devices_title: "Тарифы на 2, 5 и 10 устройств",
+    feature_devices_desc: "Лимит зависит от выбранного тарифа",
+    refresh_servers: "Обновить серверы",
     terms_prefix: "Нажимая «Оплатить», вы соглашаетесь с ",
     terms_link: "Условиями использования",
     terms_and: " и ",
@@ -210,6 +230,26 @@ const I18N = {
     confirm: 'Подтвердить'
   },
   en: {
+    no_plan_title_line1: "An open internet.",
+    no_plan_title_line2: "One tap away.",
+    no_plan_desc: "Access familiar services with ByMeVPN, without complicated setup.",
+    no_plan_perk_connection: "VPN connection",
+    no_plan_perk_simple: "Simple controls",
+    no_plan_trial_badge: "3 DAYS FREE",
+    no_plan_trial_heading: "Try the service before you buy",
+    no_plan_trial_desc: "3 days free, with no payment card required.",
+    no_plan_trial_button: "Start free trial",
+    no_plan_pricing_button: "Explore all plans",
+    pay_telegram_bot: "Pay via Telegram bot",
+    feature_speed_title: "Speed depends on your server and network",
+    feature_speed_desc: "Actual speeds depend on your connection",
+    feature_protocol_title: "VLESS + Reality",
+    feature_protocol_desc: "Available on compatible Windows servers",
+    feature_adblock_title: "Ad blocking",
+    feature_adblock_desc: "Choose a filtering mode in Settings",
+    feature_devices_title: "Plans for 2, 5 or 10 devices",
+    feature_devices_desc: "The limit depends on your plan",
+    refresh_servers: "Refresh servers",
     terms_prefix: "By selecting Pay, you accept the ",
     terms_link: "Terms of Service",
     terms_and: " and ",
@@ -680,6 +720,16 @@ function setupEventListeners() {
   document.getElementById('btn-active-location-pill')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('row-server-info')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('btn-back-from-servers')?.addEventListener('click', () => switchTab('tab-home'));
+  document.getElementById('btn-refresh-servers')?.addEventListener('click', async () => {
+    const button = document.getElementById('btn-refresh-servers');
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+      await loadAvailableServers();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
   document.getElementById('recommended-server-auto')?.addEventListener('click', () => {
     void selectServer({ code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 });
   });
@@ -745,8 +795,7 @@ function setupEventListeners() {
   // Tariff cards selection
   document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     card.addEventListener('click', () => {
-      document.querySelectorAll('.tariff-card[data-plan]').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
+      if (card.getAttribute('aria-disabled') === 'true') return;
       state.selectedPlanCode = card.dataset.plan;
       updatePricingMatrixUi();
     });
@@ -1393,6 +1442,13 @@ function updateVpnUi() {
     promoBox?.classList.add('hidden');
   }
 
+  const bypassStrip = document.getElementById('btn-toggle-bypass-quick');
+  const bypassLabel = bypassStrip?.querySelector('[data-i18n="ru_bypass_label"]');
+  if (bypassLabel) bypassLabel.textContent = state.settings.bypassRu
+    ? uiText('Российские сайты напрямую', 'Russian sites routed directly')
+    : uiText('Обход российских сайтов выключен', 'Direct Russian routing is off');
+  bypassStrip?.setAttribute('aria-label', uiText('Настройки маршрутизации', 'Routing settings'));
+
   const connectionError = document.getElementById('home-connection-error');
   if (connectionError) {
     const showError = !isConn && hasPlan && !accessUnknown && !!state.connectionError;
@@ -1644,9 +1700,12 @@ function updatePricingMatrixUi() {
   }
   document.querySelectorAll('.tariff-card[data-plan]').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.plan] : null;
-    card.classList.toggle('selected', card.dataset.plan === state.selectedPlanCode);
+    const selected = !!offer && card.dataset.plan === state.selectedPlanCode;
+    card.classList.toggle('selected', selected);
     card.classList.toggle('unavailable', !offer);
     card.setAttribute('aria-disabled', String(!offer));
+    card.setAttribute('aria-pressed', String(selected));
+    card.tabIndex = offer ? 0 : -1;
   });
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
@@ -2015,6 +2074,13 @@ function applyLanguage(lang) {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const value = dict[el.dataset.i18nPlaceholder];
     if (typeof value === 'string') el.placeholder = value;
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const value = dict[el.dataset.i18nTitle];
+    if (typeof value === 'string') {
+      el.title = value;
+      el.setAttribute('aria-label', value);
+    }
   });
 
   document.querySelectorAll('.btn-password-toggle').forEach(btn => {

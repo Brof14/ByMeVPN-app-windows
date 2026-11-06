@@ -811,30 +811,14 @@
 
             <!-- TAB 5: SETTINGS (Screen 8) -->
             <div id="tab-settings" class="tab-content">
-              <div class="settings-sections-stack">
-                <!-- Group 1: General -->
-                <div class="glass-card settings-group-card">
-                  <div class="settings-group-header">
-                    <div class="settings-group-icon-circle">⚙</div>
-                    <div class="settings-group-titles">
-                      <strong data-i18n="set_general_title">Основное</strong>
-                      <span data-i18n="set_general_desc">Удобная работа с ByMeVPN</span>
-                    </div>
-                  </div>
+              <div class="settings-sections-stack android-settings-screen">
+                <div class="android-settings-heading">
+                  <h2 data-i18n="settings_headline">Приложение работает за вас.</h2>
+                  <p data-i18n="settings_intro">Основные настройки уже подобраны. При желании их можно изменить.</p>
+                </div>
 
-                  <div class="setting-item-row">
-                    <span class="setting-row-icon">🪟</span>
-                    <div class="setting-copy-column">
-                      <strong data-i18n="autostart_title">Запускать вместе с системой</strong>
-                      <span data-i18n="autostart_desc">ByMeVPN будет включаться автоматически при запуске компьютера</span>
-                    </div>
-                    <label class="switch-control">
-                      <input type="checkbox" id="set-autostart" checked />
-                      <span class="switch-slider"></span>
-                    </label>
-                  </div>
-
-                  <div class="card-divider-line"></div>
+                <div class="section-micro-label android-settings-section-label" data-i18n="settings_connection_label">Подключение</div>
+                <div class="glass-card settings-group-card android-settings-essential">
                   <div class="setting-item-row">
                     <span class="setting-row-icon">⏻</span>
                     <div class="setting-copy-column">
@@ -846,23 +830,7 @@
                       <span class="switch-slider"></span>
                     </label>
                   </div>
-
                   <div class="card-divider-line"></div>
-
-                  <div class="setting-item-row">
-                    <span class="setting-row-icon">∞</span>
-                    <div class="setting-copy-column">
-                      <strong data-i18n="background_title">Оставаться подключённым в фоне</strong>
-                      <span data-i18n="background_desc">Фоновая работа в разработке; закрытие окна сейчас отключает VPN</span>
-                    </div>
-                    <label class="switch-control">
-                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" data-i18n-title="background_unavailable_tip" />
-                      <span class="switch-slider"></span>
-                    </label>
-                  </div>
-
-                  <div class="card-divider-line"></div>
-
                   <div class="setting-item-row">
                     <span class="setting-row-icon">🌐</span>
                     <div class="setting-copy-column">
@@ -876,93 +844,8 @@
                   </div>
                 </div>
 
-                <!-- Group 2: Comfort and Security -->
-                <div class="glass-card settings-group-card">
-                  <div class="settings-group-header">
-                    <div class="settings-group-icon-circle icon-shield">🛡</div>
-                    <div class="settings-group-titles">
-                      <strong data-i18n="set_security_title">Комфорт и защита</strong>
-                      <span data-i18n="set_security_desc">Больше свободы и безопасности в интернете</span>
-                    </div>
-                  </div>
-
-                  <div class="setting-item-row">
-                    <span class="setting-row-icon">⊘</span>
-                    <div class="setting-copy-column">
-                      <strong data-i18n="adblock_title">Блокировка рекламы</strong>
-                      <span data-i18n="adblock_desc">Убирает рекламу на сайтах и в приложениях</span>
-                    </div>
-                    <div class="radio-segmented-group" id="adblock-group">
-                      <label class="seg-radio-option">
-                        <input type="radio" name="adblock" value="none" />
-                        <span data-i18n="adblock_off">Выкл.</span>
-                      </label>
-                      <label class="seg-radio-option">
-                        <input type="radio" name="adblock" value="basic" />
-                        <span data-i18n="adblock_basic">Базовая</span>
-                      </label>
-                      <label class="seg-radio-option">
-                        <input type="radio" name="adblock" value="recommended" checked />
-                        <span data-i18n="adblock_recommended">Рекомендуется</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="card-divider-line"></div>
-
-                  <div class="setting-item-row">
-                    <span class="setting-row-icon">🔒</span>
-                    <div class="setting-copy-column">
-                      <strong data-i18n="killswitch_title">Аварийная защита</strong>
-                      <span data-i18n="killswitch_desc">Полная аварийная блокировка трафика пока не реализована. Не считайте её активной.</span>
-                    </div>
-                    <label class="switch-control">
-                      <input type="checkbox" id="set-killswitch" disabled title="Полная аварийная защита пока в разработке" data-i18n-title="killswitch_unavailable_tip" />
-                      <span class="switch-slider"></span>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- Group 3: Support and Legal -->
-                <div class="glass-card settings-group-card">
-                  <div class="settings-group-header">
-                    <div class="settings-group-icon-circle icon-info">❓</div>
-                    <div class="settings-group-titles">
-                      <strong data-i18n="support_info_title">Поддержка и информация</strong>
-                      <span data-i18n="support_info_desc">Мы всегда рядом</span>
-                    </div>
-                  </div>
-
-                  <div class="settings-links-grid-2x2">
-                    <div class="setting-link-tile" id="tile-support-telegram" role="button" tabindex="0">
-                      <span class="tile-icon">✈</span>
-                      <strong data-i18n="tile_telegram">Поддержка в Telegram</strong>
-                      <span class="tile-arrow">›</span>
-                    </div>
-                    <div class="setting-link-tile" id="tile-privacy-policy" role="button" tabindex="0">
-                      <span class="tile-icon">📄</span>
-                      <strong data-i18n="tile_privacy">Политика конфиденциальности</strong>
-                      <span class="tile-arrow">›</span>
-                    </div>
-                    <div class="setting-link-tile" id="tile-faq-modal" role="button" tabindex="0">
-                      <span class="tile-icon">❓</span>
-                      <strong data-i18n="tile_faq">Частые вопросы</strong>
-                      <span class="tile-arrow">›</span>
-                    </div>
-                    <div class="setting-link-tile" id="tile-terms-of-use" role="button" tabindex="0">
-                      <span class="tile-icon">📄</span>
-                      <strong data-i18n="tile_terms">Условия использования</strong>
-                      <span class="tile-arrow">›</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button type="button" id="row-open-advanced-settings" class="btn-secondary btn-wide">
-                  Дополнительные настройки ›
-                </button>
-
-                <!-- Settings Bottom Footer Bar -->
-                <div class="settings-bottom-bar">
+                <div class="section-micro-label android-settings-section-label" data-i18n="settings_language_section">Язык приложения</div>
+                <div class="glass-card settings-group-card android-settings-language">
                   <div class="lang-selector-block">
                     <span class="lang-globe-icon">🌐</span>
                     <span class="lang-label" data-i18n="app_language">Язык приложения</span>
@@ -976,25 +859,10 @@
                       </button>
                     </div>
                   </div>
-
-                  <div class="settings-version-block">
-                    <div class="version-logo">
-                      <svg width="20" height="22" viewBox="0 0 92 104" fill="none">
-                        <defs>
-                          <linearGradient id="vShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                            <stop stop-color="#468ff0"/>
-                            <stop offset="0.55" stop-color="#53bfcf"/>
-                            <stop offset="1" stop-color="#79d9bc"/>
-                          </linearGradient>
-                        </defs>
-                        <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
-                        <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
-                      </svg>
-                    </div>
-                    <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.3">Версия 1.2.3</span></span>
-                  </div>
                 </div>
 
+                <p class="android-settings-default-tip" data-i18n="settings_default_tip">Не уверены, что выбрать? Оставьте настройки по умолчанию.</p>
+                <button type="button" id="row-open-advanced-settings" class="btn-secondary btn-wide android-settings-advanced-link" data-i18n="settings_more_title">Дополнительные настройки</button>
               </div>
             </div>
 
@@ -1170,7 +1038,132 @@
                   <span class="badge-tech-pill active">geoip:private</span>
                 </div>
               </div>
-            </div>
+            
+              <section class="android-desktop-advanced">
+                <h3 class="android-desktop-section-title" data-i18n="advanced_desktop_title">Настройки Windows</h3>
+                <p class="android-desktop-section-desc" data-i18n="advanced_desktop_intro">Дополнительные параметры для компьютера.</p>
+                <div class="glass-card settings-group-card">
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">🪟</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="autostart_title">Запускать вместе с системой</strong>
+                      <span data-i18n="autostart_desc">ByMeVPN будет включаться автоматически при запуске компьютера</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-autostart" checked />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <div class="card-divider-line"></div>
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">∞</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="background_title">Оставаться подключённым в фоне</strong>
+                      <span data-i18n="background_desc">Фоновая работа в разработке; закрытие окна сейчас отключает VPN</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" data-i18n-title="background_unavailable_tip" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+                <div class="glass-card settings-group-card">
+                  <div class="settings-group-header">
+                    <div class="settings-group-icon-circle icon-shield">🛡</div>
+                    <div class="settings-group-titles">
+                      <strong data-i18n="set_security_title">Комфорт и защита</strong>
+                      <span data-i18n="set_security_desc">Больше свободы и безопасности в интернете</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">⊘</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="adblock_title">Блокировка рекламы</strong>
+                      <span data-i18n="adblock_desc">Убирает рекламу на сайтах и в приложениях</span>
+                    </div>
+                    <div class="radio-segmented-group" id="adblock-group">
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="none" />
+                        <span data-i18n="adblock_off">Выкл.</span>
+                      </label>
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="basic" />
+                        <span data-i18n="adblock_basic">Базовая</span>
+                      </label>
+                      <label class="seg-radio-option">
+                        <input type="radio" name="adblock" value="recommended" checked />
+                        <span data-i18n="adblock_recommended">Рекомендуется</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="card-divider-line"></div>
+
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon">🔒</span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="killswitch_title">Аварийная защита</strong>
+                      <span data-i18n="killswitch_desc">Полная аварийная блокировка трафика пока не реализована. Не считайте её активной.</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-killswitch" disabled title="Полная аварийная защита пока в разработке" data-i18n-title="killswitch_unavailable_tip" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+                <div class="glass-card settings-group-card">
+                  <div class="settings-group-header">
+                    <div class="settings-group-icon-circle icon-info">❓</div>
+                    <div class="settings-group-titles">
+                      <strong data-i18n="support_info_title">Поддержка и информация</strong>
+                      <span data-i18n="support_info_desc">Мы всегда рядом</span>
+                    </div>
+                  </div>
+
+                  <div class="settings-links-grid-2x2">
+                    <div class="setting-link-tile" id="tile-support-telegram" role="button" tabindex="0">
+                      <span class="tile-icon">✈</span>
+                      <strong data-i18n="tile_telegram">Поддержка в Telegram</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-privacy-policy" role="button" tabindex="0">
+                      <span class="tile-icon">📄</span>
+                      <strong data-i18n="tile_privacy">Политика конфиденциальности</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-faq-modal" role="button" tabindex="0">
+                      <span class="tile-icon">❓</span>
+                      <strong data-i18n="tile_faq">Частые вопросы</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                    <div class="setting-link-tile" id="tile-terms-of-use" role="button" tabindex="0">
+                      <span class="tile-icon">📄</span>
+                      <strong data-i18n="tile_terms">Условия использования</strong>
+                      <span class="tile-arrow">›</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="settings-bottom-bar android-settings-version">
+                  <div class="settings-version-block">
+                    <div class="version-logo">
+                      <svg width="20" height="22" viewBox="0 0 92 104" fill="none">
+                        <defs>
+                          <linearGradient id="vShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#468ff0"/>
+                            <stop offset="0.55" stop-color="#53bfcf"/>
+                            <stop offset="1" stop-color="#79d9bc"/>
+                          </linearGradient>
+                        </defs>
+                        <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vShieldGrad)" stroke-width="7" stroke-linejoin="round"/>
+                        <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
+                      </svg>
+                    </div>
+                    <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.3">Версия 1.2.3</span></span>
+                  </div>
+                </div>
+              </section>
+</div>
 
           </div>
         </main>

@@ -870,6 +870,9 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = data.get("servers").and_then(Value::as_array)
         .ok_or("Сервер не вернул список доступных локаций.")?;
+    // Avoid spawning an unbounded number of blocking DNS/TCP probes when
+    // the server catalog grows. Rendering remains responsive under load.
+    let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
     let mut tasks = Vec::with_capacity(servers.len());
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
@@ -918,8 +921,14 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
         let supported = config.get("protocol").and_then(Value::as_str).unwrap_or("vless") == "vless"
             && config.get("security").and_then(Value::as_str).unwrap_or("reality") == "reality"
             && matches!(config.get("network").and_then(Value::as_str).unwrap_or("tcp"), "tcp" | "raw");
-        let task = if !host.is_empty() && (1..=65535).contains(&port) {
-            Some(tokio::task::spawn_blocking(move || measure_real_ping(&host, port as u16)))
+        let task = if supported && !host.is_empty() && (1..=65535).contains(&port) {
+            let slots = ping_slots.clone();
+            Some(tauri::async_runtime::spawn(async move {
+                let _permit = slots.acquire_owned().await.ok()?;
+                tauri::async_runtime::spawn_blocking(move ||
+                    measure_real_ping(&host, port as u16)
+                ).await.ok()
+            }))
         } else {
             None
         };
@@ -932,7 +941,7 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     // Concurrent TCP probes; never block the async runtime or measure one by one.
     for (server, task) in normalized.iter_mut().zip(tasks) {
         if let Some(task) = task {
-            server["ping"] = json!(task.await.unwrap_or(0));
+            server["ping"] = json!(task.await.ok().flatten().unwrap_or(0));
         }
     }
     Ok(normalized)

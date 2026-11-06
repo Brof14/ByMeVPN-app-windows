@@ -15,6 +15,12 @@ function makeClient(native) {
     setAttribute() {}
   };
   let nextTimer = 0;
+  const connectButton = {
+    disabled: false,
+    toggleAttribute(name, enabled) {
+      if (name === 'disabled') this.disabled = !!enabled;
+    }
+  };
   const sandbox = createContext({
     console,
     document: {
@@ -22,6 +28,7 @@ function makeClient(native) {
       getElementById(id) {
         if (id === 'page-title') return { textContent: '' };
         if (id === 'recommended-server-auto') return auto;
+        if (id === 'btn-toggle-vpn') return connectButton;
         return null;
       },
       querySelectorAll() { return []; },
@@ -38,7 +45,7 @@ function makeClient(native) {
     clearTimeout
   });
   runInContext(source, sandbox);
-  return { calls, eval: expression => runInContext(expression, sandbox) };
+  return { calls, connectButton, eval: expression => runInContext(expression, sandbox) };
 }
 
 function connected(client) {
@@ -69,6 +76,7 @@ test('switching a live Windows connection stops first, persists the new node, th
   assert.equal(client.eval('state.vpnVerified'), true);
   assert.equal(client.eval('state.selectedServer.code'), 'nl');
   assert.equal(client.eval('state.serverSwitchBusy'), false);
+  assert.equal(client.connectButton.disabled, false);
 });
 
 test('failed native stop preserves the existing tunnel and blocks misleading server changes', async () => {

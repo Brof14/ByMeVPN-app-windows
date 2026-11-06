@@ -1003,20 +1003,20 @@
                 <button type="button" class="btn-subpage-back" id="btn-back-from-devices">
                   <span>‹</span> Назад к аккаунту
                 </button>
-                <h2 class="subpage-title">Мои устройства</h2>
+                <h2 class="subpage-title" data-i18n="subpage_devices_title">Мои устройства</h2>
               </div>
 
               <div class="glass-card devices-hero-card">
                 <div class="devices-big-stat-row">
                   <strong id="devices-hero-current" class="devices-big-number">—</strong>
-                  <span class="devices-big-slash">из</span>
+                  <span class="devices-big-slash" data-i18n="devices_of">из</span>
                   <span id="devices-hero-max" class="devices-big-max">—</span>
                 </div>
-                <p class="devices-stat-label">Устройств подключено к аккаунту</p>
-                <p class="devices-stat-hint">Вы можете использовать ByMeVPN на компьютере, телефоне, планшете и Smart TV одновременно.</p>
+                <p class="devices-stat-label" data-i18n="devices_stat_label">Устройств подключено к аккаунту</p>
+                <p class="devices-stat-hint" data-i18n="devices_stat_hint">Вы можете использовать ByMeVPN на компьютере, телефоне, планшете и Smart TV одновременно.</p>
               </div>
 
-              <div class="section-micro-label">ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА</div>
+              <div class="section-micro-label" data-i18n="devices_connected_label">ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА</div>
               <div id="devices-full-cards-list" class="devices-cards-stack">
                 <!-- Dynamically filled by JS -->
               </div>
@@ -1028,20 +1028,20 @@
                 <button type="button" class="btn-subpage-back" id="btn-back-from-renewal">
                   <span>‹</span> Назад к аккаунту
                 </button>
-                <h2 class="subpage-title">Автопродление</h2>
+                <h2 class="subpage-title" data-i18n="renewal_title">Автопродление</h2>
               </div>
 
               <div class="glass-card renewal-hero-card">
                 <div class="renewal-head-group">
                   <div class="renewal-circle-icon">🔄</div>
                   <div>
-                    <h3 style="font-size: 18px; margin-bottom: 4px;">Автопродление подписки</h3>
-                    <span id="renewal-current-status-badge" class="badge-active-mini">Отключено</span>
+                    <h3 style="font-size: 18px; margin-bottom: 4px;" data-i18n="renewal_heading">Автопродление подписки</h3>
+                    <span id="renewal-current-status-badge" class="badge-active-mini" data-i18n="renewal_unavailable">Статус уточняется</span>
                   </div>
                 </div>
                 <div class="card-divider-line"></div>
                 <p class="renewal-explanation">
-                  Статус автопродления регулируется платёжным шлюзом ЮKassa. Если автопродление отключено, доступ завершится точно в указанный день без каких-либо неожиданных списаний.
+                  Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.
                 </p>
                 <div class="renewal-actions">
                   <button type="button" id="btn-renewal-switch-pricing" class="btn-primary" style="height: 46px;">
@@ -1058,12 +1058,12 @@
                 <button type="button" class="btn-subpage-back" id="btn-back-from-support">
                   <span>‹</span> Назад
                 </button>
-                <h2 class="subpage-title">Помощь</h2>
+                <h2 class="subpage-title" data-i18n="support_page_title">Помощь</h2>
               </div>
 
               <div class="glass-card support-hero-card">
                 <div class="support-heart-icon-badge">💬❤️</div>
-                <h2 class="support-hero-title">Мы рядом, если<br/>нужна помощь</h2>
+                <h2 class="support-hero-title" data-i18n="support_hero_title">Мы рядом, если нужна помощь</h2>
                 <p class="support-hero-subtitle">
                   Нашли ошибку или придумали улучшение? Напишите нам: за подтверждённые ошибки и принятые предложения добавим дни к подписке.
                 </p>
@@ -1073,14 +1073,14 @@
                 </button>
               </div>
 
-              <div class="section-micro-label">ПОЛЕЗНОЕ</div>
+              <div class="section-micro-label" data-i18n="support_resources">ПОЛЕЗНОЕ</div>
               <div class="support-items-grid">
                 <div class="glass-card support-action-card" id="card-support-faq" style="cursor: pointer;" role="button" tabindex="0">
                   <div class="card-row-left">
                     <span class="support-card-icon">❓</span>
                     <div>
-                      <strong>Ответы на вопросы</strong>
-                      <span>Оплата, подключение и устройства</span>
+                      <strong data-i18n="support_faq_title">Ответы на вопросы</strong>
+                      <span data-i18n="support_faq_desc">Оплата, подключение и устройства</span>
                     </div>
                   </div>
                   <span class="card-row-arrow">›</span>
@@ -1090,8 +1090,8 @@
                   <div class="card-row-left">
                     <span class="support-card-icon">📢</span>
                     <div>
-                      <strong>Новости ByMeVPN</strong>
-                      <span>Обновления и новые локации</span>
+                      <strong data-i18n="support_news_title">Новости ByMeVPN</strong>
+                      <span data-i18n="support_news_desc">Обновления и новые локации</span>
                     </div>
                   </div>
                   <span class="card-row-arrow">›</span>
@@ -1105,23 +1105,23 @@
                 <button type="button" class="btn-subpage-back" id="btn-back-from-advanced">
                   <span>‹</span> Назад к настройкам
                 </button>
-                <h2 class="subpage-title">Дополнительные настройки</h2>
+                <h2 class="subpage-title" data-i18n="advanced_page_title">Дополнительные настройки</h2>
               </div>
 
               <div class="glass-card advanced-hero-card">
                 <div class="advanced-header-group">
                   <span class="advanced-gear-icon">🛠</span>
                   <div>
-                    <h3 style="font-size: 17px; margin-bottom: 4px;">Параметры ядра Xray & Wintun</h3>
-                    <span style="font-size: 12px; color: var(--text-secondary);">Низкоуровневая конфигурация системного туннеля</span>
+                    <h3 style="font-size: 17px; margin-bottom: 4px;" data-i18n="advanced_engine_title">Параметры ядра Xray & Wintun</h3>
+                    <span style="font-size: 12px; color: var(--text-secondary);" data-i18n="advanced_engine_desc">Низкоуровневая конфигурация системного туннеля</span>
                   </div>
                 </div>
                 <div class="card-divider-line"></div>
 
                 <div class="advanced-param-row">
                   <div>
-                    <strong>Сетевой драйвер Wintun</strong>
-                    <span>Высокопроизводительный драйвер TUN для Windows x64</span>
+                    <strong data-i18n="advanced_driver_title">Сетевой драйвер Wintun</strong>
+                    <span data-i18n="advanced_driver_desc">Высокопроизводительный драйвер TUN для Windows x64</span>
                   </div>
                   <span class="badge-tech-pill">ByMeVPN (MTU 1500)</span>
                 </div>
@@ -1130,20 +1130,20 @@
 
                 <div class="advanced-param-row">
                   <div>
-                    <strong>Защита от утечек DNS (WFP)</strong>
-                    <span>Защита от утечек зависит от конфигурации Windows; требуется проверка</span>
+                    <strong data-i18n="advanced_dns_wfp_title">Защита от утечек DNS (WFP)</strong>
+                    <span data-i18n="advanced_dns_wfp_desc">Защита от утечек зависит от конфигурации Windows; требуется проверка</span>
                   </div>
-                  <span class="badge-tech-pill">Проверка не завершена</span>
+                  <span class="badge-tech-pill" data-i18n="advanced_unverified">Проверка не завершена</span>
                 </div>
 
                 <div class="card-divider-line"></div>
 
                 <div class="advanced-param-row">
                   <div>
-                    <strong>Защита от рекурсии маршрутов</strong>
-                    <span>Безусловный прямой маршрут (direct) для собственного хоста сервера</span>
+                    <strong data-i18n="advanced_route_title">Защита от рекурсии маршрутов</strong>
+                    <span data-i18n="advanced_route_desc">Безусловный прямой маршрут (direct) для собственного хоста сервера</span>
                   </div>
-                  <span class="badge-tech-pill">Настроено в Xray</span>
+                  <span class="badge-tech-pill" data-i18n="advanced_configured">Настроено в Xray</span>
                 </div>
 
                 <div class="card-divider-line"></div>
@@ -1163,8 +1163,8 @@
 
                 <div class="advanced-param-row">
                   <div>
-                    <strong>Шлюз локальных сетей (Bypass LAN)</strong>
-                    <span>Локальные адреса RFC 1918 (192.168.x.x, 10.x.x.x) открываются напрямую</span>
+                    <strong data-i18n="advanced_lan_title">Шлюз локальных сетей (Bypass LAN)</strong>
+                    <span data-i18n="advanced_lan_desc">Локальные адреса RFC 1918 (192.168.x.x, 10.x.x.x) открываются напрямую</span>
                   </div>
                   <span class="badge-tech-pill active">geoip:private</span>
                 </div>
@@ -1204,7 +1204,7 @@
             </svg>
           </div>
           <h2 class="paywall-title">Активируйте ByMeVPN</h2>
-          <p class="paywall-subtitle">Свободный интернет без ограничений и блокировок</p>
+          <p class="paywall-subtitle" data-i18n="paywall_subtitle_safe">Доступ к совместимым VPN-серверам без сложной настройки</p>
         </div>
 
         <!-- Features Bullets -->
@@ -1212,7 +1212,7 @@
           <div class="paywall-feature-row">
             <span class="pf-icon">⚡</span>
             <div>
-              <strong>Скорость до 1 Гбит/с</strong>
+              <strong data-i18n="paywall_speed_claim">Скорость зависит от сети и сервера</strong>
               <span data-i18n="feature_speed_desc">Реальная скорость зависит от вашего подключения</span>
             </div>
           </div>
@@ -1227,7 +1227,7 @@
             <span class="pf-icon">🚫</span>
             <div>
               <strong data-i18n="feature_adblock_title">Блокировка рекламы</strong>
-              <span>AdGuard DNS защищает от баннеров и слежки</span>
+              <span data-i18n="paywall_dns_claim">DNS-фильтрация зависит от выбранного режима</span>
             </div>
           </div>
           <div class="paywall-feature-row">
@@ -1330,29 +1330,6 @@
 
         <div class="modal-actions-row">
           <button type="button" class="btn-secondary btn-wide" data-close-modal="modal-telegram" data-i18n="cancel">Отмена</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Google OAuth Status Modal -->
-    <div id="modal-google" class="modal-backdrop hidden">
-      <div class="glass-card modal-window modal-google-window">
-        <div class="modal-head">
-          <div class="modal-icon-badge google-badge-icon">G</div>
-          <h3 data-i18n="google_modal_title">Вход через Google</h3>
-          <button type="button" class="btn-modal-close" data-close-modal="modal-google">×</button>
-        </div>
-        <p class="modal-desc" style="line-height: 1.5; color: var(--text-secondary); margin-bottom: 16px;">
-          Серверная верификация Google OAuth в текущей версии отключена на стороне бэкенда (<code style="color: var(--neon-cyan);">GOOGLE_AUTH_SERVER_VERIFIED = false</code>).
-          <br><br>
-          Для безопасной работы, пожалуйста, используйте:
-          <br>• Вход по <strong>Email и паролю</strong>
-          <br>• Быстрый вход в 1 клик через <strong>Telegram-бота</strong>
-        </p>
-        <div class="modal-actions-row" style="justify-content: flex-end;">
-          <button type="button" class="btn-primary" data-close-modal="modal-google" style="min-width: 120px;">
-            <span>Понятно</span>
-          </button>
         </div>
       </div>
     </div>

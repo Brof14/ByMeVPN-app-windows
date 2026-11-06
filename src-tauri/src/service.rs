@@ -1861,6 +1861,8 @@ mod tests {
         assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
         assert!(validate_setting("adBlock", &json!("unknown")).is_err());
         assert!(validate_setting("language", &json!("fr")).is_err());
+        assert!(validate_setting("language", &json!("system")).is_ok());
+        assert_eq!(default_settings()["language"], "system");
         assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
         assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);

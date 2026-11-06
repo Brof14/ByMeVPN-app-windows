@@ -168,3 +168,13 @@ test('Android primary settings contains only everyday connection toggles and lan
   assert.match(primary, /id="row-open-advanced-settings"/);
   assert.match(css, /\.android-settings-essential \.setting-item-row/);
 });
+
+test('Windows never allocates a VPN session before checking the original egress route', () => {
+  const rust = read('src-tauri/src/service.rs');
+  const start = rust.indexOf('pub async fn vpn_start(');
+  const baseline = rust.indexOf('let baseline_ip = crate::egress::public_egress_ip().await', start);
+  const session = rust.indexOf('"/vpn/session"', start);
+  assert.ok(start > 0 && baseline > start && session > baseline);
+  assert.match(rust.slice(session, rust.indexOf('pub async fn vpn_stop', session)),
+    /match build_tun_config_ext[\s\S]*Method::DELETE, "\/vpn\/session"/);
+});

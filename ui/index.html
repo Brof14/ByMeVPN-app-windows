@@ -495,12 +495,12 @@
                     <h3 class="promo-trial-title">
                       <span data-i18n="trial_try_byme">Попробуйте ByMeVPN бесплатно</span>
                     </h3>
-                    <p class="promo-trial-desc">
-                      3 дня полного доступа ко всем серверам без ограничений скорости. Без привязки карты.
+                    <p class="promo-trial-desc" data-i18n="trial_description_short">
+                      Три дня доступа к доступным серверам. Без оплаты и привязки карты.
                     </p>
                     <div class="promo-buttons-row">
                       <button type="button" id="btn-home-activate-trial" class="btn-primary btn-glow">
-                        <span>Активировать 3 дня бесплатно</span>
+                        <span data-i18n="trial_activate_three">Активировать 3 дня бесплатно</span>
                         <span class="btn-arrow">›</span>
                       </button>
                       <button type="button" id="btn-home-all-tariffs" class="btn-secondary">
@@ -525,7 +525,7 @@
                   <p class="banner-sub" data-i18n="trial_all_locations">Полный доступ ко всем локациям для новых пользователей</p>
                   <p class="banner-sub-note" data-i18n="trial_no_cancel">Все серверы сразу • Без оплаты и карты</p>
                   <button type="button" id="btn-pricing-activate-trial" class="btn-primary btn-glow banner-cta-btn">
-                    <span>Активировать 3 дня бесплатно</span>
+                    <span data-i18n="trial_activate_three">Активировать 3 дня бесплатно</span>
                     <span class="btn-arrow">›</span>
                   </button>
                 </div>
@@ -870,7 +870,7 @@
             <div id="tab-devices" class="tab-content">
               <div class="subpage-header-row">
                 <button type="button" class="btn-subpage-back" id="btn-back-from-devices">
-                  <span>‹</span> Назад к аккаунту
+                  <span aria-hidden="true">‹</span> <span data-i18n="back_to_account">Назад к аккаунту</span>
                 </button>
                 <h2 class="subpage-title" data-i18n="subpage_devices_title">Мои устройства</h2>
               </div>
@@ -895,7 +895,7 @@
             <div id="tab-renewal" class="tab-content">
               <div class="subpage-header-row">
                 <button type="button" class="btn-subpage-back" id="btn-back-from-renewal">
-                  <span>‹</span> Назад к аккаунту
+                  <span aria-hidden="true">‹</span> <span data-i18n="back_to_account">Назад к аккаунту</span>
                 </button>
                 <h2 class="subpage-title" data-i18n="renewal_title">Автопродление</h2>
               </div>
@@ -925,7 +925,7 @@
             <div id="tab-support" class="tab-content">
               <div class="subpage-header-row">
                 <button type="button" class="btn-subpage-back" id="btn-back-from-support">
-                  <span>‹</span> Назад
+                  <span aria-hidden="true">‹</span> <span data-i18n="back">Назад</span>
                 </button>
                 <h2 class="subpage-title" data-i18n="support_page_title">Помощь</h2>
               </div>
@@ -972,7 +972,7 @@
             <div id="tab-advanced" class="tab-content">
               <div class="subpage-header-row">
                 <button type="button" class="btn-subpage-back" id="btn-back-from-advanced">
-                  <span>‹</span> Назад к настройкам
+                  <span aria-hidden="true">‹</span> <span data-i18n="back_to_settings">Назад к настройкам</span>
                 </button>
                 <h2 class="subpage-title" data-i18n="advanced_page_title">Дополнительные настройки</h2>
               </div>
@@ -1179,7 +1179,7 @@
     <div id="modal-paywall" class="modal-backdrop hidden">
       <div class="glass-card modal-window modal-paywall-window">
         <div class="paywall-head-bar">
-          <div class="badge-premium-crown">👑 ПРЕМИУМ</div>
+          <div class="badge-premium-crown" data-i18n="paywall_premium">ПРЕМИУМ</div>
           <button type="button" class="btn-modal-close" data-close-modal="modal-paywall">×</button>
         </div>
 
@@ -1238,12 +1238,12 @@
           <div class="trial-promo-texts">
             <span class="gift-icon">🎁</span>
             <div>
-              <strong>Попробуйте 3 дня бесплатно</strong>
+              <strong data-i18n="trial_try_three">Попробуйте 3 дня бесплатно</strong>
               <span data-i18n="paywall_trial_desc">Без привязки карты • Все серверы сразу</span>
             </div>
           </div>
           <button type="button" id="btn-paywall-trial" class="btn-primary btn-glow btn-wide" style="height: 46px; margin-top: 10px;">
-            <span>Активировать 3 дня бесплатно</span>
+            <span data-i18n="trial_activate_three">Активировать 3 дня бесплатно</span>
           </button>
         </div>
 
@@ -1259,7 +1259,7 @@
               <div class="tariff-titles">
                 <div class="tariff-name-row">
                   <strong data-i18n="paywall_12months">12 месяцев</strong>
-                  <span class="gift-badge">+ 3 в подарок</span>
+                  <span class="gift-badge" data-i18n="gift_three_months">+ 3 в подарок</span>
                 </div>
                 <span class="tariff-subnote">—</span>
               </div>
@@ -1273,7 +1273,7 @@
                 <div class="tariff-name-row">
                   <strong data-i18n="paywall_1month">1 месяц</strong>
                 </div>
-                <span class="tariff-subnote">30 дней</span>
+                <span class="tariff-subnote" data-i18n="duration_30days">30 дней</span>
               </div>
             </div>
             <strong class="tariff-price-bold">—</strong>
@@ -1308,8 +1308,8 @@
           </div>
           <h4 class="tg-oauth-step-title" data-i18n="telegram_auth_confirm">Подтвердите вход в Telegram-боте</h4>
           <p class="modal-desc">
-            Мы открыли Telegram-бота <strong>@ByMeVPNbot</strong>.<br/>
-            Нажмите <strong>СТАРТ</strong> (или кнопку подтверждения) в боте для завершения входа.
+            <span data-i18n="telegram_opened_bot">Откройте Telegram-бота</span> <strong>@ByMeVPNbot</strong>.
+            <span data-i18n="telegram_finish_login">Нажмите START или подтвердите вход в боте.</span>
           </p>
           <div class="tg-oauth-actions">
             <button type="button" id="btn-tg-reopen" class="btn-primary btn-tg-reopen">

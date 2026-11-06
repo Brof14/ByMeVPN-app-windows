@@ -24,7 +24,7 @@ function localeHarness(language) {
 
 test('Android parity: system mode is the persisted default and a selectable UI option', () => {
   assert.match(rust, /"language": "system"/);
-  assert.match(rust, /Some\("ru" \| "en" \| "system"\)/);
+  assert.ok(rust.includes('Some("ru" | "en" | "system")'));
   assert.match(html, /data-lang="system"/);
   assert.match(js, /system_language: 'Системный'/);
   assert.match(js, /system_language: 'System'/);

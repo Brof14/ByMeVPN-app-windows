@@ -60,3 +60,38 @@ impl Drop for ChildJob {
         unsafe { CloseHandle(self.0) };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{os::windows::process::CommandExt, process::Command, thread, time::Duration};
+
+    #[test]
+    fn closing_job_handle_terminates_tracked_child() {
+        // Real Win32 semantics, not a mocked contract: an unexpectedly
+        // terminated Tauri process closes exactly this job handle.
+        let mut child = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 30"])
+            .creation_flags(0x0800_0000)
+            .spawn()
+            .expect("Windows must launch a harmless idle test child");
+        let job = match ChildJob::attach(&child) {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("Cannot enforce fail-closed process supervision: {error}");
+            }
+        };
+        drop(job);
+        for _ in 0..60 {
+            if child.try_wait().expect("read child exit").is_some() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("Closing the Job Object did not terminate the child process");
+    }
+}

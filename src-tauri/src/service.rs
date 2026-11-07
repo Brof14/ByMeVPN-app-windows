@@ -797,13 +797,24 @@ pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
     snapshot(&app).await
 }
 
+fn tcp_ping_target(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn protocol_supports_tcp_ping(config: &Value) -> bool {
+    !matches!(
+        config.get("protocol").and_then(Value::as_str),
+        Some("hysteria2" | "hy2")
+    )
+}
+
 pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
     use std::net::{TcpStream, ToSocketAddrs};
-    let target = if host.contains(':') && !host.starts_with('[') {
-        host.to_string()
-    } else {
-        format!("{host}:{default_port}")
-    };
+    let target = tcp_ping_target(host, default_port);
     if let Ok(addrs) = target.to_socket_addrs() {
         for addr in addrs {
             let start = std::time::Instant::now();
@@ -918,7 +929,13 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             .to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
         let supported = supports_windows_session(config);
-        let task = if supported && !host.is_empty() && (1..=65535).contains(&port) {
+        // Hysteria2 is UDP-only; a TCP connect is not its latency and
+        // just delays the server list by waiting for a closed TCP port.
+        let task = if supported
+            && protocol_supports_tcp_ping(config)
+            && !host.is_empty()
+            && (1..=65535).contains(&port)
+        {
             let slots = ping_slots.clone();
             Some(tauri::async_runtime::spawn(async move {
                 let _permit = slots.acquire_owned().await.ok()?;
@@ -2061,6 +2078,16 @@ pub fn open_external_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ping_probe_handles_ipv6_and_skips_udp_only_hysteria() {
+        assert_eq!(tcp_ping_target("vpn.example.com", 443), "vpn.example.com:443");
+        assert_eq!(tcp_ping_target("2001:db8::1", 443), "[2001:db8::1]:443");
+        assert_eq!(tcp_ping_target("[2001:db8::1]", 443), "[2001:db8::1]:443");
+        assert!(protocol_supports_tcp_ping(&json!({"protocol":"vless"})));
+        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hysteria2"})));
+        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
+    }
 
     #[test]
     fn packaged_runtime_layout_resolves_new_and_legacy_tauri_paths() {

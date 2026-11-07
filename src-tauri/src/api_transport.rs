@@ -112,7 +112,9 @@ mod tests {
                 let mut buffer = [0; 4096];
                 let size = stream.read(&mut buffer).unwrap();
                 stream
-                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    )
                     .unwrap();
                 String::from_utf8_lossy(&buffer[..size]).to_ascii_lowercase()
             });

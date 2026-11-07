@@ -44,6 +44,7 @@ pub struct ActiveTunnel {
     pub server_ip: String,
     pub server_host: String,
     pub server_port: u16,
+    pub use_tcp_ping: bool,
     pub last_egress_probe: std::time::Instant,
     pub last_ping_probe: std::time::Instant,
     pub cached_ping_ms: u32,
@@ -1765,6 +1766,7 @@ pub async fn vpn_start(
             server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
             server_host: host.to_string(),
             server_port,
+            use_tcp_ping: protocol_supports_tcp_ping(session),
             last_egress_probe: std::time::Instant::now(),
             last_ping_probe: std::time::Instant::now() - Duration::from_secs(50),
             cached_ping_ms: ping,
@@ -1880,7 +1882,8 @@ pub async fn vpn_status(
     let ping_probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
-            (active.last_ping_probe.elapsed() >= Duration::from_secs(45)).then(|| {
+            (active.use_tcp_ping && active.last_ping_probe.elapsed() >= Duration::from_secs(45))
+                .then(|| {
                 (
                     active.started_at,
                     active.server_host.clone(),

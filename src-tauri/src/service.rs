@@ -2081,11 +2081,16 @@ mod tests {
 
     #[test]
     fn ping_probe_handles_ipv6_and_skips_udp_only_hysteria() {
-        assert_eq!(tcp_ping_target("vpn.example.com", 443), "vpn.example.com:443");
+        assert_eq!(
+            tcp_ping_target("vpn.example.com", 443),
+            "vpn.example.com:443"
+        );
         assert_eq!(tcp_ping_target("2001:db8::1", 443), "[2001:db8::1]:443");
         assert_eq!(tcp_ping_target("[2001:db8::1]", 443), "[2001:db8::1]:443");
         assert!(protocol_supports_tcp_ping(&json!({"protocol":"vless"})));
-        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hysteria2"})));
+        assert!(!protocol_supports_tcp_ping(
+            &json!({"protocol":"hysteria2"})
+        ));
         assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
     }
 

@@ -65,7 +65,15 @@ pub fn build_tun_config_ext(
             let id = text(session, &["uuid", "id"])
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .ok_or("Сервер вернул некорректный идентификатор VPN.")?;
-            let flow = text(session, &["flow"]).unwrap_or("xtls-rprx-vision");
+            // Preserve an explicitly empty flow. XTLS-Vision is only a legacy
+            // default for VLESS Reality over TCP, never for TLS or XHTTP.
+            let flow = session.get("flow").and_then(Value::as_str).unwrap_or(
+                if security == "reality" && matches!(network.as_str(), "tcp" | "raw") {
+                    "xtls-rprx-vision"
+                } else {
+                    ""
+                },
+            );
             if !flow.is_empty() && flow != "xtls-rprx-vision" {
                 return Err("Сервер использует неподдерживаемый режим VLESS.".into());
             }
@@ -423,6 +431,27 @@ mod tests {
             config["outbounds"][0]["streamSettings"]["tlsSettings"]["serverName"],
             "example.com"
         );
+        assert!(config["outbounds"][0]["settings"]["vnext"][0]["users"][0]
+            .get("flow")
+            .is_none());
+    }
+
+    #[test]
+    fn honors_explicit_empty_reality_flow_and_never_defaults_vision_for_tls() {
+        let mut reality = session();
+        reality["flow"] = json!("");
+        let config = build_tun_config(&reality).unwrap();
+        assert!(config["outbounds"][0]["settings"]["vnext"][0]["users"][0]
+            .get("flow")
+            .is_none());
+
+        let mut tls = session();
+        tls["security"] = json!("tls");
+        tls["public_key"] = json!(null);
+        let config = build_tun_config(&tls).unwrap();
+        assert!(config["outbounds"][0]["settings"]["vnext"][0]["users"][0]
+            .get("flow")
+            .is_none());
     }
 
     #[test]

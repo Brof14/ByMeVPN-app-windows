@@ -52,6 +52,17 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File scripts/setup-runtime.ps1
 
+      - name: Validate PowerShell diagnostic syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/diagnose-vpn.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+
       - name: Validate frontend JavaScript
         run: node --check ui/app.js
 

@@ -17,7 +17,26 @@ const PROBES: [&str; 6] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EgressFailure {
     Unavailable, // External or DNS/TLS services could not be reached.
-    Unchanged,   // We DID observe the original IPv4, indicating a route leak.
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressCheck {
+    Verified(IpAddr),
+    Unchanged,
+    Unavailable,
+    Unverified(IpAddr),
+}
+
+pub fn classify_egress(
+    baseline: Option<IpAddr>,
+    observed: Result<IpAddr, EgressFailure>,
+) -> EgressCheck {
+    match (baseline, observed) {
+        (Some(baseline), Ok(observed)) if baseline == observed => EgressCheck::Unchanged,
+        (Some(_), Ok(observed)) => EgressCheck::Verified(observed),
+        (None, Ok(observed)) => EgressCheck::Unverified(observed),
+        (_, Err(_)) => EgressCheck::Unavailable,
+    }
 }
 
 fn parse_ip(body: &str) -> Result<IpAddr, String> {
@@ -110,20 +129,45 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
     )
 }
 
-/// Unchanged is a definite leak signal. Unavailable is only unknown, never
-/// a reason to assert protection OR to assume that Xray itself crashed.
-pub async fn verify_egress(baseline: IpAddr) -> Result<IpAddr, EgressFailure> {
-    let client = probe_client().map_err(|_| EgressFailure::Unavailable)?;
-    match probe_egress(client).await {
-        Some(observed) if observed == baseline => Err(EgressFailure::Unchanged),
-        Some(observed) => Ok(observed),
-        None => Err(EgressFailure::Unavailable),
-    }
+/// A missing baseline permits a tunnel attempt but can never verify protection.
+pub async fn verify_egress(baseline: Option<IpAddr>) -> EgressCheck {
+    let observed = match probe_client() {
+        Ok(client) => probe_egress(client).await.ok_or(EgressFailure::Unavailable),
+        Err(_) => Err(EgressFailure::Unavailable),
+    };
+    classify_egress(baseline, observed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_baseline_does_not_prevent_start_but_never_claims_verification() {
+        let observed = "198.51.100.9".parse::<IpAddr>().unwrap();
+        assert_eq!(
+            classify_egress(None, Ok(observed)),
+            EgressCheck::Unverified(observed)
+        );
+        assert_eq!(
+            classify_egress(None, Err(EgressFailure::Unavailable)),
+            EgressCheck::Unavailable
+        );
+    }
+
+    #[test]
+    fn known_baseline_detects_changed_and_unchanged_egress() {
+        let baseline = "192.0.2.10".parse::<IpAddr>().unwrap();
+        let vpn_ip = "198.51.100.9".parse::<IpAddr>().unwrap();
+        assert_eq!(
+            classify_egress(Some(baseline), Ok(vpn_ip)),
+            EgressCheck::Verified(vpn_ip)
+        );
+        assert_eq!(
+            classify_egress(Some(baseline), Ok(baseline)),
+            EgressCheck::Unchanged
+        );
+    }
 
     #[test]
     fn accepts_plain_ip_and_cloudflare_trace_but_rejects_html_and_ipv6() {

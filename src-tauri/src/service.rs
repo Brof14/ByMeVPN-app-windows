@@ -1,6 +1,6 @@
 use crate::api_transport::{send_to_bases, API_BASES};
-use crate::egress::{verify_egress, EgressFailure};
-use crate::tun_config::build_tun_config_ext;
+use crate::egress::{verify_egress, EgressCheck};
+use crate::tun_config::{build_tun_config_ext, supports_windows_session};
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
@@ -47,7 +47,7 @@ pub struct ActiveTunnel {
     pub last_egress_probe: std::time::Instant,
     pub last_ping_probe: std::time::Instant,
     pub cached_ping_ms: u32,
-    pub baseline_ip: std::net::IpAddr,
+    pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
 }
 
@@ -267,6 +267,17 @@ fn api_error(status: StatusCode, value: &Value) -> String {
     }
 }
 
+fn api_transport_error(error: &reqwest::Error, purpose: &str) -> String {
+    let reason = if error.is_timeout() {
+        "истекло время ожидания ответа"
+    } else if error.is_connect() {
+        "не удалось установить защищённое TLS-соединение"
+    } else {
+        "ошибка сетевого обмена"
+    };
+    format!("{purpose}: {reason}. Проверьте доступность API и повторите попытку.")
+}
+
 #[derive(Debug)]
 enum RefreshError {
     InvalidSession,
@@ -288,8 +299,11 @@ async fn refresh(client: &Client) -> Result<(), RefreshError> {
         None,
     )
     .await
-    .map_err(|_| {
-        RefreshError::Unavailable("Не удалось связаться с API для обновления сеанса.".into())
+    .map_err(|error| {
+        RefreshError::Unavailable(api_transport_error(
+            &error,
+            "Не удалось обновить сеанс ByMeVPN",
+        ))
     })?;
     let status = response.status();
     let value: Value = response.json().await.unwrap_or(Value::Null);
@@ -352,9 +366,7 @@ async fn request(
         token.as_deref(),
     )
     .await
-    .map_err(|_| {
-        "Не удалось связаться с ByMeVPN API. Проверьте подключение и повторите попытку.".to_string()
-    })?;
+    .map_err(|error| api_transport_error(&error, "Не удалось связаться с ByMeVPN API"))?;
     let status = response.status();
     let data: Value = if status == StatusCode::NO_CONTENT {
         Value::Null
@@ -905,23 +917,7 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             .unwrap_or("")
             .to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
-        let supported = config
-            .get("protocol")
-            .and_then(Value::as_str)
-            .unwrap_or("vless")
-            == "vless"
-            && config
-                .get("security")
-                .and_then(Value::as_str)
-                .unwrap_or("reality")
-                == "reality"
-            && matches!(
-                config
-                    .get("network")
-                    .and_then(Value::as_str)
-                    .unwrap_or("tcp"),
-                "tcp" | "raw"
-            );
+        let supported = supports_windows_session(config);
         let task = if supported && !host.is_empty() && (1..=65535).contains(&port) {
             let slots = ping_slots.clone();
             Some(tauri::async_runtime::spawn(async move {
@@ -1546,11 +1542,9 @@ pub async fn vpn_start(
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let id = install_id(&app)?;
 
-    // Verify the original egress BEFORE requesting a server-side session.
-    // Failed public-IP probes must not allocate remote device slots.
-    let baseline_ip = crate::egress::public_egress_ip()
-        .await
-        .map_err(|e| format!("Не удалось безопасно проверить исходный маршрут: {e}"))?;
+    // Egress providers may be blocked independently of the VPN endpoint. Their
+    // outage must not prevent connecting, but protection stays unverified.
+    let baseline_ip = crate::egress::public_egress_ip().await.ok();
 
     let session_val = request(
         &app,
@@ -1681,10 +1675,12 @@ pub async fn vpn_start(
 
         let mut verified_ip = None;
         let mut fatal_error: Option<&str> = None;
-        // Two bounded probes during startup. If external probes are unreachable,
-        // keep tunnel state unverified and let native surveillance retry later.
-        // Avoid blocking the Connect button for three full HTTPS timeout windows.
-        for _ in 0..2 {
+        let mut unchanged_egress_checks = 0;
+        // Give Windows routes time to propagate before classifying unchanged
+        // egress as a leak. Without a baseline, an observation cannot verify
+        // the tunnel and must never be treated as success.
+        let startup_checks = if baseline_ip.is_some() { 3 } else { 1 };
+        for _ in 0..startup_checks {
             tokio::time::sleep(Duration::from_millis(550)).await;
             match child.try_wait() {
                 Ok(Some(_)) => {
@@ -1698,18 +1694,21 @@ pub async fn vpn_start(
                 Ok(None) => {}
             }
             match verify_egress(baseline_ip).await {
-                Ok(ip) => {
+                EgressCheck::Verified(ip) => {
                     verified_ip = Some(ip);
                     break;
                 }
-                Err(EgressFailure::Unchanged) => {
-                    // A real, observed original IP is evidence of a bypass.
-                    fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
-                    break;
+                EgressCheck::Unchanged => {
+                    unchanged_egress_checks += 1;
+                    if unchanged_egress_checks == startup_checks {
+                        fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
+                        break;
+                    }
                 }
-                Err(EgressFailure::Unavailable) => {
+                EgressCheck::Unavailable | EgressCheck::Unverified(_) => {
                     // Unknown is not evidence of a leak or a healthy tunnel.
-                    // Do NOT claim protection; keep Xray running for a retry.
+                    // Keep the process alive, but never claim protection.
+                    break;
                 }
             }
         }
@@ -1817,28 +1816,29 @@ pub async fn vpn_status(
     let probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
+            let baseline_ip = active.baseline_ip?;
             (active.last_egress_probe.elapsed() >= Duration::from_secs(20))
-                .then_some((active.started_at, active.baseline_ip))
+                .then_some((active.started_at, baseline_ip))
         })
     };
     if let Some((started_at, baseline_ip)) = probe {
-        let result = tokio::time::timeout(Duration::from_secs(9), verify_egress(baseline_ip))
+        let result = tokio::time::timeout(Duration::from_secs(9), verify_egress(Some(baseline_ip)))
             .await
-            .unwrap_or(Err(EgressFailure::Unavailable));
+            .unwrap_or(EgressCheck::Unavailable);
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
                 active.last_egress_probe = std::time::Instant::now();
                 match result {
-                    Ok(ip) => {
+                    EgressCheck::Verified(ip) => {
                         active.egress_verified = true;
                         active.server_ip = ip.to_string();
                     }
-                    Err(EgressFailure::Unavailable) => {
+                    EgressCheck::Unavailable | EgressCheck::Unverified(_) => {
                         active.egress_verified = false;
                         active.server_ip.clear();
                     }
-                    Err(EgressFailure::Unchanged) => {
+                    EgressCheck::Unchanged => {
                         // This is evidence of bypass, unlike a probe outage.
                         let _ = active.child.kill();
                         let _ = active.child.wait();

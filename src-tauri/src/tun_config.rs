@@ -214,6 +214,10 @@ pub fn build_tun_config_ext(
     }))
 }
 
+pub fn supports_windows_session(session: &Value) -> bool {
+    build_tun_config_ext(session, false, "none", "cloudflare").is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +281,19 @@ mod tests {
         invalid = session();
         invalid["server"] = json!("example.com/path");
         assert!(build_tun_config(&invalid).is_err());
+    }
+
+    #[test]
+    fn server_support_matches_full_windows_configuration_validation() {
+        assert!(supports_windows_session(&session()));
+
+        let mut unsupported_flow = session();
+        unsupported_flow["flow"] = json!("xtls-rprx-vision-invalid");
+        assert!(!supports_windows_session(&unsupported_flow));
+
+        let mut missing_key = session();
+        missing_key["public_key"] = json!(null);
+        assert!(!supports_windows_session(&missing_key));
     }
 
     #[test]

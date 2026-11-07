@@ -39,7 +39,9 @@ test('nonblocking validation and capped ping probes protect responsiveness', () 
   assert.match(native, /spawn_blocking\(move \|\| \{/);
   assert.match(native, /Semaphore::new\(6\)/);
   assert.match(native, /if supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
-  assert.match(native, /Some\("hysteria2" \| "hy2"\)/);
+  assert.match(native, /protocol\.eq_ignore_ascii_case\("hysteria2"\)/);
+  assert.match(native, /tokio::time::timeout_at\(deadline, &mut task\)/);
+  assert.match(native, /task\.abort\(\)/);
 });
 
 test('experimental builds are not auto published to paying clients', () => {

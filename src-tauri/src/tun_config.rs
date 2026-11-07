@@ -30,43 +30,143 @@ pub fn build_tun_config_ext(
     ad_block: &str,
     dns_mode: &str,
 ) -> Result<Value, String> {
-    if text(session, &["protocol"]).unwrap_or("vless") != "vless"
-        || text(session, &["security"]).unwrap_or("reality") != "reality"
-        || !matches!(text(session, &["network"]).unwrap_or("tcp"), "tcp" | "raw")
-    {
-        return Err("Сервер использует пока не поддерживаемый протокол Windows.".into());
-    }
+    let protocol = text(session, &["protocol"])
+        .unwrap_or("vless")
+        .to_ascii_lowercase();
+    let security = text(session, &["security"])
+        .unwrap_or("reality")
+        .to_ascii_lowercase();
+    let network = text(session, &["network"])
+        .unwrap_or("tcp")
+        .to_ascii_lowercase();
     let host = text(session, &["server", "endpoint"])
         .filter(|s| valid_host(s))
         .ok_or("Сервер вернул некорректный адрес VPN.")?;
     let sni = text(session, &["server_name", "sni"])
         .filter(|s| valid_host(s))
-        .ok_or("Сервер не вернул корректное имя Reality.")?;
-    let id = text(session, &["uuid", "id"])
-        .and_then(|s| Uuid::parse_str(s).ok())
-        .ok_or("Сервер вернул некорректный идентификатор VPN.")?;
-    let key = text(session, &["public_key", "server_public_key"])
-        .filter(|key| {
-            URL_SAFE_NO_PAD
-                .decode(key)
-                .is_ok_and(|bytes| bytes.len() == 32)
-        })
-        .ok_or("Сервер вернул некорректный ключ Reality.")?;
+        .ok_or("Сервер не вернул корректное имя TLS.")?;
     let port = session.get("port").and_then(Value::as_u64).unwrap_or(443);
     if !(1..=65535).contains(&port) {
         return Err("Сервер вернул некорректный порт VPN.".into());
     }
-    let short_id = text(session, &["short_id"]).unwrap_or("");
-    if short_id.len() > 16
-        || !short_id.len().is_multiple_of(2)
-        || !short_id.bytes().all(|b| b.is_ascii_hexdigit())
-    {
-        return Err("Сервер вернул некорректный Reality short ID.".into());
-    }
-    let flow = text(session, &["flow"]).unwrap_or("xtls-rprx-vision");
-    if flow != "xtls-rprx-vision" {
-        return Err("Сервер использует неподдерживаемый режим VLESS.".into());
-    }
+    let fingerprint = text(session, &["fingerprint"]).unwrap_or(if protocol == "hysteria2" {
+        "firefox"
+    } else {
+        "chrome"
+    });
+
+    let proxy_outbound = match protocol.as_str() {
+        "vless" => {
+            if !matches!(security.as_str(), "reality" | "tls")
+                || !matches!(network.as_str(), "tcp" | "raw" | "xhttp")
+            {
+                return Err("Сервер использует пока не поддерживаемый протокол Windows.".into());
+            }
+            let id = text(session, &["uuid", "id"])
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .ok_or("Сервер вернул некорректный идентификатор VPN.")?;
+            let flow = text(session, &["flow"]).unwrap_or("xtls-rprx-vision");
+            if !flow.is_empty() && flow != "xtls-rprx-vision" {
+                return Err("Сервер использует неподдерживаемый режим VLESS.".into());
+            }
+            let mut user = json!({"id": id.to_string(), "encryption": "none"});
+            if !flow.is_empty() {
+                user["flow"] = json!(flow);
+            }
+            let mut stream_settings = json!({
+                "network": if network == "raw" { "tcp" } else { network.as_str() },
+                "security": security,
+            });
+            if network == "xhttp" {
+                let mut settings = json!({});
+                for (field, aliases) in [
+                    ("path", &["transport_path"][..]),
+                    ("host", &["transport_host"][..]),
+                    ("mode", &["transport_mode"][..]),
+                ] {
+                    if let Some(value) = text(session, aliases) {
+                        settings[field] = json!(value);
+                    }
+                }
+                stream_settings["xhttpSettings"] = settings;
+            }
+            if security == "reality" {
+                let key = text(session, &["public_key", "server_public_key"])
+                    .filter(|key| {
+                        URL_SAFE_NO_PAD
+                            .decode(key)
+                            .is_ok_and(|bytes| bytes.len() == 32)
+                    })
+                    .ok_or("Сервер вернул некорректный ключ Reality.")?;
+                let short_id = text(session, &["short_id"]).unwrap_or("");
+                if short_id.len() > 16
+                    || !short_id.len().is_multiple_of(2)
+                    || !short_id.bytes().all(|b| b.is_ascii_hexdigit())
+                {
+                    return Err("Сервер вернул некорректный Reality short ID.".into());
+                }
+                stream_settings["realitySettings"] = json!({
+                    "fingerprint": fingerprint,
+                    "serverName": sni,
+                    "publicKey": key,
+                    "shortId": short_id
+                });
+            } else {
+                stream_settings["tlsSettings"] = json!({
+                    "serverName": sni,
+                    "fingerprint": fingerprint,
+                    "alpn": ["h2", "http/1.1"]
+                });
+            }
+            json!({
+                "tag": "proxy",
+                "protocol": "vless",
+                "settings": {"vnext": [{
+                    "address": host,
+                    "port": port,
+                    "users": [user]
+                }]},
+                "streamSettings": stream_settings
+            })
+        }
+        "hysteria2" | "hy2" => {
+            if security != "tls" || !matches!(network.as_str(), "udp" | "hysteria") {
+                return Err("Некорректные параметры Hysteria 2.".into());
+            }
+            let auth =
+                text(session, &["uuid", "id"]).ok_or("Сервер не вернул пароль Hysteria 2.")?;
+            let obfuscation = text(session, &["encryption"]).unwrap_or("");
+            let obfuscation_password = text(session, &["flow"]).unwrap_or("");
+            if !obfuscation.is_empty() && obfuscation != "salamander" {
+                return Err("Сервер использует неизвестную обфускацию Hysteria 2.".into());
+            }
+            if obfuscation == "salamander" && obfuscation_password.is_empty() {
+                return Err("Сервер не вернул пароль обфускации Hysteria 2.".into());
+            }
+            let mut stream_settings = json!({
+                "network": "hysteria",
+                "security": "tls",
+                "hysteriaSettings": {"version": 2, "auth": auth},
+                "tlsSettings": {
+                    "serverName": sni,
+                    "fingerprint": fingerprint,
+                    "alpn": ["h3"]
+                }
+            });
+            if obfuscation == "salamander" {
+                stream_settings["finalmask"] = json!({
+                    "udp": [{"type": "salamander", "settings": {"password": obfuscation_password}}]
+                });
+            }
+            json!({
+                "tag": "proxy",
+                "protocol": "hysteria",
+                "settings": {"version": 2, "address": host, "port": port},
+                "streamSettings": stream_settings
+            })
+        }
+        _ => return Err("Сервер использует пока не поддерживаемый протокол Windows.".into()),
+    };
 
     let dns_servers = match dns_mode {
         "cloudflare" => ["1.1.1.1", "1.0.0.1"],
@@ -169,31 +269,7 @@ pub fn build_tun_config_ext(
             }
         }],
         "outbounds": [
-            {
-                "tag": "proxy",
-                "protocol": "vless",
-                "settings": {
-                    "vnext": [{
-                        "address": host,
-                        "port": port,
-                        "users": [{
-                            "id": id.to_string(),
-                            "encryption": "none",
-                            "flow": flow
-                        }]
-                    }]
-                },
-                "streamSettings": {
-                    "network": "tcp",
-                    "security": "reality",
-                    "realitySettings": {
-                        "fingerprint": text(session, &["fingerprint"]).unwrap_or("chrome"),
-                        "serverName": sni,
-                        "publicKey": key,
-                        "shortId": short_id
-                    }
-                }
-            },
+            proxy_outbound,
             {
                 "tag": "direct",
                 "protocol": "freedom"
@@ -297,6 +373,59 @@ mod tests {
     }
 
     #[test]
+    fn supports_android_hysteria2_sessions_and_salamander_obfuscation() {
+        let mut session = session();
+        session["protocol"] = json!("hysteria2");
+        session["network"] = json!("udp");
+        session["security"] = json!("tls");
+        session["uuid"] = json!("subscription-auth");
+        session["public_key"] = json!("");
+        session["encryption"] = json!("salamander");
+        session["flow"] = json!("obfuscation-password");
+
+        assert!(supports_windows_session(&session));
+        let config = build_tun_config(&session).unwrap();
+        assert_eq!(config["outbounds"][0]["protocol"], "hysteria");
+        assert_eq!(config["outbounds"][0]["settings"]["version"], 2);
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["network"],
+            "hysteria"
+        );
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["hysteriaSettings"]["auth"],
+            "subscription-auth"
+        );
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["finalmask"]["udp"][0]["type"],
+            "salamander"
+        );
+    }
+
+    #[test]
+    fn supports_android_vless_xhttp_with_tls() {
+        let mut session = session();
+        session["security"] = json!("tls");
+        session["public_key"] = json!(null);
+        session["network"] = json!("xhttp");
+        session["transport_path"] = json!("/edge");
+        session["transport_host"] = json!("cdn.example.com");
+        session["transport_mode"] = json!("stream-up");
+
+        assert!(supports_windows_session(&session));
+        let config = build_tun_config(&session).unwrap();
+        assert_eq!(config["outbounds"][0]["protocol"], "vless");
+        assert_eq!(config["outbounds"][0]["streamSettings"]["network"], "xhttp");
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["xhttpSettings"]["path"],
+            "/edge"
+        );
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["serverName"],
+            "example.com"
+        );
+    }
+
+    #[test]
     fn validates_dns_mode_and_generates_provider_addresses() {
         let config = build_tun_config_ext(&session(), true, "none", "adguard").unwrap();
         assert_eq!(config["inbounds"][0]["settings"]["dns"][0], "94.140.14.14");
@@ -344,5 +473,45 @@ mod tests {
             output_ext.status.success(),
             "Xray rejected the generated extended configuration with RU bypass and ad-block"
         );
+    }
+
+    #[test]
+    fn xray_accepts_android_xhttp_tls_and_hysteria2_profiles() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        let mut xhttp = session();
+        xhttp["security"] = json!("tls");
+        xhttp["public_key"] = json!(null);
+        xhttp["network"] = json!("xhttp");
+        xhttp["transport_path"] = json!("/edge");
+        xhttp["transport_host"] = json!("cdn.example.com");
+        xhttp["transport_mode"] = json!("stream-up");
+        let mut hysteria = session();
+        hysteria["protocol"] = json!("hysteria2");
+        hysteria["network"] = json!("udp");
+        hysteria["security"] = json!("tls");
+        hysteria["uuid"] = json!("subscription-auth");
+        hysteria["public_key"] = json!("");
+        hysteria["encryption"] = json!("salamander");
+        hysteria["flow"] = json!("obfuscation-password");
+
+        for (name, config) in [
+            ("xhttp", build_tun_config(&xhttp).unwrap()),
+            ("hysteria2", build_tun_config(&hysteria).unwrap()),
+        ] {
+            let path = std::env::temp_dir().join(format!("bymevpn-{name}-{}.json", Uuid::new_v4()));
+            std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+            let result = std::process::Command::new(&root)
+                .args(["run", "-test", "-config"])
+                .arg(&path)
+                .output();
+            let _ = std::fs::remove_file(path);
+            let output = result.expect("Verified development Xray runtime must be available");
+            assert!(
+                output.status.success(),
+                "Xray rejected the generated {name} config: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }

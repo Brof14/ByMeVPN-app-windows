@@ -806,10 +806,12 @@ fn tcp_ping_target(host: &str, port: u16) -> String {
 }
 
 fn protocol_supports_tcp_ping(config: &Value) -> bool {
-    !matches!(
-        config.get("protocol").and_then(Value::as_str),
-        Some("hysteria2" | "hy2")
-    )
+    !config
+        .get("protocol")
+        .and_then(Value::as_str)
+        .is_some_and(|protocol| {
+            protocol.eq_ignore_ascii_case("hysteria2") || protocol.eq_ignore_ascii_case("hy2")
+        })
 }
 
 pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
@@ -952,10 +954,15 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             "city":city, "city_en":city_en,
             "flag":flag, "supported":supported, "ping":0}));
     }
-    // Concurrent TCP probes; never block the async runtime or measure one by one.
+    // Bound the entire catalog loading delay, even with dozens of blocked
+    // endpoints. Unknown latency stays 0 rather than becoming a fake ping.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
     for (server, task) in normalized.iter_mut().zip(tasks) {
-        if let Some(task) = task {
-            server["ping"] = json!(task.await.ok().flatten().unwrap_or(0));
+        if let Some(mut task) = task {
+            match tokio::time::timeout_at(deadline, &mut task).await {
+                Ok(Ok(Some(ping))) => server["ping"] = json!(ping),
+                _ => task.abort(),
+            }
         }
     }
     Ok(normalized)
@@ -2092,6 +2099,7 @@ mod tests {
             &json!({"protocol":"hysteria2"})
         ));
         assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
+        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"HYSTERIA2"})));
     }
 
     #[test]

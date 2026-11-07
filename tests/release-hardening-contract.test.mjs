@@ -32,7 +32,7 @@ test('VPN watchdog tears down server session on crash or proven leak', () => {
   assert.match(native, /Err\(EgressFailure::Unchanged\)/);
   assert.match(native, /revoke_session = true;/);
   assert.match(native, /if revoke_session \{/);
-  assert.match(main, /vpn_status\(watchdog\.clone\(\), watchdog\.state/);
+  assert.match(main, /vpn_status\(\s*watchdog\.clone\(\),\s*watchdog\.state/);
 });
 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {

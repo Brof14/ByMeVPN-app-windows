@@ -44,7 +44,9 @@ Write-Pass 'API DNS' ([bool]$dns) $(if ($dns) { "A record resolved to $($dns.IPA
 
 $httpCode = & curl.exe --silent --show-error --output NUL --max-time 10 --connect-timeout 4 --proto '=https' --write-out '%{http_code}' $apiUrl 2>$null
 $curlExit = $LASTEXITCODE
-$apiReachable = $curlExit -eq 0 -and $httpCode -match '^\d{3}$' -and $httpCode -ne '000'
+# A successful TLS handshake is not enough: an unrelated 404/500 route
+# must not be labeled as a healthy authenticated API.
+$apiReachable = $curlExit -eq 0 -and $httpCode -in @('401', '403')
 Write-Pass 'API HTTPS' $apiReachable $(if ($apiReachable) { "HTTP $httpCode (401/403 is expected without login)" } else { "TLS/HTTP failed (curl exit $curlExit, status $httpCode)" })
 
 # Read-only, unauthenticated health endpoint on the backend's documented local
@@ -64,6 +66,27 @@ $tunAdapters = @(Get-NetAdapter -IncludeHidden | Where-Object {
     $_.Name -match 'ByMeVPN' -or $_.InterfaceDescription -match 'ByMeVPN|Wintun Tunnel'
 })
 Write-Check 'TUN adapter' $(if ($tunAdapters.Count) { 'PASS' } else { 'WARN' }) $(if ($tunAdapters.Count) { ($tunAdapters | ForEach-Object { "$($_.Name) [$($_.Status)]" }) -join ', ' } else { 'no ByMeVPN TUN adapter found; connect first to inspect routes' })
+
+# Inspect actual OS routes only when a ByMeVPN adapter is up. These checks
+# are read-only and never modify the routing table or DNS configuration.
+$activeTun = @($tunAdapters | Where-Object { $_.Status -eq 'Up' })
+foreach ($adapter in $activeTun) {
+    $routes = @(Get-NetRoute -InterfaceIndex $adapter.ifIndex -ErrorAction SilentlyContinue)
+    $ipv4Default = @($routes | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' })
+    $ipv4Split = @($routes | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/1' })
+    $ipv4SplitOther = @($routes | Where-Object { $_.DestinationPrefix -eq '128.0.0.0/1' })
+    $ipv4Covered = $ipv4Default.Count -gt 0 -or ($ipv4Split.Count -gt 0 -and $ipv4SplitOther.Count -gt 0)
+    Write-Check 'IPv4 TUN routes' $(if ($ipv4Covered) { 'PASS' } else { 'FAIL' }) $(if ($ipv4Covered) { "default or split-default route through $($adapter.Name)" } else { "missing default route through $($adapter.Name); traffic may bypass the VPN" })
+
+    $ipv6Default = @($routes | Where-Object { $_.DestinationPrefix -eq '::/0' })
+    $ipv6SplitA = @($routes | Where-Object { $_.DestinationPrefix -eq '::/1' })
+    $ipv6SplitB = @($routes | Where-Object { $_.DestinationPrefix -eq '8000::/1' })
+    $ipv6Covered = $ipv6Default.Count -gt 0 -or ($ipv6SplitA.Count -gt 0 -and $ipv6SplitB.Count -gt 0)
+    Write-Check 'IPv6 TUN routes' $(if ($ipv6Covered) { 'PASS' } else { 'WARN' }) $(if ($ipv6Covered) { "IPv6 default route through $($adapter.Name)" } else { "no IPv6 default route through $($adapter.Name); verify whether IPv6 is blocked or can bypass" })
+
+    $dnsServers = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ErrorAction SilentlyContinue | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ })
+    Write-Check 'TUN DNS configuration' $(if ($dnsServers.Count) { 'PASS' } else { 'WARN' }) $(if ($dnsServers.Count) { ($dnsServers -join ', ') } else { "no Windows DNS servers reported on $($adapter.Name); inspect Xray DNS and WFP" })
+}
 
 $appData = Join-Path $env:APPDATA 'space.parahin.bymevpn.desktop'
 $startupLog = Join-Path $appData 'xray_startup.log'

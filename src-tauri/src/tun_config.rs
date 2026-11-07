@@ -67,7 +67,8 @@ pub fn build_tun_config_ext(
                 .ok_or("Сервер вернул некорректный идентификатор VPN.")?;
             // Preserve an explicitly empty flow. XTLS-Vision is only a legacy
             // default for VLESS Reality over TCP, never for TLS or XHTTP.
-            let default_flow = if security == "reality" && matches!(network.as_str(), "tcp" | "raw") {
+            let default_flow = if security == "reality" && matches!(network.as_str(), "tcp" | "raw")
+            {
                 "xtls-rprx-vision"
             } else {
                 ""

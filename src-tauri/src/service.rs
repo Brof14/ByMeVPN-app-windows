@@ -2099,7 +2099,9 @@ mod tests {
             &json!({"protocol":"hysteria2"})
         ));
         assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
-        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"HYSTERIA2"})));
+        assert!(!protocol_supports_tcp_ping(
+            &json!({"protocol":"HYSTERIA2"})
+        ));
     }
 
     #[test]

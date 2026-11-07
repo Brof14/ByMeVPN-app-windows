@@ -1884,12 +1884,12 @@ pub async fn vpn_status(
         lock.as_ref().and_then(|active| {
             (active.use_tcp_ping && active.last_ping_probe.elapsed() >= Duration::from_secs(45))
                 .then(|| {
-                (
-                    active.started_at,
-                    active.server_host.clone(),
-                    active.server_port,
-                )
-            })
+                    (
+                        active.started_at,
+                        active.server_host.clone(),
+                        active.server_port,
+                    )
+                })
         })
     };
     if let Some((started_at, host, port)) = ping_probe {

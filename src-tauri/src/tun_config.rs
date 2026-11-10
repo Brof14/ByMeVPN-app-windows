@@ -458,6 +458,75 @@ mod tests {
     }
 
     #[test]
+    fn tls_alpn_matches_android_subscription_without_invented_defaults() {
+        let mut tls = session();
+        tls["security"] = json!("tls");
+        tls["public_key"] = json!(null);
+        tls["alpn"] = json!(["h2", "http/1.1"]);
+        let config = build_tun_config(&tls).unwrap();
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
+            json!(["h2", "http/1.1"])
+        );
+
+        tls.as_object_mut().unwrap().remove("alpn");
+        let config = build_tun_config(&tls).unwrap();
+        assert!(config["outbounds"][0]["streamSettings"]["tlsSettings"]
+            .get("alpn")
+            .is_none());
+    }
+
+    #[test]
+    fn supports_android_alpn_csv_hysteria_defaults_and_missing_sni() {
+        let mut tls = session();
+        tls["security"] = json!("tls");
+        tls["public_key"] = json!(null);
+        tls["server_name"] = json!("");
+        tls["alpn"] = json!(" h2, http/1.1 ");
+        let config = build_tun_config(&tls).unwrap();
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
+            json!(["h2", "http/1.1"])
+        );
+        assert!(config["outbounds"][0]["streamSettings"]["tlsSettings"]
+            .get("serverName")
+            .is_none());
+
+        let mut hy2 = tls.clone();
+        hy2["protocol"] = json!("hysteria2");
+        hy2["network"] = json!("udp");
+        hy2["uuid"] = json!("server-supplied-auth");
+        hy2["alpn"] = json!(["h3", "custom-protocol"]);
+        let config = build_tun_config(&hy2).unwrap();
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
+            json!(["h3", "custom-protocol"])
+        );
+        hy2.as_object_mut().unwrap().remove("alpn");
+        let config = build_tun_config(&hy2).unwrap();
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
+            json!(["h3"])
+        );
+    }
+
+    #[test]
+    fn rejects_missing_or_invalid_port_and_malformed_alpn() {
+        let mut missing_port = session();
+        missing_port.as_object_mut().unwrap().remove("port");
+        assert!(build_tun_config(&missing_port).is_err());
+
+        let mut tls = session();
+        tls["security"] = json!("tls");
+        tls["public_key"] = json!(null);
+        tls["alpn"] = json!({"bogus": "h2"});
+        assert!(build_tun_config(&tls).is_err());
+
+        tls["alpn"] = json!(["h2", 17]);
+        assert!(build_tun_config(&tls).is_err());
+    }
+
+    #[test]
     fn validates_dns_mode_and_generates_provider_addresses() {
         let config = build_tun_config_ext(&session(), true, "none", "adguard").unwrap();
         assert_eq!(config["inbounds"][0]["settings"]["dns"][0], "94.140.14.14");

@@ -575,108 +575,73 @@
               </div>
             </div>
 
-            <!-- TAB 4: ACCOUNT (Screen 7) -->
-            <div id="tab-account" class="tab-content">
-              <!-- Top Row Cards -->
+            <!-- AccountScreen.kt: minimal profile, access card, two settings rows. -->
+            <div id="tab-account" class="tab-content mobile-account">
               <div class="account-top-cards-row">
-                <!-- User Profile Card -->
-                <div class="glass-card account-profile-card">
-                  <div class="profile-card-globe-art"></div>
-                  <div class="profile-avatar-circle">
-                    <span class="avatar-user-icon">👤</span>
+                <div class="account-profile-card">
+                  <div class="profile-avatar-circle" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></svg>
                   </div>
                   <div class="profile-details-column">
                     <h2 id="acc-user-name" class="profile-name-text">—</h2>
                     <span id="acc-user-email" class="profile-email-text">—</span>
-                    <span id="acc-user-status-pill" class="badge-active-mini">
-                      <span class="dot-green">●</span>
-                      <span data-i18n="active">Активна</span>
-                    </span>
                   </div>
+                  <span id="acc-user-status-pill" class="mobile-account-badge" data-i18n="active">Активен</span>
                 </div>
 
-                <!-- Subscription Management Card -->
-                <div class="glass-card account-sub-card">
-                  <div class="acc-sub-head">
-                    <span class="crown-icon">👑</span>
-                    <span data-i18n="card_sub">Подписка</span>
+                <div class="account-sub-card">
+                  <div id="account-active-state" class="mobile-account-active">
+                    <div class="mobile-account-kicker" data-i18n="account_subscription_eyebrow">ПОДПИСКА BYMEVPN</div>
+                    <div class="mobile-account-days">
+                      <strong id="acc-remaining-days">—</strong>
+                      <span data-i18n="account_days_suffix"> дн.</span>
+                    </div>
+                    <p data-i18n="account_days_caption">до окончания доступа</p>
+                    <div class="mobile-account-separator"></div>
+                    <div class="acc-sub-plan-row">
+                      <span data-i18n="account_your_plan">Ваш тариф</span>
+                      <h3 id="acc-plan-name" class="acc-plan-title">—</h3>
+                    </div>
+                    <div class="acc-sub-actions-row">
+                      <button type="button" id="btn-acc-renew" class="btn-secondary btn-acc-renew" data-i18n="account_renew_subscription">Продлить подписку</button>
+                    </div>
                   </div>
-                  <div class="acc-sub-plan-row">
-                    <h3 id="acc-plan-name" class="acc-plan-title">Годовой</h3>
-                    <span id="acc-autorenew-badge" class="badge-active-pill" data-i18n="autorenew_on">Статус автопродления</span>
+                  <div id="account-inactive-state" class="mobile-account-inactive hidden">
+                    <span class="mobile-account-kicker" data-i18n="account_access_eyebrow">ВАШ ДОСТУП</span>
+                    <h3 data-i18n="account_inactive_title">Подписка не активна</h3>
+                    <p data-i18n="account_inactive_desc">Оформите подписку, чтобы подключаться к серверам ByMeVPN.</p>
+                    <button type="button" id="btn-account-trial" class="btn-primary" data-i18n="account_free_trial">3 дня бесплатно</button>
+                    <button type="button" id="btn-account-pricing" class="mobile-pricing-link" data-i18n="account_view_plans">Посмотреть тарифы</button>
                   </div>
-                  <p id="acc-plan-validity" class="acc-validity-text">—</p>
-                  
-                  <div class="acc-sub-actions-row">
-                    <button type="button" id="btn-acc-renew" class="btn-primary btn-acc-renew">
-                      <span data-i18n="renew">Продлить</span>
-                      <span class="btn-arrow">›</span>
-                    </button>
-                    <button type="button" id="btn-acc-manage" class="btn-secondary btn-acc-manage">
-                      <span>⚙</span>
-                      <span data-i18n="manage_subscription">Управлять подпиской</span>
-                      <span class="btn-arrow">›</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Devices Section -->
-              <div class="account-devices-section" id="btn-acc-open-devices" style="cursor: pointer;" role="button" tabindex="0">
-                <div class="devices-head-line">
-                  <div class="devices-title-group">
-                    <span class="devices-icon">💻</span>
-                    <strong data-i18n="devices">Мои устройства</strong>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span id="acc-devices-ratio" class="badge-devices-ratio">—</span>
-                    <span class="card-row-arrow">›</span>
-                  </div>
-                </div>
-
-                <div id="acc-devices-list" class="devices-cards-stack">
-                  <!-- Dynamically populated from real backend API devices -->
+                  <p id="acc-plan-validity" class="hidden"></p>
+                  <span id="acc-autorenew-badge" class="hidden"></span>
                 </div>
               </div>
 
-              <!-- Support Card -->
-              <div class="glass-card account-support-card">
-                <div class="support-left">
-                  <span class="support-headset-icon">🎧</span>
-                  <div class="support-texts">
-                    <strong data-i18n="support_title">Поддержка</strong>
-                    <span data-i18n="support_desc">Если у вас возникли вопросы или нужна помощь — мы всегда рядом.</span>
-                  </div>
-                </div>
-                <button type="button" id="btn-acc-open-support" class="btn-secondary support-cta-btn">
-                  <span>💬</span>
-                  <span data-i18n="write_support">Написать в поддержку</span>
-                  <span class="btn-arrow">›</span>
-                </button>
+              <h3 class="mobile-account-section-label" data-i18n="account_management_section">Управление</h3>
+              <div class="account-devices-section" id="btn-acc-open-devices" role="button" tabindex="0">
+                <span class="mobile-account-row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="5" width="14" height="11" rx="2"/><path d="M7 20h12M11 16v4M19 8h3v9h-3"/></svg>
+                </span>
+                <span class="mobile-account-row-copy">
+                  <strong data-i18n="devices">Мои устройства</strong>
+                  <span id="acc-devices-ratio" class="badge-devices-ratio">—</span>
+                </span>
+                <span class="mobile-account-row-arrow" aria-hidden="true">›</span>
+                <div id="acc-devices-list" class="hidden"></div>
               </div>
 
-              <!-- Account settings parity with Android -->
-              <div class="glass-card settings-group-card account-settings-actions">
-                <h3 style="margin-bottom:14px;" data-i18n="account_settings_title">Настройки аккаунта</h3>
-                <div class="account-settings-button-grid">
-                  <button type="button" id="btn-account-refresh" class="btn-secondary" data-i18n="account_refresh">Обновить данные</button>
-                  <button type="button" id="btn-account-copy-id" class="btn-secondary" data-i18n="account_copy_id">Скопировать ID</button>
-                  <button type="button" id="btn-account-app-settings" class="btn-secondary" data-i18n="account_app_settings">Настройки приложения</button>
-                  <button type="button" id="btn-account-advanced" class="btn-secondary" data-i18n="account_advanced">Дополнительные настройки</button>
-                </div>
-              </div>
-
-              <!-- Footer Actions -->
-              <div class="account-footer-row">
-                <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout">
-                  <span>[→]</span>
-                  <span data-i18n="logout">Выйти из аккаунта</span>
-                </button>
-                <button type="button" id="btn-acc-delete" class="footer-action-btn action-delete">
-                  <span>🗑</span>
-                  <span data-i18n="delete_account">Удалить аккаунт</span>
-                </button>
-              </div>
+              <h3 class="mobile-account-section-label" data-i18n="nav_account">Аккаунт</h3>
+              <button type="button" id="btn-account-settings-open" class="mobile-account-settings-row">
+                <span class="mobile-account-row-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></svg>
+                </span>
+                <span class="mobile-account-row-copy">
+                  <strong data-i18n="account_settings_title">Настройки аккаунта</strong>
+                  <span data-i18n="account_settings_subtitle">Профиль, устройства, подписка</span>
+                </span>
+                <span class="mobile-account-row-arrow" aria-hidden="true">›</span>
+              </button>
             </div>
 
             <!-- TAB 5: SETTINGS (Screen 8) -->
@@ -1262,6 +1227,27 @@
         <div class="modal-actions-row">
           <button type="button" class="btn-secondary" data-close-modal="modal-confirm" data-i18n="cancel">Отмена</button>
           <button type="button" id="btn-confirm-accept" class="btn-primary" data-i18n="confirm">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AccountScreen.kt account settings dialog: secondary controls, never an extra main dashboard. -->
+    <div id="modal-account-settings" class="modal-backdrop hidden">
+      <div class="glass-card modal-window mobile-account-settings-modal">
+        <div class="modal-head">
+          <h3 data-i18n="account_settings_title">Настройки аккаунта</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-account-settings" aria-label="Закрыть">×</button>
+        </div>
+        <p class="modal-desc" data-i18n="account_settings_subtitle">Профиль, устройства, подписка</p>
+        <div class="account-settings-button-grid">
+          <button type="button" id="btn-account-refresh" class="btn-secondary" data-i18n="account_refresh">Обновить данные</button>
+          <button type="button" id="btn-account-copy-id" class="btn-secondary" data-i18n="account_copy_id">Скопировать ID</button>
+          <button type="button" id="btn-acc-manage" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_manage_renewal">Автопродление</button>
+          <button type="button" id="btn-acc-open-support" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="support_title">Поддержка</button>
+          <button type="button" id="btn-account-app-settings" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_app_settings">Настройки приложения</button>
+          <button type="button" id="btn-account-advanced" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_advanced">Дополнительные настройки</button>
+          <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout" data-close-modal="modal-account-settings" data-i18n="logout">Выйти из аккаунта</button>
+          <button type="button" id="btn-acc-delete" class="footer-action-btn action-delete" data-close-modal="modal-account-settings" data-i18n="delete_account">Удалить аккаунт</button>
         </div>
       </div>
     </div>

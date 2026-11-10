@@ -29,16 +29,19 @@ test('VPN session is revoked on all post-creation start failures', () => {
 
 test('VPN watchdog tears down server session on crash or proven leak', () => {
   assert.match(native, /let mut revoke_session = false;/);
-  assert.match(native, /Err\(EgressFailure::Unchanged\)/);
+  assert.match(native, /EgressCheck::Unchanged/);
   assert.match(native, /revoke_session = true;/);
   assert.match(native, /if revoke_session \{/);
-  assert.match(main, /vpn_status\(watchdog\.clone\(\), watchdog\.state/);
+  assert.match(main, /vpn_status\(\s*watchdog\.clone\(\),\s*watchdog\.state/);
 });
 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {
   assert.match(native, /spawn_blocking\(move \|\| \{/);
   assert.match(native, /Semaphore::new\(6\)/);
-  assert.match(native, /if supported && !host\.is_empty\(\)/);
+  assert.match(native, /if supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
+  assert.match(native, /protocol\.eq_ignore_ascii_case\("hysteria2"\)/);
+  assert.match(native, /tokio::time::timeout_at\(deadline, &mut task\)/);
+  assert.match(native, /task\.abort\(\)/);
 });
 
 test('experimental builds are not auto published to paying clients', () => {

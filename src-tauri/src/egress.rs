@@ -16,8 +16,27 @@ const PROBES: [&str; 6] = [
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EgressFailure {
-    Unavailable,  // External or DNS/TLS services could not be reached.
-    Unchanged,    // We DID observe the original IPv4, indicating a route leak.
+    Unavailable, // External or DNS/TLS services could not be reached.
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressCheck {
+    Verified(IpAddr),
+    Unchanged,
+    Unavailable,
+    Unverified(IpAddr),
+}
+
+pub fn classify_egress(
+    baseline: Option<IpAddr>,
+    observed: Result<IpAddr, EgressFailure>,
+) -> EgressCheck {
+    match (baseline, observed) {
+        (Some(baseline), Ok(observed)) if baseline == observed => EgressCheck::Unchanged,
+        (Some(_), Ok(observed)) => EgressCheck::Verified(observed),
+        (None, Ok(observed)) => EgressCheck::Unverified(observed),
+        (_, Err(_)) => EgressCheck::Unavailable,
+    }
 }
 
 fn parse_ip(body: &str) -> Result<IpAddr, String> {
@@ -30,7 +49,8 @@ fn parse_ip(body: &str) -> Result<IpAddr, String> {
     } else {
         plain
     };
-    let ip = candidate.parse::<IpAddr>()
+    let ip = candidate
+        .parse::<IpAddr>()
         .map_err(|_| "Сервис проверки вернул некорректный IP-адрес.".to_string())?;
     if !ip.is_ipv4() {
         return Err("Для проверки IPv4 получен адрес другого семейства.".into());
@@ -40,8 +60,7 @@ fn parse_ip(body: &str) -> Result<IpAddr, String> {
 
 async fn query_probe(client: reqwest::Client, endpoint: &'static str) -> Option<IpAddr> {
     let mut response = client.get(endpoint).send().await.ok()?;
-    if !response.status().is_success() ||
-        response.content_length().is_some_and(|n| n > 1024) {
+    if !response.status().is_success() || response.content_length().is_some_and(|n| n > 1024) {
         return None;
     }
     let mut body = Vec::new();
@@ -61,7 +80,7 @@ async fn probe_egress(client: reqwest::Client) -> Option<IpAddr> {
     // Stagger the fallback providers: most checks succeed with one of the
     // first three, so don't open six connections on every watchdog tick.
     for endpoint in PROBES.iter().take(3) {
-        probes.spawn(query_probe(client.clone(), *endpoint));
+        probes.spawn(query_probe(client.clone(), endpoint));
     }
     let initial = tokio::time::timeout(Duration::from_millis(650), async {
         while let Some(result) = probes.join_next().await {
@@ -70,7 +89,8 @@ async fn probe_egress(client: reqwest::Client) -> Option<IpAddr> {
             }
         }
         None
-    }).await;
+    })
+    .await;
     if let Ok(Some(ip)) = initial {
         probes.abort_all();
         return Some(ip);
@@ -79,7 +99,7 @@ async fn probe_egress(client: reqwest::Client) -> Option<IpAddr> {
     // Existing probes continue if the grace period elapsed. If the primary
     // providers all failed, start backups immediately without waiting.
     for endpoint in PROBES.iter().skip(3) {
-        probes.spawn(query_probe(client.clone(), *endpoint));
+        probes.spawn(query_probe(client.clone(), endpoint));
     }
     while let Some(result) = probes.join_next().await {
         if let Ok(Some(ip)) = result {
@@ -109,15 +129,13 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
     )
 }
 
-/// Unchanged is a definite leak signal. Unavailable is only unknown, never
-/// a reason to assert protection OR to assume that Xray itself crashed.
-pub async fn verify_egress(baseline: IpAddr) -> Result<IpAddr, EgressFailure> {
-    let client = probe_client().map_err(|_| EgressFailure::Unavailable)?;
-    match probe_egress(client).await {
-        Some(observed) if observed == baseline => Err(EgressFailure::Unchanged),
-        Some(observed) => Ok(observed),
-        None => Err(EgressFailure::Unavailable),
-    }
+/// A missing baseline permits a tunnel attempt but can never verify protection.
+pub async fn verify_egress(baseline: Option<IpAddr>) -> EgressCheck {
+    let observed = match probe_client() {
+        Ok(client) => probe_egress(client).await.ok_or(EgressFailure::Unavailable),
+        Err(_) => Err(EgressFailure::Unavailable),
+    };
+    classify_egress(baseline, observed)
 }
 
 #[cfg(test)]
@@ -125,10 +143,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn missing_baseline_does_not_prevent_start_but_never_claims_verification() {
+        let observed = "198.51.100.9".parse::<IpAddr>().unwrap();
+        assert_eq!(
+            classify_egress(None, Ok(observed)),
+            EgressCheck::Unverified(observed)
+        );
+        assert_eq!(
+            classify_egress(None, Err(EgressFailure::Unavailable)),
+            EgressCheck::Unavailable
+        );
+    }
+
+    #[test]
+    fn known_baseline_detects_changed_and_unchanged_egress() {
+        let baseline = "192.0.2.10".parse::<IpAddr>().unwrap();
+        let vpn_ip = "198.51.100.9".parse::<IpAddr>().unwrap();
+        assert_eq!(
+            classify_egress(Some(baseline), Ok(vpn_ip)),
+            EgressCheck::Verified(vpn_ip)
+        );
+        assert_eq!(
+            classify_egress(Some(baseline), Ok(baseline)),
+            EgressCheck::Unchanged
+        );
+    }
+
+    #[test]
     fn accepts_plain_ip_and_cloudflare_trace_but_rejects_html_and_ipv6() {
-        assert_eq!(parse_ip(" 192.0.2.1\n").unwrap(), "192.0.2.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            parse_ip(" 192.0.2.1\n").unwrap(),
+            "192.0.2.1".parse::<IpAddr>().unwrap()
+        );
         let trace = "fl=12f34\nh=www.cloudflare.com\nip=198.51.100.9\nts=1700000000\n";
-        assert_eq!(parse_ip(trace).unwrap(), "198.51.100.9".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            parse_ip(trace).unwrap(),
+            "198.51.100.9".parse::<IpAddr>().unwrap()
+        );
         assert!(parse_ip("<html>192.0.2.1</html>").is_err());
         assert!(parse_ip("2001:db8::1").is_err());
         assert!(parse_ip(&"1".repeat(1025)).is_err());

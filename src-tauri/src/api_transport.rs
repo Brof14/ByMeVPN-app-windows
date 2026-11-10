@@ -2,9 +2,10 @@ use reqwest::{Client, Method, Response};
 use serde_json::Value;
 
 // Production API endpoint with TLS/HTTPS encryption.
-pub const API_BASES: [&str; 1] = [
-    "https://bymevpn.duckdns.org/api/v1",
-];
+pub const API_BASES: [&str; 1] = ["https://bymevpn.duckdns.org/api/v1"];
+// Only advertise protocols implemented in the pinned Xray build. The backend
+// keeps legacy Windows selection when this header is absent.
+pub const VPN_CAPABILITIES: &str = "hysteria2,vless-xhttp,vless-tls";
 
 #[tauri::command]
 pub fn api_transport_encrypted() -> bool {
@@ -23,6 +24,9 @@ pub async fn send_to_bases(
         let mut request = client
             .request(method.clone(), format!("{base}{path}"))
             .header("Accept", "application/json");
+        if matches!(path, "/servers" | "/vpn/session") {
+            request = request.header("X-VPN-Capabilities", VPN_CAPABILITIES);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -96,6 +100,45 @@ mod tests {
         .unwrap();
         assert_eq!(response.status(), 500);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn vpn_capabilities_are_advertised_only_to_vpn_endpoints() {
+        fn received_headers(path: &str) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let worker = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = [0; 4096];
+                let size = stream.read(&mut buffer).unwrap();
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    )
+                    .unwrap();
+                String::from_utf8_lossy(&buffer[..size]).to_ascii_lowercase()
+            });
+            let response = tauri::async_runtime::block_on(send_to_bases(
+                &Client::new(),
+                &[base.as_str()],
+                Method::GET,
+                path,
+                None,
+                None,
+            ))
+            .unwrap();
+            assert_eq!(response.status(), 200);
+            worker.join().unwrap()
+        }
+
+        for path in ["/servers", "/vpn/session"] {
+            let headers = received_headers(path);
+            assert!(
+                headers.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls"),
+                "Missing desktop capabilities for {path}"
+            );
+        }
+        assert!(!received_headers("/plans").contains("x-vpn-capabilities:"));
     }
 
     #[test]

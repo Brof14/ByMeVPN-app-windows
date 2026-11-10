@@ -12,9 +12,9 @@
       {
         "title": "ByMeVPN",
         "width": 960,
-        "height": 700,
-        "minWidth": 800,
-        "minHeight": 590,
+        "height": 640,
+        "minWidth": 780,
+        "minHeight": 520,
         "decorations": false,
         "center": true,
         "resizable": true,

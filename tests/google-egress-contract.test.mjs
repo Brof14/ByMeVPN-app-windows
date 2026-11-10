@@ -19,9 +19,9 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
-  assert.match(rust, /Err\(EgressFailure::Unavailable\) => \{/);
+  assert.match(rust, /EgressCheck::Unavailable/);
   assert.match(rust, /active\.egress_verified = false/);
-  assert.match(rust, /Err\(EgressFailure::Unchanged\) => \{/);
+  assert.match(rust, /EgressCheck::Unchanged => \{/);
   assert.match(rust, /let _ = active\.child\.kill\(\)/);
 });
 
@@ -64,7 +64,7 @@ test('native Google token failures report OAuth codes without echoing upstream d
 });
 
 test('VPN startup is bounded, logs native TUN failures, and avoids an eager extra ping', () => {
-  assert.match(rust, /for _ in 0\.\.2 \{/);
+  assert.match(rust, /let startup_checks = if baseline_ip\.is_some\(\) \{ 3 \} else \{ 1 \};/);
   assert.match(rust, /xray_startup\.log/);
   assert.match(rust, /cached_ping_ms/);
   assert.match(rust, /last_ping_probe\.elapsed\(\) >= Duration::from_secs\(45\)/);

@@ -18,7 +18,9 @@ const AUTH_TIMEOUT: Duration = Duration::from_secs(180);
 fn valid_client_id(id: &str) -> bool {
     id.len() <= 200
         && id.ends_with(".apps.googleusercontent.com")
-        && id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
+        && id
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
 }
 
 fn random_verifier() -> String {
@@ -46,7 +48,8 @@ fn oauth_url(client_id: &str, redirect: &str, nonce: &str, state: &str, challeng
 
 #[cfg(windows)]
 fn open_google_in_system_browser(url: &Url) -> Result<(), String> {
-    if url.scheme() != "https" || url.host_str() != Some("accounts.google.com")
+    if url.scheme() != "https"
+        || url.host_str() != Some("accounts.google.com")
         || url.path() != "/o/oauth2/v2/auth"
     {
         return Err("Некорректный адрес Google OAuth.".into());
@@ -75,8 +78,12 @@ fn parse_callback(first_line: &str, expected_state: &str) -> Callback {
     if parts.next() != Some("GET") {
         return Callback::Ignore;
     }
-    let Some(target) = parts.next() else { return Callback::Ignore; };
-    if parts.next() != Some("HTTP/1.1") || parts.next().is_some() || target.len() > 4096
+    let Some(target) = parts.next() else {
+        return Callback::Ignore;
+    };
+    if parts.next() != Some("HTTP/1.1")
+        || parts.next().is_some()
+        || target.len() > 4096
         || !target.starts_with('/')
     {
         return Callback::Ignore;
@@ -87,16 +94,22 @@ fn parse_callback(first_line: &str, expected_state: &str) -> Callback {
     if uri.path() != CALLBACK_PATH || uri.host_str() != Some("127.0.0.1") {
         return Callback::Ignore;
     }
-    let state_values: Vec<String> = uri.query_pairs()
-        .filter(|(name, _)| name == "state").map(|(_, value)| value.into_owned()).collect();
+    let state_values: Vec<String> = uri
+        .query_pairs()
+        .filter(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .collect();
     if state_values.len() != 1 || state_values[0] != expected_state {
         return Callback::Ignore;
     }
     if uri.query_pairs().any(|(name, _)| name == "error") {
         return Callback::Denied;
     }
-    let codes: Vec<String> = uri.query_pairs()
-        .filter(|(name, _)| name == "code").map(|(_, value)| value.into_owned()).collect();
+    let codes: Vec<String> = uri
+        .query_pairs()
+        .filter(|(name, _)| name == "code")
+        .map(|(_, value)| value.into_owned())
+        .collect();
     if codes.len() != 1 || codes[0].is_empty() || codes[0].len() > 2048 {
         return Callback::Ignore;
     }
@@ -132,17 +145,20 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Resul
         let mut bytes = Vec::with_capacity(1024);
         let mut buf = [0u8; 1024];
         while bytes.len() < 8192 && !bytes.windows(4).any(|w| w == b"\r\n\r\n") {
-            let read = match tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf)).await {
-                Ok(Ok(n)) if n > 0 => n,
-                _ => break,
-            };
+            let read =
+                match tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf)).await {
+                    Ok(Ok(n)) if n > 0 => n,
+                    _ => break,
+                };
             bytes.extend_from_slice(&buf[..read]);
         }
         // Only accept a well-formed HTTP/1.1 browser callback with one state.
         let headers = String::from_utf8_lossy(&bytes);
-        let host = format!("Host: 127.0.0.1:{}", listener.local_addr().map(|a| a.port()).unwrap_or(0));
-        if !headers.contains("\r\n\r\n")
-            || !headers.lines().any(|l| l.eq_ignore_ascii_case(&host))
+        let host = format!(
+            "Host: 127.0.0.1:{}",
+            listener.local_addr().map(|a| a.port()).unwrap_or(0)
+        );
+        if !headers.contains("\r\n\r\n") || !headers.lines().any(|l| l.eq_ignore_ascii_case(&host))
         {
             respond(&mut stream, false).await;
             continue;
@@ -185,13 +201,25 @@ pub async fn acquire_code(client_id: &str, nonce: &str) -> Result<AuthorizationC
     if !valid_client_id(client_id) || nonce.len() < 24 || nonce.len() > 256 {
         return Err("Google OAuth для Windows настроен неверно.".into());
     }
-    let listener = TcpListener::bind("127.0.0.1:0").await
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
         .map_err(|_| "Не удалось запустить локальный обработчик входа Google.".to_string())?;
-    let redirect = format!("http://127.0.0.1:{}{CALLBACK_PATH}",
-        listener.local_addr().map_err(|_| "Ошибка локального OAuth-порта.".to_string())?.port());
+    let redirect = format!(
+        "http://127.0.0.1:{}{CALLBACK_PATH}",
+        listener
+            .local_addr()
+            .map_err(|_| "Ошибка локального OAuth-порта.".to_string())?
+            .port()
+    );
     let state = random_verifier();
     let verifier = random_verifier();
-    let authorization = oauth_url(client_id, &redirect, nonce, &state, &pkce_challenge(&verifier));
+    let authorization = oauth_url(
+        client_id,
+        &redirect,
+        nonce,
+        &state,
+        &pkce_challenge(&verifier),
+    );
     open_google_in_system_browser(&authorization)?;
     let code = wait_for_callback(listener, &state).await?;
     Ok(AuthorizationCode {
@@ -206,11 +234,14 @@ pub async fn acquire_code(client_id: &str, nonce: &str) -> Result<AuthorizationC
 // desktop client secret as optional; some deployed projects reject its absence.
 pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, String> {
     let authorization = acquire_code(client_id, nonce).await?;
-    let client = Client::builder().https_only(true)
+    let client = Client::builder()
+        .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(15)).build()
+        .timeout(Duration::from_secs(15))
+        .build()
         .map_err(|_| "Не удалось подготовить запрос Google OAuth.".to_string())?;
-    let response = client.post("https://oauth2.googleapis.com/token")
+    let response = client
+        .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("client_id", client_id),
             ("code", authorization.code.as_str()),
@@ -218,15 +249,22 @@ pub async fn acquire_id_token(client_id: &str, nonce: &str) -> Result<String, St
             ("grant_type", "authorization_code"),
             ("code_verifier", authorization.code_verifier.as_str()),
         ])
-        .send().await.map_err(|_| "Google не ответил при подтверждении входа.".to_string())?;
+        .send()
+        .await
+        .map_err(|_| "Google не ответил при подтверждении входа.".to_string())?;
     if !response.status().is_success() {
         let status = response.status();
         let payload: Value = response.json().await.unwrap_or(Value::Null);
         return Err(token_exchange_error(status, &payload));
     }
-    let payload: Value = response.json().await
+    let payload: Value = response
+        .json()
+        .await
         .map_err(|_| "Google вернул некорректный ответ авторизации.".to_string())?;
-    let id_token = payload.get("id_token").and_then(Value::as_str).unwrap_or("");
+    let id_token = payload
+        .get("id_token")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if id_token.len() < 30 || id_token.len() > 16384 || id_token.split('.').count() != 3 {
         return Err("Google не вернул корректный ID-токен.".into());
     }
@@ -239,8 +277,13 @@ mod tests {
 
     #[test]
     fn oauth_callback_requires_correct_state_path_and_single_code() {
-        assert_eq!(parse_callback("GET /oauth2/callback?state=secret&code=abc HTTP/1.1", "secret"),
-            Callback::Code("abc".into()));
+        assert_eq!(
+            parse_callback(
+                "GET /oauth2/callback?state=secret&code=abc HTTP/1.1",
+                "secret"
+            ),
+            Callback::Code("abc".into())
+        );
         for bad in [
             "GET /oauth2/callback?state=evil&code=abc HTTP/1.1",
             "GET /?state=secret&code=abc HTTP/1.1",
@@ -249,8 +292,13 @@ mod tests {
         ] {
             assert_eq!(parse_callback(bad, "secret"), Callback::Ignore);
         }
-        assert_eq!(parse_callback("GET /oauth2/callback?state=secret&error=access_denied HTTP/1.1", "secret"),
-            Callback::Denied);
+        assert_eq!(
+            parse_callback(
+                "GET /oauth2/callback?state=secret&error=access_denied HTTP/1.1",
+                "secret"
+            ),
+            Callback::Denied
+        );
     }
 
     #[test]
@@ -262,16 +310,24 @@ mod tests {
         let result = token_exchange_error(reqwest::StatusCode::BAD_REQUEST, &response);
         assert!(result.contains("invalid_grant"));
         assert!(!result.contains("SECRET_CODE_SHOULD_NOT_APPEAR"));
-        assert!(token_exchange_error(reqwest::StatusCode::BAD_REQUEST,
-            &serde_json::json!({"error":"invalid_client"})).contains("Desktop"));
+        assert!(token_exchange_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            &serde_json::json!({"error":"invalid_client"})
+        )
+        .contains("Desktop"));
     }
 
     #[test]
     fn pkce_uses_sha256_and_client_id_must_be_google_desktop_id() {
-        assert_eq!(pkce_challenge("correct horse"), URL_SAFE_NO_PAD.encode(Sha256::digest(b"correct horse")));
+        assert_eq!(
+            pkce_challenge("correct horse"),
+            URL_SAFE_NO_PAD.encode(Sha256::digest(b"correct horse"))
+        );
         assert_eq!(random_verifier().len(), 64);
         assert!(valid_client_id("1234-example.apps.googleusercontent.com"));
         assert!(!valid_client_id("https://attacker.invalid"));
-        assert!(!valid_client_id("bad.apps.googleusercontent.com.attacker.invalid"));
+        assert!(!valid_client_id(
+            "bad.apps.googleusercontent.com.attacker.invalid"
+        ));
     }
 }

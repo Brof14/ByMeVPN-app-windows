@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#090f1d">
   <title>ByMeVPN</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./mobile-parity.css">
 </head>
 <body>
   <div id="app" class="app-root">
@@ -241,15 +242,15 @@
 
           <nav class="sidebar-nav" aria-label="ByMeVPN">
             <button type="button" class="sidebar-tab active" data-tab="tab-home" aria-current="page">
-              <span class="tab-icon" aria-hidden="true">⏻</span>
+              <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9"/><path d="M7 6.8a9 9 0 1 0 10 0"/></svg></span>
               <span class="tab-label" data-i18n="nav_connection">Главная</span>
             </button>
             <button type="button" class="sidebar-tab" data-tab="tab-settings">
-              <span class="tab-icon" aria-hidden="true">⚙</span>
+              <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4l.8 2.3 2.2.9 2.2-1 2.8 2.8-1 2.2.9 2.2L24 12l-2.1.7-.9 2.2 1 2.2-2.8 2.8-2.2-1-2.2.9L14 22h-4l-.8-2.2-2.2-.9-2.2 1L2 17.1l1-2.2-.9-2.2L0 12l2.1-.7.9-2.2-1-2.2L4.8 4l2.2 1 2.2-.9L10 2Z" transform="translate(1 1) scale(.91)"/><circle cx="12" cy="12" r="3"/></svg></span>
               <span class="tab-label" data-i18n="nav_settings">Настройки</span>
             </button>
             <button type="button" class="sidebar-tab" data-tab="tab-account">
-              <span class="tab-icon" aria-hidden="true">👤</span>
+              <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></svg></span>
               <span class="tab-label" data-i18n="nav_account">Аккаунт</span>
             </button>
           </nav>
@@ -261,7 +262,8 @@
           <!-- Top Navigation Header -->
           <div class="app-top-header">
             <div class="header-left">
-              <h1 id="page-title" class="page-title">Главная</h1>
+              <div id="mobile-header-brand" class="mobile-header-brand"><span class="mobile-header-shield" aria-hidden="true"></span><span>ByMe<strong>VPN</strong></span></div>
+              <h1 id="page-title" class="page-title hidden">Главная</h1>
               <span id="vpn-active-pill" class="badge-active-pill hidden">
                 <span class="dot-green">●</span>
                 <span data-i18n="protection_active">Внешний IP подтверждён</span>
@@ -276,241 +278,109 @@
           <!-- Tab Contents Container -->
           <div class="app-tab-pages">
 
-            <!-- TAB 1: HOME (Screen 3: No Plan / Screen 4: Disconnected / Screen 5: Connected) -->
-            <div id="tab-home" class="tab-content active">
-
-              <!-- STATE 0: NO PLAN (Mockup 03_home_no_plan) -->
+            <!-- Home follows Android HomeScreen.kt: no plan / off / on, one shared bottom dock. -->
+            <div id="tab-home" class="tab-content active mobile-home">
               <div id="home-state-no-plan" class="home-state-box hidden">
-                <div class="glass-card hero-no-plan-card">
-                  <div class="no-plan-halo-center">
-                    <div class="no-plan-halo-ring"></div>
-                    <div class="no-plan-shield-circle">
-                      <svg width="86" height="96" viewBox="0 0 92 104" fill="none">
-                        <defs>
-                          <linearGradient id="npShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                            <stop stop-color="#468ff0"/>
-                            <stop offset="0.55" stop-color="#53bfcf"/>
-                            <stop offset="1" stop-color="#79d9bc"/>
-                          </linearGradient>
-                        </defs>
-                        <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#npShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
-                        <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#npShieldGrad)"/>
-                      </svg>
-                    </div>
+                <div class="mobile-no-plan">
+                  <div class="mobile-no-plan-hero">
+                    <div class="no-plan-shield-circle" aria-hidden="true"></div>
+                    <h2 class="no-plan-headline" data-i18n="no_plan_title_line1">VPN для ваших устройств</h2>
+                    <p class="no-plan-desc" data-i18n="no_plan_desc">Подключайтесь, когда вам нужен VPN.</p>
                   </div>
-
-                  <span class="no-plan-brand-pill">BYMEVPN</span>
-                  <h2 class="no-plan-headline"><span data-i18n="no_plan_title_line1">Свободный интернет.</span><br/><span data-i18n="no_plan_title_line2">Одно касание.</span></h2>
-                  <p class="no-plan-desc" data-i18n="no_plan_desc">Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.</p>
-
-                  <div class="no-plan-perks-row">
-                    <div class="perk-pill">
-                      <span class="perk-icon">⚡</span>
-                      <span data-i18n="no_plan_perk_connection">Защищённое соединение</span>
-                    </div>
-                    <div class="perk-pill">
-                      <span class="perk-icon">🛡️</span>
-                      <span>VLESS Reality</span>
-                    </div>
-                    <div class="perk-pill">
-                      <span class="perk-icon">🚫</span>
-                      <span data-i18n="no_plan_perk_simple">Без сложных настроек</span>
-                    </div>
-                  </div>
-
                   <div class="no-plan-trial-dock">
-                    <div class="dock-badge-gift" data-i18n="no_plan_trial_badge">3 ДНЯ БЕСПЛАТНО</div>
-                    <h3 data-i18n="no_plan_trial_heading">Попробуйте сервис перед покупкой</h3>
-                    <p data-i18n="no_plan_trial_desc">Пробный доступ на 3 дня ко всем серверам без ограничений скорости. Без привязки карты.</p>
-                    <button type="button" id="btn-no-plan-trial" class="btn-primary btn-glow btn-wide">
-                      <span data-i18n="no_plan_trial_button">Попробовать бесплатно</span>
-                      <span class="btn-arrow">›</span>
-                    </button>
-                    <button type="button" id="btn-no-plan-pricing" class="btn-link-pricing">
-                      <span data-i18n="no_plan_pricing_button">Посмотреть все тарифы</span>
-                      <span>›</span>
+                    <h3 data-i18n="no_plan_trial_heading">3 дня бесплатно</h3>
+                    <p data-i18n="no_plan_trial_desc">Попробуйте сервис перед покупкой.</p>
+                    <button type="button" id="btn-no-plan-trial" class="btn-primary mobile-primary-cta">
+                      <span data-i18n="no_plan_trial_button">Активировать бесплатно</span>
                     </button>
                   </div>
+                  <button type="button" id="btn-no-plan-pricing" class="mobile-pricing-link">
+                    <span data-i18n="no_plan_pricing_button">Посмотреть все тарифы</span>
+                    <span aria-hidden="true">›</span>
+                  </button>
                 </div>
               </div>
 
-              <!-- STATE A: CONNECTED (Screen 5) -->
               <div id="home-state-connected" class="home-state-box hidden">
-                <div class="glass-card hero-connection-card">
-                  <div class="hero-card-globe-art"></div>
-                  <div class="connection-hero-inner">
-                    <div id="vpn-power-ring" role="button" tabindex="0" aria-label="Переключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false" class="pulse-power-ring ring-connected">
-                      <div class="outer-glow-pulsar"></div>
-                      <div class="inner-shield-circle">
-                        <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
-                          <defs>
-                            <linearGradient id="connShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                              <stop stop-color="#468ff0"/>
-                              <stop offset="0.55" stop-color="#53bfcf"/>
-                              <stop offset="1" stop-color="#79d9bc"/>
-                            </linearGradient>
-                          </defs>
-                          <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#connShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
-                          <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#connShieldGrad)"/>
-                        </svg>
-                      </div>
+                <div class="mobile-status-layout">
+                  <p class="mobile-connection-kicker" data-i18n="home_connection_kicker">ВАШЕ ПОДКЛЮЧЕНИЕ</p>
+                  <div class="mobile-power-space">
+                    <div id="vpn-power-ring" class="pulse-power-ring ring-connected" role="button" tabindex="0"
+                         aria-label="Выключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
+                      <div class="inner-shield-circle" aria-hidden="true"></div>
                     </div>
-
+                  </div>
+                  <div class="mobile-status-summary">
                     <div class="connection-status-headline">
-                      <span class="status-check-icon">✓</span>
-                      <h2 class="status-title-text" data-i18n="vpn_connected">VPN подключён</h2>
+                      <span class="status-check-icon" aria-hidden="true">✓</span>
+                      <h2 class="status-title-text" data-i18n="vpn_connected">VPN запущен</h2>
                     </div>
-                    <div class="connection-substatus">
-                      <span data-i18n="conn_secured">Соединение защищено</span>
-                      <span class="substatus-sep">•</span>
-                      <span id="vpn-live-timer" class="neon-green">00:00:00</span>
-                    </div>
-
-                    <div id="btn-active-location-pill" class="location-chip-pill" role="button" tabindex="0">
-                      <span id="conn-flag-chip" class="chip-flag">🌐</span>
-                      <span id="conn-location-name">Автоматически</span>
-                    </div>
-
-                    <div class="metrics-triad-row">
-                      <div class="metric-triad-col">
-                        <div class="metric-col-icon icon-down">↓</div>
-                        <div class="metric-col-data">
-                          <span class="metric-lbl" data-i18n="download">Скачивание</span>
-                          <strong id="metric-download" class="metric-val">—</strong>
-                        </div>
-                      </div>
-                      <div class="metric-col-divider"></div>
-                      <div class="metric-triad-col">
-                        <div class="metric-col-icon icon-up">↑</div>
-                        <div class="metric-col-data">
-                          <span class="metric-lbl" data-i18n="upload">Отправка</span>
-                          <strong id="metric-upload" class="metric-val">—</strong>
-                        </div>
-                      </div>
-                      <div class="metric-col-divider"></div>
-                      <div class="metric-triad-col">
-                        <div class="metric-col-icon icon-ping">⚡</div>
-                        <div class="metric-col-data">
-                          <span class="metric-lbl" data-i18n="latency">Задержка</span>
-                          <strong id="metric-ping" class="metric-val">—</strong>
-                        </div>
-                      </div>
-                    </div>
+                    <p class="connection-substatus">
+                      <span data-i18n="conn_secured">Проверяем внешний IP</span>
+                    </p>
+                    <span id="vpn-live-timer" class="mobile-connection-timer">00:00:00</span>
                   </div>
-                </div>
-
-                <!-- Lower Row Cards -->
-                <div class="home-cards-duo">
-                  <!-- Server Card -->
-                  <div class="glass-card sub-card-item">
-                    <div class="card-item-header">
-                      <span class="card-item-icon">🌐</span>
-                      <strong data-i18n="card_server">Сервер</strong>
-                    </div>
-                    <div class="card-interactive-row" id="row-server-info" role="button" tabindex="0">
-                      <div class="card-row-left">
-                        <span id="home-server-flag" class="chip-flag">🌐</span>
-                        <div class="card-row-texts">
-                          <strong id="home-server-country">Автоматически</strong>
-                          <span id="home-server-city"></span>
-                        </div>
-                      </div>
-                      <span class="card-row-arrow">›</span>
-                    </div>
-                    <div class="card-divider-line"></div>
-                    <div class="card-interactive-row" id="btn-open-server-picker" role="button" tabindex="0">
-                      <div class="card-row-left">
-                        <span class="icon-swap">⇄</span>
-                        <strong data-i18n="change_server">Сменить сервер</strong>
-                      </div>
-                      <span class="card-row-arrow">›</span>
-                    </div>
-                  </div>
-
-                  <!-- Subscription Card -->
-                  <div class="glass-card sub-card-item">
-                    <div class="card-item-header">
-                      <span class="card-item-icon">👑</span>
-                      <strong data-i18n="card_sub">Подписка</strong>
-                    </div>
-                    <div class="card-interactive-row" id="row-sub-info">
-                      <div class="card-row-left">
-                        <div class="card-row-texts">
-                          <strong id="home-sub-title">—</strong>
-                          <span id="home-sub-expiry">Проверяем подписку…</span>
-                        </div>
-                      </div>
-                      <span id="home-sub-badge" class="badge-active-mini" data-i18n="active">Активна</span>
-                    </div>
-                    <div class="card-divider-line"></div>
-                    <div class="card-interactive-row" id="btn-open-manage-pricing" role="button" tabindex="0">
-                      <div class="card-row-left">
-                        <span class="icon-gear">⚙</span>
-                        <strong data-i18n="manage_sub">Управлять</strong>
-                      </div>
-                      <span class="card-row-arrow">›</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Bottom Strip -->
-                <div class="glass-card bypass-strip" id="btn-toggle-bypass-quick" role="button" tabindex="0" aria-label="Настройки маршрутизации" data-i18n-title="routing_settings_tooltip">
-                  <div class="bypass-left">
-                    <span class="bypass-antenna-icon">📡</span>
-                    <span data-i18n="ru_bypass_label">Российские сервисы работают напрямую</span>
-                  </div>
-                  <span class="card-row-arrow">›</span>
                 </div>
               </div>
 
-              <!-- STATE B: DISCONNECTED / NO SUBSCRIPTION (Screen 3) -->
               <div id="home-state-disconnected" class="home-state-box">
-                <div class="glass-card hero-connection-card">
-                  <div class="hero-card-globe-art"></div>
-                  <div class="connection-hero-inner">
-                    <div id="vpn-power-ring-off" role="button" tabindex="0" aria-label="Переключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false" class="pulse-power-ring ring-off">
-                      <div class="inner-shield-circle">
-                        <svg width="78" height="88" viewBox="0 0 92 104" fill="none">
-                          <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="#4a6572" stroke-width="5" stroke-linejoin="round"/>
-                          <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="#3a515c"/>
-                        </svg>
-                      </div>
+                <div class="mobile-status-layout">
+                  <p class="mobile-connection-kicker" data-i18n="home_connection_kicker">ВАШЕ ПОДКЛЮЧЕНИЕ</p>
+                  <div class="mobile-power-space">
+                    <div id="vpn-power-ring-off" class="pulse-power-ring ring-off" role="button" tabindex="0"
+                         aria-label="Включить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
+                      <div class="inner-shield-circle" aria-hidden="true"></div>
                     </div>
-
+                  </div>
+                  <div class="mobile-status-summary">
                     <h2 class="status-title-text" data-i18n="vpn_off">VPN выключен</h2>
                     <p id="home-off-desc" class="connection-substatus" data-i18n="vpn_off_desc">Нажмите, чтобы подключиться</p>
                     <p id="home-connection-error" class="connection-error hidden" role="alert" aria-live="polite"></p>
-                    
-                    <button type="button" id="btn-toggle-vpn" class="btn-primary vpn-big-cta">
+                    <button type="button" id="btn-toggle-vpn" class="btn-primary mobile-retry-cta hidden">
                       <span id="vpn-btn-text" data-i18n="connect">Подключиться</span>
-                      <span class="btn-arrow">›</span>
                     </button>
-                  </div>
-                </div>
-
-                <!-- Free Trial Promo Box -->
-                <div class="glass-card promo-trial-box">
-                  <div class="promo-trial-content">
-                    <span class="dock-badge-gift" data-i18n="trial_badge_simple">3 ДНЯ БЕСПЛАТНО</span>
-                    <h3 class="promo-trial-title">
-                      <span data-i18n="trial_try_byme">Попробуйте ByMeVPN бесплатно</span>
-                    </h3>
-                    <p class="promo-trial-desc" data-i18n="trial_description_short">
-                      Три дня доступа к доступным серверам. Без оплаты и привязки карты.
-                    </p>
-                    <div class="promo-buttons-row">
-                      <button type="button" id="btn-home-activate-trial" class="btn-primary btn-glow">
-                        <span data-i18n="trial_activate_three">Активировать 3 дня бесплатно</span>
-                        <span class="btn-arrow">›</span>
-                      </button>
-                      <button type="button" id="btn-home-all-tariffs" class="btn-secondary">
-                        <span data-i18n="view_all_plans">Посмотреть все тарифы ›</span>
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
 
+              <div id="home-shared-dock" class="mobile-home-dock hidden">
+                <div class="mobile-server-card">
+                  <div id="row-server-info" class="mobile-location-content" role="button" tabindex="0">
+                    <span class="mobile-location-title" data-i18n="home_location_title">МЕСТОПОЛОЖЕНИЕ</span>
+                    <div class="mobile-location-row">
+                      <span id="home-server-flag" class="chip-flag" aria-hidden="true">🌐</span>
+                      <span class="mobile-server-copy">
+                        <strong id="home-server-country">Автоматически</strong>
+                        <span id="home-server-city"></span>
+                      </span>
+                    </div>
+                  </div>
+                  <div id="btn-open-server-picker" class="mobile-card-chevron" role="button" tabindex="0"
+                       data-i18n-title="change_server" aria-label="Сменить сервер">›</div>
+                </div>
+                <div id="btn-open-manage-pricing" class="mobile-subscription-card" role="button" tabindex="0">
+                  <span class="mobile-subscription-clock" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
+                  </span>
+                  <span class="mobile-subscription-copy">
+                    <strong id="home-sub-title">—</strong>
+                    <span id="home-sub-expiry">Проверяем подписку…</span>
+                  </span>
+                  <span class="mobile-subscription-arrow" aria-hidden="true">›</span>
+                  <span id="home-sub-badge" class="badge-active-mini hidden" aria-hidden="true">Активна</span>
+                </div>
+                <!-- Legacy interaction anchors remain for existing native event bindings,
+                     but these redundant desktop controls are absent in Android's home. -->
+                <div id="btn-active-location-pill" class="hidden" role="button" tabindex="0"></div>
+                <div id="btn-toggle-bypass-quick" class="hidden" role="button" tabindex="0" data-i18n-title="routing_settings_tooltip">
+                  <span data-i18n="ru_bypass_label">Российские сайты напрямую</span>
+                </div>
+                <span id="conn-flag-chip" class="hidden"></span>
+                <span id="conn-location-name" class="hidden"></span>
+                <span id="metric-download" class="hidden"></span>
+                <span id="metric-upload" class="hidden"></span>
+                <span id="metric-ping" class="hidden"></span>
+              </div>
             </div>
 
             <!-- TAB 2: PRICING & PAYMENT (Screen 4) -->

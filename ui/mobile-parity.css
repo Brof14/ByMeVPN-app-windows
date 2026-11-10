@@ -804,3 +804,184 @@ html, body, .app-root, .app-shell-layout {
   .app-shell-layout #tab-account { padding-inline: 18px; }
   #tab-account .account-sub-card { padding: 18px; }
 }
+
+/* Android SettingsScreen.kt: 25sp headline, grouped toggles, a language row
+   opening the same vertical single-choice dialog as Jetpack Compose. */
+#tab-settings .android-settings-heading {
+  padding: 10px 2px 16px;
+}
+#tab-settings .android-settings-heading h2 {
+  margin: 0 0 8px;
+  color: #eef4f4;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 720;
+  letter-spacing: -.5px;
+}
+#tab-settings .android-settings-heading p {
+  margin: 0;
+  color: #8ea4a2;
+  font-size: 12.5px;
+  line-height: 17px;
+}
+#tab-settings .android-settings-section-label {
+  margin: 10px 2px;
+  color: #8ba3a4;
+  font-size: 12px;
+  font-weight: 600;
+}
+#tab-settings .android-settings-section-label:not(:first-child) {
+  margin-top: 22px;
+}
+#tab-settings .android-settings-essential,
+#tab-settings .android-settings-language {
+  padding: 4px 14px;
+  border: 1px solid #263647;
+  border-radius: 18px;
+  background: #121c2b;
+  box-shadow: none;
+}
+#tab-settings .setting-item-row {
+  display: flex;
+  align-items: center;
+  min-height: 72px;
+  gap: 12px;
+  padding: 9px 0;
+}
+#tab-settings .setting-row-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #1b2f3c;
+  color: #7ac9cb;
+  font-size: 20px;
+}
+#tab-settings .setting-row-icon svg { width: 20px; height: 20px; }
+#tab-settings .setting-copy-column {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+#tab-settings .setting-copy-column strong {
+  color: #eef4f4;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+#tab-settings .setting-copy-column > span {
+  color: #9cacbd;
+  font-size: 11.5px;
+  line-height: 1.38;
+}
+#tab-settings .setting-item-row .switch-control { flex: 0 0 auto; margin-left: auto; }
+#tab-settings .android-settings-language .mobile-language-row {
+  display: flex;
+  width: 100%;
+  min-height: 68px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  color: #eef4f4;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#tab-settings .mobile-language-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #71898a;
+  font-size: 23px;
+}
+#tab-settings #row-open-advanced-settings { display: none; }
+#tab-settings .android-settings-default-tip {
+  margin: 20px 0 12px;
+  padding: 14px 15px;
+  border: 1px solid #263647;
+  border-radius: 15px;
+  color: #8ea4a2;
+  background: #101b29;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mobile-language-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 52px);
+  overflow-y: auto;
+  border: 1px solid #263647;
+  border-radius: 24px;
+  background: #121c2b;
+  padding: 20px;
+}
+.mobile-language-modal .modal-head h3 {
+  color: #eef4f4;
+  font-size: 20px;
+  font-weight: 700;
+}
+.mobile-language-modal .modal-desc {
+  margin: 10px 0 16px;
+  color: #9cacbd;
+  font-size: 13px;
+}
+.mobile-language-modal .lang-segmented-control {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.mobile-language-modal .lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 57px;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #263647;
+  border-radius: 15px;
+  background: #111c2b;
+  color: #eef4f4;
+  font-size: 14px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-language-modal .lang-btn.active {
+  border-color: #69d3bc;
+  background: #18283a;
+  color: #eef4f4;
+}
+.mobile-language-modal .mobile-language-radio {
+  position: relative;
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid #7d94a8;
+  border-radius: 50%;
+}
+.mobile-language-modal .lang-btn.active .mobile-language-radio {
+  border-color: #69d3bc;
+}
+.mobile-language-modal .lang-btn.active .mobile-language-radio::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #69d3bc;
+}
+.mobile-language-modal .lang-btn:focus-visible,
+#tab-settings #btn-language-dialog:focus-visible {
+  outline: 2px solid #69d3bc;
+  outline-offset: 3px;
+}

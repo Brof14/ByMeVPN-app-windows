@@ -25,6 +25,21 @@ impl RouteReport {
     }
 }
 
+/// Conservative evidence for a *current* tunnel, not a proof against all
+/// DNS/IPv6 leaks. A changed public IPv4 alone never qualifies.
+pub fn health_proves_connection(
+    routes: &RouteReport,
+    dns_ok: Option<bool>,
+    process_running: bool,
+    egress_changed: bool,
+) -> bool {
+    process_running
+        && routes.adapter == "up"
+        && routes.ipv4_default == Some(true)
+        && dns_ok == Some(true)
+        && egress_changed
+}
+
 fn parse_report(text: &str) -> RouteReport {
     let mut report = RouteReport::default();
     for line in text.lines() {
@@ -200,6 +215,25 @@ mod tests {
         let unknown = parse_report("PowerShell disabled");
         assert!(!unknown.definitely_missing());
         assert_eq!(unknown.ipv6_default, None);
+    }
+
+    #[test]
+    fn only_live_confirmed_tunnel_and_dns_qualify_as_healthy_diagnostics() {
+        let ready = parse_report("adapter=up\nipv4=1\nipv6=1\n");
+        assert!(health_proves_connection(&ready, Some(true), true, true));
+        assert!(!health_proves_connection(&ready, Some(true), true, false));
+        assert!(!health_proves_connection(&ready, None, true, true));
+        assert!(!health_proves_connection(&ready, Some(false), true, true));
+        assert!(!health_proves_connection(&ready, Some(true), false, true));
+        let bad_route = parse_report("adapter=up\nipv4=0\nipv6=1\n");
+        assert!(!health_proves_connection(
+            &bad_route,
+            Some(true),
+            true,
+            true
+        ));
+        let down = parse_report("adapter=down\nipv4=1\n");
+        assert!(!health_proves_connection(&down, Some(true), true, true));
     }
 
     #[test]

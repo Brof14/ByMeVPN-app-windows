@@ -84,3 +84,48 @@ test('unknown auto-renewal stays neutral in the rendered Account and Renewal vie
   assert.equal(node('renewal-current-status-badge').textContent,'Включено');
   assert.equal(node('acc-autorenew-badge').className,'badge-auto-renew');
 });
+
+test('healthy live diagnostics reconcile egress and suppress false startup-error copy', async () => {
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      textContent: '', disabled: false, className: '',
+      classList: { add(){}, remove(){}, toggle(){} },
+      querySelector(){return null}
+    });
+    return nodes.get(id);
+  };
+  const calls = [];
+  const report = {
+    process_tracked: true, ip_verified: true, baseline_known: true,
+    adapter: 'up', ipv4_default: true, ipv6_default: true,
+    dns_resolution: true, egress_probe: 'changed', runtime_healthy: true,
+    xray_hint: 'xray'
+  };
+  const context = createContext({
+    console, setTimeout, clearTimeout,
+    setInterval: () => 1, clearInterval: () => {},
+    document: {
+      hidden: false, addEventListener(){}, getElementById: node,
+      querySelectorAll(){return []}, querySelector(){return null}
+    },
+    window: {__TAURI__: {core: {invoke: async name => {
+      calls.push(name);
+      if (name === 'vpn_health_report') return report;
+      if (name === 'vpn_status') return {
+        connected: true, verified: true, connected_seconds: 20,
+        download_mbps: 0, upload_mbps: 0, ping_ms: 0
+      };
+      return null;
+    }}}}
+  });
+  runInContext(app, context);
+  runInContext("state.vpnConnected = true; state.subscription = {status: 'active'}", context);
+  await runInContext("refreshVpnHealth()", context);
+  const result = node('vpn-health-details').textContent;
+  assert.match(result, /Проверка внешнего IP: подтверждена/);
+  assert.match(result, /Текущие сетевые проверки пройдены/);
+  assert.doesNotMatch(result, /ошибка запуска/);
+  assert.equal(runInContext('state.vpnVerified', context), true);
+  assert.ok(calls.includes('vpn_status'));
+});

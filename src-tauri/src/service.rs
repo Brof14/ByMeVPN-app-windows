@@ -1986,11 +1986,11 @@ pub async fn vpn_health_report(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    let (process_tracked, ip_verified, baseline_ip) = {
+    let (process_tracked, baseline_ip, tunnel_started_at) = {
         let guard = state.tunnel.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
-            Some(tunnel) => (true, tunnel.egress_verified, tunnel.baseline_ip),
-            None => (false, false, None),
+            Some(tunnel) => (true, tunnel.baseline_ip, Some(tunnel.started_at)),
+            None => (false, None, None),
         }
     };
     let baseline_known = baseline_ip.is_some();
@@ -2002,16 +2002,44 @@ pub async fn vpn_health_report(
     } else {
         None
     };
-    // Explicitly probe HTTPS egress again, separately from the cached
-    // connection status. Unknown/unchanged are never treated as protected.
-    let egress_probe = if process_tracked {
+    // A manual diagnostic must reconcile its *fresh* evidence with the same
+    // live tunnel; the old cached flag caused "IPv4 changed" and "IP not
+    // verified" to appear simultaneously. Serialize with the watchdog.
+    let (egress_probe, ip_verified, runtime_healthy) = if process_tracked {
         let _probe_guard = state.status_probe_gate.lock().await;
         let check = tokio::time::timeout(Duration::from_secs(9), verify_egress(baseline_ip))
             .await
             .unwrap_or(EgressCheck::Unavailable);
-        crate::egress::egress_result_code(check)
+        let route_dns_ok = crate::tun_health::health_proves_connection(
+            &routes,
+            dns_resolution,
+            true,
+            matches!(check, EgressCheck::Verified(_)),
+        );
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        let mut verified = false;
+        if let Some(tunnel) = lock
+            .as_mut()
+            .filter(|active| Some(active.started_at) == tunnel_started_at)
+        {
+            // Do not accept a prior process' HTTPS result after a disconnect,
+            // reconnect or crash while the health dialog was open.
+            verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
+            tunnel.egress_verified = verified;
+            if verified {
+                if let EgressCheck::Verified(ip) = check {
+                    tunnel.server_ip = ip.to_string();
+                }
+                tunnel.last_egress_probe = std::time::Instant::now();
+            } else {
+                tunnel.server_ip.clear();
+                // Leave the watchdog free to recheck and stop an observed
+                // unchanged-IP bypass; never label probe outages as leaks.
+            }
+        }
+        (crate::egress::egress_result_code(check), verified, verified)
     } else {
-        "not_running"
+        ("not_running", false, false)
     };
     let hint = if process_tracked {
         app.path()
@@ -2031,6 +2059,7 @@ pub async fn vpn_health_report(
         "ipv6_default": routes.ipv6_default,
         "dns_resolution": dns_resolution,
         "egress_probe": egress_probe,
+        "runtime_healthy": runtime_healthy,
         "xray_hint": hint
     }))
 }

@@ -109,7 +109,9 @@ pub fn build_tun_config_ext(
             if !matches!(security.as_str(), "reality" | "tls" | "none")
                 || (security == "reality" && !matches!(transport, "tcp" | "grpc" | "xhttp"))
             {
-                return Err("Сервер использует неподдерживаемую комбинацию транспорта и защиты.".into());
+                return Err(
+                    "Сервер использует неподдерживаемую комбинацию транспорта и защиты.".into(),
+                );
             }
             let id = text(session, &["uuid", "id"])
                 .and_then(|s| Uuid::parse_str(s).ok())
@@ -138,8 +140,11 @@ pub fn build_tun_config_ext(
                 "security": security,
             });
             if transport == "grpc" {
-                let mut grpc = json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
-                if text(session, &["transport_mode"]).is_some_and(|mode| mode.eq_ignore_ascii_case("multi")) {
+                let mut grpc =
+                    json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
+                if text(session, &["transport_mode"])
+                    .is_some_and(|mode| mode.eq_ignore_ascii_case("multi"))
+                {
                     grpc["multiMode"] = json!(true);
                 }
                 stream_settings["grpcSettings"] = grpc;
@@ -728,7 +733,11 @@ mod tests {
             node["network"] = json!(network);
             node["security"] = json!(security);
             node["flow"] = json!("");
-            node["transport_path"] = json!(if network == "grpc" { "my-service" } else { "/cdn" });
+            node["transport_path"] = json!(if network == "grpc" {
+                "my-service"
+            } else {
+                "/cdn"
+            });
             node["transport_host"] = json!("proxy.example.com");
             node["transport_mode"] = json!("multi");
             assert!(supports_windows_session(&node), "{network} / {security}");
@@ -757,7 +766,10 @@ mod tests {
         }
         let mut invalid = session();
         invalid["network"] = json!("ws");
-        assert!(!supports_windows_session(&invalid), "Android forbids Reality over WS");
+        assert!(
+            !supports_windows_session(&invalid),
+            "Android forbids Reality over WS"
+        );
         invalid["network"] = json!("httpupgrade");
         assert!(!supports_windows_session(&invalid));
     }
@@ -766,12 +778,21 @@ mod tests {
     fn xray_accepts_android_grpc_and_ws_transport_configs() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../vendor/runtime/windows-x64/xray.exe");
-        for (name, security) in [("grpc", "tls"), ("grpc", "reality"), ("ws", "tls"), ("httpupgrade", "tls")] {
+        for (name, security) in [
+            ("grpc", "tls"),
+            ("grpc", "reality"),
+            ("ws", "tls"),
+            ("httpupgrade", "tls"),
+        ] {
             let mut node = session();
             node["network"] = json!(name);
             node["security"] = json!(security);
             node["flow"] = json!("");
-            node["transport_path"] = json!(if name == "grpc" { "grpc-service" } else { "/edge" });
+            node["transport_path"] = json!(if name == "grpc" {
+                "grpc-service"
+            } else {
+                "/edge"
+            });
             node["transport_host"] = json!("cdn.example.com");
             let config = build_tun_config(&node).unwrap();
             let path = std::env::temp_dir().join(format!("bymevpn-{name}-{}.json", Uuid::new_v4()));
@@ -782,9 +803,11 @@ mod tests {
                 .output();
             let _ = std::fs::remove_file(path);
             let output = result.expect("Verified Xray binary required for transport acceptance");
-            assert!(output.status.success(), "Xray rejected {name}/{security}: {}",
-                String::from_utf8_lossy(&output.stderr));
+            assert!(
+                output.status.success(),
+                "Xray rejected {name}/{security}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
-
 }

@@ -1007,24 +1007,6 @@ function setupEventListeners() {
     invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
 
-  const priceLabel = document.getElementById('pricing-selected-plan-price');
-  const titleLabel = document.getElementById('pricing-selected-plan-title');
-  const planNote = document.getElementById('pricing-selected-plan-note');
-  const payButton = document.getElementById('btn-pay-yookassa');
-  if (priceLabel) priceLabel.textContent = chosen ? `${chosen.price} ₽` : '—';
-  if (titleLabel) titleLabel.textContent = chosen
-    ? uiText('Итого', 'Total') : uiText('Тариф недоступен', 'Plan unavailable');
-  if (planNote) {
-    const months = VERIFIED_PLAN_TYPES[state.selectedPlanCode]?.months || 1;
-    planNote.textContent = chosen
-      ? uiText(`Доступ на ${months} мес. · до ${dev} устройств`,
-        `Access for ${months} months · up to ${dev} devices`)
-      : uiText('Не удалось подтвердить стоимость тарифа', 'Plan price not confirmed');
-  }
-  if (payButton) payButton.textContent = !state.catalogReady
-    ? uiText('Проверяем цену…', 'Checking price…')
-    : canPay ? uiText(`Оплатить · ${chosen.price} ₽`, `Pay · ${chosen.price} RUB`)
-      : uiText('Оплата временно недоступна', 'Checkout temporarily unavailable');
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     card.addEventListener('click', () => {
       document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(c => c.classList.remove('selected'));
@@ -2035,6 +2017,24 @@ function updatePricingMatrixUi() {
     card.setAttribute('aria-pressed', String(selected));
     card.tabIndex = offer ? 0 : -1;
   });
+  const priceLabel = document.getElementById('pricing-selected-plan-price');
+  const titleLabel = document.getElementById('pricing-selected-plan-title');
+  const planNote = document.getElementById('pricing-selected-plan-note');
+  const payButton = document.getElementById('btn-pay-yookassa');
+  if (priceLabel) priceLabel.textContent = chosen ? `${chosen.price} ₽` : '—';
+  if (titleLabel) titleLabel.textContent = chosen
+    ? uiText('Итого', 'Total') : uiText('Тариф недоступен', 'Plan unavailable');
+  if (planNote) {
+    const months = VERIFIED_PLAN_TYPES[state.selectedPlanCode]?.months || 1;
+    planNote.textContent = chosen
+      ? uiText(`Доступ на ${months} мес. · до ${dev} устройств`,
+        `Access for ${months} months · up to ${dev} devices`)
+      : uiText('Не удалось подтвердить стоимость тарифа', 'Plan price not confirmed');
+  }
+  if (payButton) payButton.textContent = !state.catalogReady
+    ? uiText('Проверяем цену…', 'Checking price…')
+    : canPay ? uiText(`Оплатить · ${chosen.price} ₽`, `Pay · ${chosen.price} RUB`)
+      : uiText('Оплата временно недоступна', 'Checkout temporarily unavailable');
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
     const price = card.querySelector('.tariff-price-bold');

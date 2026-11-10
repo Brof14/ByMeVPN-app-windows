@@ -155,15 +155,45 @@ const I18N = {
     paywall_dns_claim: "DNS-фильтрация зависит от выбранного режима",
     paywall_subtitle_safe: "Доступ к совместимым VPN-серверам без сложной настройки",
 
-    no_plan_title_line1: "Свободный интернет.",
+    no_plan_title_line1: "VPN для ваших устройств",
+    account_subscription_eyebrow: "ПОДПИСКА BYMEVPN",
+    account_days_suffix: " дн.",
+    account_days_caption: "до окончания доступа",
+    account_your_plan: "Ваш тариф",
+    account_renew_subscription: "Продлить подписку",
+    account_access_eyebrow: "ВАШ ДОСТУП",
+    account_inactive_title: "Подписка не активна",
+    account_inactive_desc: "Оформите подписку, чтобы подключаться к серверам ByMeVPN.",
+    account_free_trial: "3 дня бесплатно",
+    account_view_plans: "Посмотреть тарифы",
+    account_management_section: "Управление",
+    account_settings_subtitle: "Профиль, устройства, подписка",
+    account_manage_renewal: "Автопродление",
+    language_short_title: "Язык",
+    language_dialog_title: "Язык приложения",
+    language_dialog_desc: "Выберите язык приложения.",
+    pricing_choose_plan: "Выберите тариф",
+    pricing_one_plan: "Одна подписка для всех ваших устройств",
+    pricing_devices_kicker: "СКОЛЬКО УСТРОЙСТВ?",
+    pricing_term_kicker: "СРОК ПОДПИСКИ",
+    pricing_payment_kicker: "СПОСОБ ОПЛАТЫ",
+    pricing_payment_method: "Карта или СБП через ЮKassa",
+    pricing_total: "Итого",
+    pricing_pay_action: "Оплатить",
+    pricing_secure: "Безопасная оплата через ЮKassa",
+    server_sheet_title: "Серверы",
+    server_sheet_desc: "Выберите страну или доверьтесь автоматике.",
+    server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
+    home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
+    home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
-    no_plan_desc: "Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.",
+    no_plan_desc: "Подключайтесь, когда вам нужен VPN.",
     no_plan_perk_connection: "VPN-подключение",
     no_plan_perk_simple: "Простое управление",
     no_plan_trial_badge: "3 ДНЯ БЕСПЛАТНО",
-    no_plan_trial_heading: "Попробуйте сервис перед покупкой",
-    no_plan_trial_desc: "3 дня без оплаты и привязки банковской карты.",
-    no_plan_trial_button: "Попробовать бесплатно",
+    no_plan_trial_heading: "3 дня бесплатно",
+    no_plan_trial_desc: "Попробуйте сервис перед покупкой.",
+    no_plan_trial_button: "Активировать бесплатно",
     no_plan_pricing_button: "Посмотреть все тарифы",
     pay_telegram_bot: "Оплатить через Telegram-бота",
     feature_speed_title: "Скорость зависит от сервера и сети",
@@ -215,7 +245,7 @@ const I18N = {
     nav_account: 'Аккаунт',
     nav_settings: 'Настройки',
     protection_active: 'Внешний IP подтверждён',
-    vpn_connected: 'VPN подключён',
+    vpn_connected: 'VPN запущен',
     conn_secured: 'Соединение защищено',
     download: 'Скачивание',
     upload: 'Отправка',
@@ -242,13 +272,13 @@ const I18N = {
     devices_5: '5 устройств',
     devices_10: '10 устройств',
     plan_1m: '1 месяц',
-    plan_3m: '3 месяца',
-    plan_6m: '6 месяцев',
-    plan_12m: '12 месяцев',
+    plan_3m: '3 + 1 месяц',
+    plan_6m: '6 + 2 месяца',
+    plan_12m: '12 + 3 месяца',
     plus_1_gift: '+ 1 в подарок',
     plus_2_gift: '+ 2 в подарок',
     plus_3_gift: '+ 3 в подарок',
-    best_price: 'Лучшая цена',
+    best_price: 'ЛУЧШАЯ ЦЕНА',
     pay_via_yookassa: 'Оплатить через ЮKassa',
     payment_methods_text: 'СБП, карты, SberPay, T-Pay',
     auto_renew_note: 'Проверьте условия продления перед оплатой. Управление автопродлением доступно через поддержку.',
@@ -386,15 +416,45 @@ const I18N = {
     paywall_dns_claim: "DNS filtering depends on the selected mode",
     paywall_subtitle_safe: "Compatible VPN servers without complex setup",
 
-    no_plan_title_line1: "An open internet.",
+    no_plan_title_line1: "VPN for your devices",
+    account_subscription_eyebrow: "BYMEVPN SUBSCRIPTION",
+    account_days_suffix: " days",
+    account_days_caption: "until access expires",
+    account_your_plan: "Your plan",
+    account_renew_subscription: "Renew subscription",
+    account_access_eyebrow: "YOUR ACCESS",
+    account_inactive_title: "Subscription inactive",
+    account_inactive_desc: "Choose a plan to connect to ByMeVPN servers.",
+    account_free_trial: "3 days free",
+    account_view_plans: "View plans",
+    account_management_section: "Management",
+    account_settings_subtitle: "Profile, devices, subscription",
+    account_manage_renewal: "Auto-renewal",
+    language_short_title: "Language",
+    language_dialog_title: "App language",
+    language_dialog_desc: "Choose the app language.",
+    pricing_choose_plan: "Choose a plan",
+    pricing_one_plan: "One plan for all your devices",
+    pricing_devices_kicker: "HOW MANY DEVICES?",
+    pricing_term_kicker: "SUBSCRIPTION LENGTH",
+    pricing_payment_kicker: "PAYMENT METHOD",
+    pricing_payment_method: "Card or SBP via YooKassa",
+    pricing_total: "Total",
+    pricing_pay_action: "Pay",
+    pricing_secure: "Secure checkout via YooKassa",
+    server_sheet_title: "Servers",
+    server_sheet_desc: "Choose a country or use automatic selection.",
+    server_sheet_footnote: "Only servers in your subscription are shown.",
+    home_connection_kicker: "YOUR CONNECTION",
+    home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
-    no_plan_desc: "Access familiar services with ByMeVPN, without complicated setup.",
+    no_plan_desc: "Connect whenever you need a VPN.",
     no_plan_perk_connection: "VPN connection",
     no_plan_perk_simple: "Simple controls",
     no_plan_trial_badge: "3 DAYS FREE",
-    no_plan_trial_heading: "Try the service before you buy",
-    no_plan_trial_desc: "3 days free, with no payment card required.",
-    no_plan_trial_button: "Start free trial",
+    no_plan_trial_heading: "3 days free",
+    no_plan_trial_desc: "Try the service before buying.",
+    no_plan_trial_button: "Activate free trial",
     no_plan_pricing_button: "Explore all plans",
     pay_telegram_bot: "Pay via Telegram bot",
     feature_speed_title: "Speed depends on your server and network",
@@ -446,7 +506,7 @@ const I18N = {
     nav_account: 'Account',
     nav_settings: 'Settings',
     protection_active: 'Exit IP verified',
-    vpn_connected: 'VPN Connected',
+    vpn_connected: 'VPN started',
     conn_secured: 'Connection secured',
     download: 'Download',
     upload: 'Upload',
@@ -473,13 +533,13 @@ const I18N = {
     devices_5: '5 devices',
     devices_10: '10 devices',
     plan_1m: '1 month',
-    plan_3m: '3 months',
-    plan_6m: '6 months',
-    plan_12m: '12 months',
+    plan_3m: '3 + 1 months',
+    plan_6m: '6 + 2 months',
+    plan_12m: '12 + 3 months',
     plus_1_gift: '+ 1 free month',
     plus_2_gift: '+ 2 free months',
     plus_3_gift: '+ 3 free months',
-    best_price: 'Best Value',
+    best_price: 'BEST VALUE',
     pay_via_yookassa: 'Pay with YooKassa',
     payment_methods_text: 'SBP, Cards, SberPay, T-Pay',
     auto_renew_note: 'Review recurring payment terms before checkout. Contact support to manage renewal until account controls are available.',
@@ -729,7 +789,8 @@ function switchTab(tabId) {
 
   // Update tab content visibility
   document.querySelectorAll('.tab-content').forEach(tab => {
-    tab.classList.toggle('active', tab.id === tabId);
+    // Android's server picker is a bottom sheet over the existing Home.
+    tab.classList.toggle('active', tab.id === tabId || (tabId === 'tab-servers' && tab.id === 'tab-home'));
   });
 
   // Update top header title
@@ -766,6 +827,10 @@ function switchTab(tabId) {
       titleEl.textContent = lang === 'ru' ? 'Расширенные настройки' : 'Advanced Settings';
       break;
   }
+
+  // Android uses the shield brand instead of a duplicate "Home" headline.
+  document.getElementById('mobile-header-brand')?.classList?.toggle('hidden', tabId !== 'tab-home');
+  titleEl?.classList?.toggle('hidden', tabId === 'tab-home');
 }
 
 // Event Listeners Binding
@@ -864,6 +929,11 @@ function setupEventListeners() {
   });
   document.getElementById('btn-account-app-settings')?.addEventListener('click', () => switchTab('tab-settings'));
   document.getElementById('btn-account-advanced')?.addEventListener('click', () => switchTab('tab-advanced'));
+  document.getElementById('btn-account-settings-open')?.addEventListener('click', () => openModal('modal-account-settings'));
+  document.getElementById('btn-language-dialog')?.addEventListener('click', () => openModal('modal-language'));
+  document.getElementById('btn-account-trial')?.addEventListener('click', handleActivateTrial);
+  document.getElementById('btn-account-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
+  document.getElementById('btn-pricing-back')?.addEventListener('click', () => switchTab('tab-home'));
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
@@ -891,6 +961,9 @@ function setupEventListeners() {
   document.getElementById('btn-active-location-pill')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('row-server-info')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('btn-back-from-servers')?.addEventListener('click', () => switchTab('tab-home'));
+  document.getElementById('tab-servers')?.addEventListener('click', event => {
+    if (event.target === event.currentTarget) switchTab('tab-home');
+  });
   document.getElementById('btn-refresh-servers')?.addEventListener('click', async () => {
     const button = document.getElementById('btn-refresh-servers');
     if (button?.disabled) return;
@@ -1574,6 +1647,19 @@ function updateVpnUi() {
   const connectedBox = document.getElementById('home-state-connected');
   const disconnectedBox = document.getElementById('home-state-disconnected');
   const activePill = document.getElementById('vpn-active-pill');
+  const sharedDock = document.getElementById('home-shared-dock');
+  sharedDock?.classList?.toggle('hidden', !hasPlan || accessUnknown);
+  document.getElementById('btn-toggle-vpn')?.classList?.toggle('hidden', !accessUnknown);
+  // Android hides free-trial activation once the API says it was consumed.
+  const trialButton = document.getElementById('btn-no-plan-trial');
+  if (trialButton) {
+    const available = sub == null || (!hasPlan && sub.trial_available === true);
+    trialButton.disabled = !available || state.trialBusy;
+    const label = trialButton.querySelector?.('[data-i18n="no_plan_trial_button"]');
+    if (label) label.textContent = available
+      ? uiText('Активировать бесплатно', 'Activate free trial')
+      : uiText('Пробный период недоступен', 'Free trial unavailable');
+  }
 
   if (isConn) {
     noPlanBox?.classList.add('hidden');
@@ -1583,7 +1669,7 @@ function updateVpnUi() {
     const heading = document.querySelector('#home-state-connected .status-title-text');
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…') : state.vpnVerified ?
-      uiText('VPN подключён', 'VPN connected') :
+      uiText('VPN запущен', 'VPN started') :
       uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'
@@ -1729,14 +1815,51 @@ function updateSubscriptionUi() {
   const accPlanBadge = document.getElementById('acc-autorenew-badge');
   const accRenewBtn = document.getElementById('btn-acc-renew');
 
-  if (homeSubTitle) homeSubTitle.textContent = title;
-  if (homeSubExpiry) homeSubExpiry.textContent = expiry;
+  // Android Home displays a compact access strip, not the pricing-plan name.
+  if (homeSubTitle) homeSubTitle.textContent = hasPlan
+    ? uiText('Подписка активна', 'Subscription active') : title;
+  if (homeSubExpiry) {
+    const remaining = sub?.seconds_remaining;
+    const days = Number.isFinite(remaining) && remaining > 0
+      ? Math.ceil(remaining / 86400) : null;
+    homeSubExpiry.textContent = hasPlan
+      ? (days === null
+        ? uiText('Срок подписки не подтверждён', 'Subscription duration not confirmed')
+        : uiText(`Осталось ${days} дней`, `${days} days remaining`))
+      : expiry;
+  }
   if (homeSubBadge) {
     homeSubBadge.textContent = hasPlan ? uiText('Активна', 'Active') :
       isUnknown ? uiText('Неизвестно', 'Unknown') : uiText('Не активна', 'Inactive');
     homeSubBadge.className = hasPlan ? 'badge-active-mini' : 'badge-inactive';
   }
 
+  // Android AccountScreen uses explicit active/inactive states, a large day count
+  // and a lightweight profile chip; never claim a paid plan when status is unknown.
+  document.getElementById('account-active-state')?.classList?.toggle('hidden', !hasPlan);
+  document.getElementById('account-inactive-state')?.classList?.toggle('hidden', !!hasPlan);
+  const statusPill = document.getElementById('acc-user-status-pill');
+  if (statusPill) {
+    statusPill.textContent = hasPlan ? uiText('Активен', 'Active')
+      : isUnknown ? uiText('Проверяем', 'Checking') : uiText('Без подписки', 'No subscription');
+    statusPill.className = hasPlan ? 'mobile-account-badge'
+      : 'mobile-account-badge mobile-account-badge-inactive';
+  }
+  const remainingDays = Number.isFinite(sub?.seconds_remaining) && sub.seconds_remaining > 0
+    ? Math.ceil(sub.seconds_remaining / 86400) : null;
+  const remainingLabel = document.getElementById('acc-remaining-days');
+  if (remainingLabel) remainingLabel.textContent = remainingDays == null ? '—' : String(remainingDays);
+  document.getElementById('acc-days-suffix')?.classList?.toggle('hidden', remainingDays === null);
+  const inactiveHeading = document.getElementById('acc-inactive-title');
+  if (inactiveHeading) inactiveHeading.textContent = isUnknown
+    ? uiText('Проверяем подписку', 'Checking subscription')
+    : uiText('Подписка не активна', 'Subscription inactive');
+  const inactiveTrial = document.getElementById('btn-account-trial');
+  if (inactiveTrial) {
+    inactiveTrial.disabled = sub?.trial_available !== true || state.trialBusy || isUnknown;
+    inactiveTrial.classList?.toggle('hidden', sub?.trial_available !== true || isUnknown);
+  }
+  document.getElementById('btn-account-pricing')?.classList?.toggle('hidden', isUnknown);
   if (accPlanName) accPlanName.textContent = title;
   if (accPlanValidity) accPlanValidity.textContent = expiry;
   if (accPlanBadge) {
@@ -1748,8 +1871,8 @@ function updateSubscriptionUi() {
   }
 
   if (accRenewBtn) {
-    const renewText = accRenewBtn.querySelector('[data-i18n="renew"]') || accRenewBtn;
-    renewText.textContent = hasPlan ? uiText('Продлить', 'Renew') :
+    const renewText = accRenewBtn.querySelector?.('[data-i18n="renew"]') || accRenewBtn;
+    renewText.textContent = hasPlan ? uiText('Продлить подписку', 'Renew subscription') :
       uiText('Оформить подписку', 'Subscribe');
   }
 
@@ -1861,10 +1984,13 @@ function escapeHtml(str) {
 // Pricing Matrix UI Calculation
 function priceNoteForOffer(code, offer) {
   if (!offer) return uiText('Тариф недоступен', 'Plan unavailable');
-  if (code === 'month') return uiText('30 дней', '30 days');
   const months = VERIFIED_PLAN_TYPES[code]?.months || 1;
-  return Math.round(offer.price / months) + ' ' +
-    uiText('₽ / месяц', 'RUB / month');
+  const monthly = Math.round(offer.price / months);
+  const price = uiText(`${monthly} ₽`, `${monthly} RUB`);
+  if (code === 'month') return uiText(`${price} за месяц`, `${price} per month`);
+  const bonus = {quarter: 1, half_year: 2, year: 3}[code] || 0;
+  return uiText(`${price} / месяц · 🎁 ${bonus} мес. в подарок`,
+    `${price}/month · 🎁 ${bonus} bonus month(s)`);
 }
 
 function updatePricingMatrixUi() {
@@ -1901,6 +2027,24 @@ function updatePricingMatrixUi() {
     card.setAttribute('aria-pressed', String(selected));
     card.tabIndex = offer ? 0 : -1;
   });
+  const priceLabel = document.getElementById('pricing-selected-plan-price');
+  const titleLabel = document.getElementById('pricing-selected-plan-title');
+  const planNote = document.getElementById('pricing-selected-plan-note');
+  const payButton = document.getElementById('btn-pay-yookassa');
+  if (priceLabel) priceLabel.textContent = chosen ? `${chosen.price} ₽` : '—';
+  if (titleLabel) titleLabel.textContent = chosen
+    ? uiText('Итого', 'Total') : uiText('Тариф недоступен', 'Plan unavailable');
+  if (planNote) {
+    const months = VERIFIED_PLAN_TYPES[state.selectedPlanCode]?.months || 1;
+    planNote.textContent = chosen
+      ? uiText(`Доступ на ${months} мес. · до ${dev} устройств`,
+        `Access for ${months} months · up to ${dev} devices`)
+      : uiText('Не удалось подтвердить стоимость тарифа', 'Plan price not confirmed');
+  }
+  if (payButton) payButton.textContent = !state.catalogReady
+    ? uiText('Проверяем цену…', 'Checking price…')
+    : canPay ? uiText(`Оплатить · ${chosen.price} ₽`, `Pay · ${chosen.price} RUB`)
+      : uiText('Оплата временно недоступна', 'Checkout temporarily unavailable');
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     const offer = state.catalogReady ? matrix[card.dataset.pwPlan] : null;
     const price = card.querySelector('.tariff-price-bold');
@@ -2028,6 +2172,7 @@ function filterServers(query) {
 const TRIAL_ACTION_IDS = [
   'btn-home-activate-trial',
   'btn-no-plan-trial',
+  'btn-account-trial',
   'btn-pricing-activate-trial',
   'btn-paywall-trial'
 ];
@@ -2278,6 +2423,12 @@ function applyLanguage(lang) {
     btn.classList.toggle('active', selected);
     btn.setAttribute('aria-pressed', String(selected));
   });
+  const currentLanguageLabel = document.getElementById('current-language-label');
+  if (currentLanguageLabel) {
+    currentLanguageLabel.textContent = lang === 'ru' ? 'Русский'
+      : lang === 'en' ? 'English'
+      : (effectiveLanguage() === 'en' ? 'System' : 'Системный');
+  }
 
   const resolved = lang === 'system' ? effectiveLanguage() : lang;
   const dict = I18N[resolved] || I18N.ru;
@@ -2314,6 +2465,7 @@ function applyLanguage(lang) {
   updateVpnUi();
   updateSubscriptionUi();
   updateDevicesUi();
+  updatePricingMatrixUi();
   renderServersList();
 }
 

@@ -6,6 +6,7 @@ mod google_desktop;
 mod service;
 mod tun_config;
 mod tunnel_runtime;
+mod window_layout;
 #[cfg(windows)]
 mod windows_job;
 
@@ -17,6 +18,9 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_layout::fit_to_monitor(&window)?;
+            }
             if let Ok(dir) = app.path().app_data_dir() {
                 let stale_config = dir.join("active_tunnel.json");
                 if stale_config.exists() {

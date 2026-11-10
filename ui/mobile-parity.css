@@ -1,0 +1,1462 @@
+/*
+ * Android Compose visual parity (HomeScreen.kt, ByMeV2Components.kt,
+ * SignInScreen.kt and Color.kt @ Android main de61551).
+ *
+ * This is the final mobile-first presentation layer. The historical desktop
+ * stylesheet stays as fallback for secondary screens while their controls
+ * are being migrated; no duplicated navigation or fake VPN UI is introduced.
+ */
+:root {
+  --android-canvas: #090f1d;
+  --android-surface: #121c2b;
+  --android-mint: #69d3bc;
+  --android-text: #eef4f4;
+  --android-secondary: #9cacbd;
+}
+
+html, body, .app-root, .app-shell-layout {
+  background: var(--android-canvas);
+}
+.app-root {
+  background: radial-gradient(ellipse 68% 54% at 55% 0, rgba(21, 46, 87, .15), transparent 72%), var(--android-canvas);
+}
+
+/* Android uses a single screen with a narrow header and a fixed 72dp dock. */
+.app-shell-layout .app-main-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: calc(100% - 72px);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.app-shell-layout .app-top-header {
+  width: 100%;
+  min-height: 66px;
+  height: 66px;
+  margin: 0;
+  padding: 11px 26px;
+  flex: 0 0 auto;
+}
+.app-shell-layout .header-left { min-width: 0; gap: 8px; }
+.mobile-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 21px;
+  letter-spacing: -.95px;
+  font-weight: 750;
+  color: var(--android-text);
+  white-space: nowrap;
+}
+.mobile-header-brand strong { font-weight: inherit; color: #66c7be; }
+.mobile-header-shield {
+  display: block;
+  width: 38px;
+  height: 38px;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+.app-shell-layout .header-circle-btn {
+  width: 38px; height: 38px;
+  border-radius: 14px;
+  background: #152335;
+  border: 1px solid #2b4053;
+  color: #c5d8d5;
+}
+.app-shell-layout .page-title { font-size: 25px; letter-spacing: -1px; }
+.app-shell-layout #vpn-active-pill { display: none !important; }
+.app-shell-layout .app-tab-pages {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: auto;
+  overscroll-behavior: contain;
+}
+.app-shell-layout .app-tab-pages > .tab-content:not(#tab-home) {
+  padding: 10px 24px 28px;
+}
+
+/* ByMeBottomNav.kt: 3 flat vector tabs with mint underline, no card highlight. */
+.app-shell-layout .app-sidebar {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 72px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  border: 0;
+  border-top: 1px solid #243447;
+  background: #101a29;
+  flex-direction: row;
+  align-items: center;
+  z-index: 30;
+}
+.app-shell-layout .sidebar-brand { display: none; }
+.app-shell-layout .sidebar-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  width: 100%;
+  height: 100%;
+}
+.app-shell-layout .sidebar-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #8096a8;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  transition: color .18s ease;
+}
+.app-shell-layout .sidebar-tab .tab-icon {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  color: inherit;
+}
+.app-shell-layout .sidebar-tab .tab-icon svg { width: 21px; height: 21px; }
+.app-shell-layout .sidebar-tab:hover,
+.app-shell-layout .sidebar-tab.active {
+  background: transparent;
+  border-color: transparent;
+  color: #71d2c3;
+}
+.app-shell-layout .sidebar-tab.active { font-weight: 650; }
+.app-shell-layout .sidebar-tab.active::after {
+  content: '';
+  width: 25px;
+  height: 3px;
+  flex: 0 0 3px;
+  border-radius: 5px;
+  background: #71d2c3;
+}
+.app-shell-layout .sidebar-tab:focus-visible { outline: 2px solid #71d2c3; outline-offset: -3px; }
+
+/* HomeScreen.kt: dynamic state occupies center, location/subscription dock below. */
+.app-shell-layout #tab-home.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 0;
+}
+#tab-home .home-state-box:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+#tab-home #home-state-no-plan:not(.hidden) { min-height: 100%; }
+#tab-home .mobile-status-layout {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 295px;
+  padding: 25px 25px 0;
+  text-align: center;
+}
+#tab-home .mobile-connection-kicker {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #78999a;
+  letter-spacing: 2px;
+}
+#tab-home .mobile-power-space {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 174px;
+  width: 100%;
+  padding: 17px 0 12px;
+}
+#tab-home .pulse-power-ring {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: clamp(166px, 32dvh, 300px);
+  height: clamp(166px, 32dvh, 300px);
+  margin: 0;
+  border: 1.5px solid rgba(83, 101, 120, .8);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+  cursor: pointer;
+  outline-offset: 4px;
+  transition: border-color .42s ease, transform .3s ease;
+}
+#tab-home .pulse-power-ring.ring-connected {
+  background: transparent;
+  border-color: rgba(53, 214, 163, .8);
+  box-shadow: none;
+}
+#tab-home .pulse-power-ring .inner-shield-circle {
+  display: grid;
+  place-items: center;
+  width: 88%;
+  height: 88%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#tab-home #vpn-power-ring .inner-shield-circle::after,
+#tab-home #vpn-power-ring-off .inner-shield-circle::after {
+  display: block;
+  content: '';
+  width: 100%;
+  height: 100%;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+  opacity: .62;
+  filter: none;
+}
+#tab-home #vpn-power-ring.ring-connected .inner-shield-circle::after {
+  opacity: 1;
+  animation: none;
+}
+#tab-home .pulse-power-ring:hover { transform: scale(1.014); }
+#tab-home .pulse-power-ring[aria-busy="true"] { cursor: wait; }
+#tab-home .pulse-power-ring[aria-busy="true"]::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: #35d6a3;
+  border-radius: 50%;
+  animation: mobile-vpn-spin 1s linear infinite;
+}
+@keyframes mobile-vpn-spin { to { transform: rotate(360deg); } }
+#tab-home .mobile-status-summary {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding-bottom: 12px;
+}
+#tab-home .connection-status-headline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+}
+#tab-home .status-check-icon { font-size: 23px; color: #3cdcad; }
+#tab-home .status-title-text {
+  margin: 0;
+  color: #eef4f4;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -.55px;
+  line-height: 1.24;
+}
+#tab-home .connection-substatus {
+  display: block;
+  margin: 0;
+  color: #859b9d;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+#tab-home .mobile-connection-timer {
+  margin-top: 4px;
+  color: #6faba1;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 2px;
+}
+#tab-home .mobile-retry-cta {
+  margin-top: 10px;
+  width: 100%;
+  min-height: 44px;
+  max-width: 320px;
+  border-radius: 13px;
+}
+#tab-home .connection-error {
+  max-width: 100%;
+  margin: 6px 0 0;
+  padding: 9px;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+/* Exactly one server + subscription section is shared between on/off states. */
+#tab-home .mobile-home-dock {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: auto;
+  padding: 6px 25px 18px;
+}
+#tab-home .mobile-home-dock.hidden { display: none; }
+#tab-home .mobile-server-card {
+  display: flex;
+  align-items: center;
+  min-height: 106px;
+  padding: 17px 15px 17px 19px;
+  background: #111b1e;
+  border: 1px solid #263e41;
+  border-radius: 20px;
+  text-align: left;
+}
+#tab-home .mobile-location-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+#tab-home .mobile-location-title {
+  display: block;
+  margin-bottom: 8px;
+  color: #698589;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+}
+#tab-home .mobile-location-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#tab-home .mobile-location-row .chip-flag { font-size: 23px; line-height: 28px; }
+#tab-home .mobile-server-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#tab-home .mobile-server-copy strong {
+  overflow: hidden;
+  color: #eef4f4;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tab-home .mobile-server-copy > span { color: #81999b; font-size: 11px; }
+#tab-home .mobile-card-chevron {
+  display: grid;
+  flex: 0 0 32px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #1b3030;
+  color: #9dd5cb;
+  font-size: 24px;
+  cursor: pointer;
+}
+#tab-home .mobile-subscription-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 17px;
+  border-radius: 17px;
+  border: 1px solid #243739;
+  background: #101b1c;
+  text-align: left;
+  cursor: pointer;
+}
+#tab-home #home-sub-badge { display: none !important; }
+#tab-home .mobile-subscription-clock {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #162b27;
+  color: #9dd5cb;
+}
+#tab-home .mobile-subscription-clock svg { width: 16px; height: 16px; }
+#tab-home .mobile-subscription-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; }
+#tab-home .mobile-subscription-copy strong {
+  color: #edf5f2;
+  font-size: 12.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tab-home .mobile-subscription-copy > span { color: #8aa1a1; font-size: 11px; }
+#tab-home .mobile-subscription-arrow { color: #73898a; font-size: 23px; line-height: 1; }
+#tab-home .mobile-server-card :is([role="button"]):focus-visible,
+#tab-home .mobile-subscription-card:focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+
+/* Android HomeNoPlanContent.kt: one centered shield and one trial card. */
+#tab-home .mobile-no-plan {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 100%;
+  width: 100%;
+  padding: 8px 26px 14px;
+}
+#tab-home .mobile-no-plan-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  text-align: center;
+}
+#tab-home .no-plan-shield-circle {
+  width: clamp(94px, 20dvh, 145px);
+  height: clamp(94px, 20dvh, 145px);
+  margin-bottom: 14px;
+  border: 0;
+  box-shadow: none;
+  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+}
+#tab-home .no-plan-shield-circle::after { display: none; }
+#tab-home .no-plan-headline {
+  margin: 0;
+  color: #eef4f4;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.24;
+  letter-spacing: -.45px;
+  text-align: center;
+}
+#tab-home .no-plan-desc {
+  margin: 6px 0 22px;
+  color: #91a4a5;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+#tab-home .no-plan-trial-dock {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 19px;
+  border: 1px solid #285a4c;
+  border-radius: 21px;
+  background: linear-gradient(135deg, #142638, #18283a, #101e1d);
+  text-align: left;
+}
+#tab-home .no-plan-trial-dock h3 {
+  margin: 0 0 4px;
+  color: #eef4f4;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 750;
+}
+#tab-home .no-plan-trial-dock p { margin: 0 0 14px; font-size: 12px; color: #a1b4ad; }
+#tab-home .mobile-primary-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  width: 100%;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(90deg, #69d3bc, #64c0d4);
+  color: #0a2431;
+  font-size: 14px;
+  font-weight: 750;
+}
+#tab-home .mobile-pricing-link {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: auto;
+  padding: 14px 0 5px;
+  border: 0;
+  background: none;
+  color: #b9dfd3;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+/* The phone-style sign-in uses the same scale as Android's 150dp shield. */
+.auth-view { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 14px 24px 28px; }
+.auth-hero-side { flex: 0 0 auto; width: 100%; max-width: 480px; min-height: 218px; }
+.auth-hero-content { width: 100%; padding: 0; }
+.auth-globe-bg, .auth-perks-row { display: none; }
+.hero-shield-emblem { min-height: 156px; width: 156px; margin: 0 auto 8px; }
+.hero-shield-emblem::after { width: 150px; height: 150px; }
+.auth-brand-name { font-size: 30px; margin: 0 0 5px; }
+.auth-slogan { font-size: 12px; margin: 0; }
+.auth-card-side { width: 100%; max-width: 480px; padding: 0; }
+.auth-card { padding: 16px 0 24px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.auth-card:hover { border: 0; }
+.auth-title { font-size: 23px; }
+.auth-subtitle { color: #9cacbd; font-size: 12px; }
+
+/* The other Android destinations remain single-column, without a desktop grid. */
+.app-shell-layout .app-tab-pages .home-cards-duo,
+.app-shell-layout .app-tab-pages .account-top-cards-row,
+.app-shell-layout .account-settings-button-grid { grid-template-columns: minmax(0, 1fr); }
+.app-shell-layout .settings-links-grid-2x2 { grid-template-columns: minmax(0, 1fr); }
+.app-shell-layout .app-tab-pages .tab-content { max-width: 100%; }
+
+@media (max-height: 600px) {
+  .app-shell-layout .app-top-header { height: 54px; min-height: 54px; padding-block: 8px; }
+  .app-shell-layout .app-sidebar { height: 64px; }
+  .app-shell-layout .app-main-frame { height: calc(100% - 64px); }
+  #tab-home .mobile-status-layout { min-height: 245px; padding-top: 14px; }
+  #tab-home .mobile-power-space { min-height: 134px; padding: 10px 0; }
+  #tab-home .pulse-power-ring { width: clamp(138px, 28dvh, 210px); height: clamp(138px, 28dvh, 210px); }
+  #tab-home .mobile-home-dock { padding-bottom: 12px; }
+  #tab-home .mobile-server-card { min-height: 82px; padding-block: 11px; }
+  #tab-home .mobile-subscription-card { min-height: 58px; padding-block: 10px; }
+  #tab-home .no-plan-shield-circle { width: 100px; height: 100px; margin-bottom: 9px; }
+  #tab-home .no-plan-desc { margin-bottom: 14px; }
+  #tab-home .no-plan-trial-dock { padding: 15px; }
+  .auth-hero-side { min-height: 180px; }
+  .hero-shield-emblem { min-height: 118px; }
+  .hero-shield-emblem::after { width: 112px; height: 112px; }
+}
+@media (max-width: 410px) {
+  .app-shell-layout .app-top-header { padding-inline: 18px; }
+  .app-shell-layout .app-tab-pages > .tab-content:not(#tab-home) { padding-inline: 18px; }
+  #tab-home .mobile-status-layout { padding-inline: 19px; }
+  #tab-home .mobile-home-dock { padding-inline: 19px; }
+  #tab-home .mobile-no-plan { padding-inline: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #tab-home .pulse-power-ring[aria-busy="true"]::before { animation: none; }
+}
+
+/* AccountScreen.kt: one profile row, single 21dp plan card, two section rows. */
+.app-shell-layout #tab-account {
+  display: none;
+  padding: 10px 26px 28px;
+}
+.app-shell-layout #tab-account.active { display: block; }
+#tab-account .account-top-cards-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+}
+#tab-account .account-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 79px;
+  padding: 10px 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#tab-account .profile-avatar-circle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 51px;
+  width: 51px;
+  height: 51px;
+  border: 1px solid #294a41;
+  border-radius: 16px;
+  background: #192c3d;
+  color: #79c7c6;
+}
+#tab-account .profile-avatar-circle svg { width: 25px; height: 25px; }
+#tab-account .profile-details-column { flex: 1 1 auto; min-width: 0; text-align: left; }
+#tab-account .profile-name-text {
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: #eef4f4;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#tab-account .profile-email-text {
+  display: block;
+  overflow: hidden;
+  color: #8ca5a2;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tab-account .mobile-account-badge {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 112px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #193743;
+  color: #8cdeca;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  text-align: center;
+}
+#tab-account .mobile-account-badge-inactive { background: #2b2424; color: #e3a29a; }
+#tab-account .account-sub-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  padding: 21px;
+  background: #1a2d40;
+  border: 1px solid #34566a;
+  border-radius: 21px;
+  box-shadow: none;
+}
+#tab-account .mobile-account-active,
+#tab-account .mobile-account-inactive {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+#tab-account .mobile-account-active.hidden,
+#tab-account .mobile-account-inactive.hidden { display: none; }
+#tab-account .mobile-account-kicker {
+  display: block;
+  margin-bottom: 10px;
+  color: #8fbbca;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+}
+#tab-account .mobile-account-days {
+  display: flex;
+  align-items: baseline;
+  min-height: 81px;
+  gap: 4px;
+  color: #eef4f4;
+}
+#tab-account .mobile-account-days strong {
+  font-size: 64px;
+  line-height: 1.14;
+  font-weight: 750;
+  letter-spacing: -3px;
+  font-variant-numeric: tabular-nums;
+}
+#tab-account .mobile-account-days span {
+  color: #80d3c6;
+  font-size: 20px;
+  font-weight: 700;
+}
+#tab-account .mobile-account-active > p {
+  margin: 0;
+  color: #9ab1a7;
+  font-size: 13px;
+}
+#tab-account .mobile-account-separator {
+  width: 100%;
+  height: 1px;
+  margin: 16px 0 14px;
+  background: #305248;
+}
+#tab-account .acc-sub-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+#tab-account .acc-sub-plan-row span { color: #99b3a8; font-size: 12px; }
+#tab-account .acc-plan-title {
+  margin: 0;
+  color: #e5f3ec;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
+}
+#tab-account .acc-sub-actions-row { display: flex; width: 100%; margin: 0; }
+#tab-account #btn-acc-renew {
+  display: block;
+  min-height: 48px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #526f80;
+  border-radius: 13px;
+  background: #eaf8f8;
+  color: #0a2431;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+#tab-account .mobile-account-inactive h3 {
+  margin: 6px 0 10px;
+  color: #eef4f4;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.5px;
+}
+#tab-account .mobile-account-inactive p {
+  margin: 0 0 20px;
+  color: #96b0a6;
+  font-size: 12.5px;
+  line-height: 18px;
+}
+#tab-account #btn-account-trial {
+  min-height: 50px;
+  width: 100%;
+  margin-bottom: 14px;
+  border: 0;
+  border-radius: 13px;
+  color: #0a2431;
+  background: linear-gradient(95deg, #69d3bc, #64c0d4);
+  font-size: 14px;
+  font-weight: 700;
+}
+#tab-account #btn-account-pricing {
+  min-height: 28px;
+  width: 100%;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: #90cfce;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+  cursor: pointer;
+}
+#tab-account .mobile-account-section-label {
+  margin: 22px 0 10px 2px;
+  color: #8ba3a4;
+  font-size: 12px;
+  font-weight: 600;
+}
+#tab-account .account-devices-section,
+#tab-account .mobile-account-settings-row {
+  display: flex;
+  align-items: center;
+  min-height: 69px;
+  gap: 13px;
+  width: 100%;
+  padding: 14px 17px;
+  border: 1px solid #263647;
+  border-radius: 16px;
+  background: #121c2b;
+  color: #eef4f4;
+  box-shadow: none;
+  cursor: pointer;
+}
+#tab-account .mobile-account-row-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #1b2f3c;
+  color: #7ac9cb;
+}
+#tab-account .mobile-account-row-icon svg { width: 20px; height: 20px; }
+#tab-account .mobile-account-row-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
+#tab-account .mobile-account-row-copy strong { color: #eef4f4; font-size: 13.5px; font-weight: 650; }
+#tab-account .mobile-account-row-copy span { font-size: 11px; font-weight: 400; color: #8ca5a2; }
+#tab-account .mobile-account-row-arrow { flex: 0 0 auto; color: #71898a; font-size: 24px; line-height: 1; }
+#tab-account :is(.account-devices-section, .mobile-account-settings-row):focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+
+.mobile-account-settings-modal {
+  width: min(440px, calc(100vw - 34px));
+  max-width: calc(100vw - 34px);
+  max-height: calc(100dvh - 58px);
+  overflow-y: auto;
+  border: 1px solid #263647;
+  border-radius: 22px;
+  background: #121c2b;
+}
+.mobile-account-settings-modal .account-settings-button-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mobile-account-settings-modal .account-settings-button-grid > button {
+  width: 100%;
+  min-height: 42px;
+  white-space: normal;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.mobile-account-settings-modal .account-settings-button-grid > .footer-action-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+@media (max-width: 410px) {
+  .app-shell-layout #tab-account { padding-inline: 18px; }
+  #tab-account .account-sub-card { padding: 18px; }
+}
+
+/* Android SettingsScreen.kt: 25sp headline, grouped toggles, a language row
+   opening the same vertical single-choice dialog as Jetpack Compose. */
+#tab-settings .android-settings-heading {
+  padding: 10px 2px 16px;
+}
+#tab-settings .android-settings-heading h2 {
+  margin: 0 0 8px;
+  color: #eef4f4;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 720;
+  letter-spacing: -.5px;
+}
+#tab-settings .android-settings-heading p {
+  margin: 0;
+  color: #8ea4a2;
+  font-size: 12.5px;
+  line-height: 17px;
+}
+#tab-settings .android-settings-section-label {
+  margin: 10px 2px;
+  color: #8ba3a4;
+  font-size: 12px;
+  font-weight: 600;
+}
+#tab-settings .android-settings-section-label:not(:first-child) {
+  margin-top: 22px;
+}
+#tab-settings .android-settings-essential,
+#tab-settings .android-settings-language {
+  padding: 4px 14px;
+  border: 1px solid #263647;
+  border-radius: 18px;
+  background: #121c2b;
+  box-shadow: none;
+}
+#tab-settings .setting-item-row {
+  display: flex;
+  align-items: center;
+  min-height: 72px;
+  gap: 12px;
+  padding: 9px 0;
+}
+#tab-settings .setting-row-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #1b2f3c;
+  color: #7ac9cb;
+  font-size: 20px;
+}
+#tab-settings .setting-row-icon svg { width: 20px; height: 20px; }
+#tab-settings .setting-copy-column {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+#tab-settings .setting-copy-column strong {
+  color: #eef4f4;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+#tab-settings .setting-copy-column > span {
+  color: #9cacbd;
+  font-size: 11.5px;
+  line-height: 1.38;
+}
+#tab-settings .setting-item-row .switch-control { flex: 0 0 auto; margin-left: auto; }
+#tab-settings .android-settings-language .mobile-language-row {
+  display: flex;
+  width: 100%;
+  min-height: 68px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  color: #eef4f4;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#tab-settings .mobile-language-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #71898a;
+  font-size: 23px;
+}
+#tab-settings #row-open-advanced-settings { display: none; }
+#tab-settings .android-settings-default-tip {
+  margin: 20px 0 12px;
+  padding: 14px 15px;
+  border: 1px solid #263647;
+  border-radius: 15px;
+  color: #8ea4a2;
+  background: #101b29;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mobile-language-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 52px);
+  overflow-y: auto;
+  border: 1px solid #263647;
+  border-radius: 24px;
+  background: #121c2b;
+  padding: 20px;
+}
+.mobile-language-modal .modal-head h3 {
+  color: #eef4f4;
+  font-size: 20px;
+  font-weight: 700;
+}
+.mobile-language-modal .modal-desc {
+  margin: 10px 0 16px;
+  color: #9cacbd;
+  font-size: 13px;
+}
+.mobile-language-modal .lang-segmented-control {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.mobile-language-modal .lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 57px;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #263647;
+  border-radius: 15px;
+  background: #111c2b;
+  color: #eef4f4;
+  font-size: 14px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-language-modal .lang-btn.active {
+  border-color: #69d3bc;
+  background: #18283a;
+  color: #eef4f4;
+}
+.mobile-language-modal .mobile-language-radio {
+  position: relative;
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid #7d94a8;
+  border-radius: 50%;
+}
+.mobile-language-modal .lang-btn.active .mobile-language-radio {
+  border-color: #69d3bc;
+}
+.mobile-language-modal .lang-btn.active .mobile-language-radio::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #69d3bc;
+}
+.mobile-language-modal .lang-btn:focus-visible,
+#tab-settings #btn-language-dialog:focus-visible {
+  outline: 2px solid #69d3bc;
+  outline-offset: 3px;
+}
+
+/* PricingScreen.kt: Android has no desktop promo banner, cards grid or
+   feature matrix. It uses a 51dp device selector, 95dp offer rows, and CTA. */
+.app-shell-layout #tab-pricing {
+  background: #090f1d;
+  padding: 0 26px 28px;
+}
+#tab-pricing .mobile-pricing-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 24px;
+  padding: 5px 0 0;
+}
+#tab-pricing .mobile-pricing-back {
+  flex: 0 0 37px;
+  display: grid;
+  place-items: center;
+  width: 37px;
+  height: 37px;
+  border: 1px solid #2c4154;
+  border-radius: 14px;
+  background: #142235;
+  color: #c5d8d5;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+#tab-pricing .mobile-pricing-topbar h2 {
+  margin: 0 0 3px;
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -1.15px;
+  color: #eef4f4;
+}
+#tab-pricing .mobile-pricing-topbar p {
+  margin: 0;
+  color: #8fa3a4;
+  font-size: 12px;
+}
+#tab-pricing .section-micro-label,
+#tab-pricing .mobile-pricing-kicker {
+  display: block;
+  margin: 0 0 10px;
+  color: #7d94a8;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+}
+#tab-pricing .device-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 4px;
+  width: 100%;
+  height: 51px;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid #29403f;
+  border-radius: 15px;
+  background: #142022;
+}
+#tab-pricing .dev-seg-btn {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #829c9a;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+}
+#tab-pricing .dev-seg-btn.active {
+  background: #69d3bc;
+  color: #10241e;
+  font-weight: 750;
+}
+#tab-pricing .dev-seg-btn:disabled { opacity: .44; cursor: not-allowed; }
+#tab-pricing .pricing-devices-section { margin: 0 0 24px; }
+#tab-pricing .pricing-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+#tab-pricing .tariff-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  gap: 12px;
+  width: 100%;
+  min-height: 95px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid #283c3e;
+  border-radius: 18px;
+  background: #111c1d;
+  color: #eef4f4;
+  box-shadow: none;
+  cursor: pointer;
+  transform: none;
+  text-align: left;
+}
+#tab-pricing .tariff-card.selected {
+  border-color: #69d3bc;
+  background: #132221;
+  box-shadow: none;
+}
+#tab-pricing .tariff-card.best-value.selected { background: #152a26; }
+#tab-pricing .tariff-card:hover { transform: none; border-color: #69d3bc; }
+#tab-pricing .tariff-card.unavailable { opacity: .45; cursor: not-allowed; }
+#tab-pricing .mobile-tariff-info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 6px;
+}
+#tab-pricing .tariff-period-name {
+  color: #eef4f4;
+  font-size: 15px;
+  font-weight: 750;
+}
+#tab-pricing .tariff-period-note {
+  display: block;
+  color: #8fa3a4;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+#tab-pricing .tariff-price-block {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+#tab-pricing .tariff-price-number {
+  display: inline;
+  margin: 0;
+  color: #eef4f4;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -.5px;
+}
+#tab-pricing .mobile-tariff-radio {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #607a77;
+  border-radius: 50%;
+  background: transparent;
+}
+#tab-pricing .tariff-card.selected .mobile-tariff-radio {
+  border-color: #78d3c9;
+  background: #78d3c9;
+}
+#tab-pricing .tariff-card.selected .mobile-tariff-radio::after {
+  content: '✓';
+  color: #0a281e;
+  font-size: 12px;
+  font-weight: 900;
+}
+#tab-pricing .best-badge-crown {
+  position: absolute;
+  top: -9px;
+  right: 16px;
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: #69d3bc;
+  color: #06231a;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: .4px;
+}
+#tab-pricing .mobile-pricing-payment-kicker { margin-top: 34px; }
+#tab-pricing .mobile-pricing-payment-method {
+  display: grid;
+  place-items: center;
+  min-height: 50px;
+  padding: 13px 12px;
+  border: 1px solid #263a3c;
+  border-radius: 14px;
+  background: #132023;
+  color: #b9ceca;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+}
+#tab-pricing .mobile-pricing-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 26px 0 4px;
+  color: #a1b5b3;
+  font-size: 13px;
+}
+#tab-pricing .mobile-pricing-summary strong {
+  color: #eef4f4;
+  font-size: 25px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+#tab-pricing .mobile-pricing-summary-note {
+  margin: 0 0 18px;
+  color: #8b9f9e;
+  font-size: 11px;
+}
+#tab-pricing .pricing-pay-actions { width: 100%; margin: 0; padding: 0; }
+#tab-pricing #btn-pay-yookassa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(90deg,#69d3bc,#64c0d4);
+  color: #0a2431;
+  font-size: 14px;
+  font-weight: 750;
+}
+#tab-pricing .mobile-pricing-secure {
+  margin: 16px 0 0;
+  color: #729d90;
+  font-size: 11px;
+  text-align: center;
+}
+#tab-pricing .payment-footnotes {
+  margin: 16px 0 0;
+  padding: 0;
+  color: #7d94a8;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+/* Android PricingScreen is a full-screen secondary flow, not a bottom-tab page. */
+.app-shell-layout:has(#tab-pricing.active) .app-top-header,
+.app-shell-layout:has(#tab-pricing.active) .app-sidebar { display: none; }
+.app-shell-layout:has(#tab-pricing.active) .app-main-frame { height: 100%; }
+@media (max-width: 410px) {
+  .app-shell-layout #tab-pricing { padding-inline: 18px; }
+  #tab-pricing .tariff-card { padding-inline: 14px; }
+  #tab-pricing .dev-seg-btn { font-size: 10.5px; }
+}
+
+/* ServerSelectionSheet.kt: Android's modal 101B2A sheet and 60% scrim. */
+#tab-servers.active {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: stretch;
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 0;
+  background: rgba(0,0,0,.60);
+  animation: none;
+}
+#tab-servers .servers-view-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(94dvh, 775px);
+  margin: 0;
+  padding: 12px 25px 24px;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 25px 25px 0 0;
+  background: #101b2a;
+  box-shadow: 0 -15px 65px rgba(0,0,0,.4);
+}
+#tab-servers .mobile-sheet-drag {
+  align-self: center;
+  flex: 0 0 4px;
+  width: 43px;
+  height: 4px;
+  margin: 0 0 18px;
+  border-radius: 5px;
+  background: #4b6361;
+}
+#tab-servers .mobile-server-sheet-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+#tab-servers .mobile-server-sheet-title h2 {
+  margin: 0;
+  color: #eef4f4;
+  font-size: 27px;
+  font-weight: 750;
+  letter-spacing: -1.15px;
+}
+#tab-servers .mobile-sheet-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #1b2a2b;
+  color: #93adab;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+#tab-servers .mobile-server-sheet-desc {
+  margin: 8px 0 20px;
+  color: #889ea0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+#tab-servers .servers-top-bar {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#tab-servers .search-input-box { display: none; }
+#tab-servers .btn-refresh-servers {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: #90ddce;
+  font-size: 11px;
+}
+#tab-servers .recommended-server-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 80px;
+  width: 100%;
+  margin: 0 0 24px;
+  padding: 12px 14px;
+  border: 1px solid #437d90;
+  border-radius: 18px;
+  background: #182d3b;
+  box-shadow: none;
+  text-align: left;
+}
+#tab-servers .rec-icon-badge {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 14px;
+  background: #2c4d5d;
+  color: #69d3bc;
+  font-size: 20px;
+}
+#tab-servers .rec-server-info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  text-align: left;
+}
+#tab-servers .rec-server-info strong {
+  color: #eef4f4;
+  font-size: 13px;
+  font-weight: 750;
+}
+#tab-servers .rec-server-info span {
+  color: #89a6a0;
+  font-size: 11px;
+}
+#tab-servers .radio-selection-dot {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #57716f;
+  border-radius: 50%;
+  background: transparent;
+}
+#tab-servers .recommended-server-card.selected .radio-selection-dot {
+  display: grid;
+  place-items: center;
+  background: #69d3bc;
+  border-color: #69d3bc;
+}
+#tab-servers .recommended-server-card.selected .radio-selection-dot::after {
+  content: '✓';
+  color: #0a2231;
+  font-size: 13px;
+  font-weight: 900;
+}
+#tab-servers .section-micro-label {
+  display: block;
+  margin: 0 0 12px;
+  color: #7d94a8;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+}
+#tab-servers .servers-cards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+  max-height: 43dvh;
+}
+#tab-servers .server-stack-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 76px;
+  gap: 13px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #293e4f;
+  border-radius: 18px;
+  background: #111d2d;
+  box-shadow: none;
+  text-align: left;
+}
+#tab-servers .server-stack-item.selected { border-color: #69d3bc; }
+#tab-servers .server-item-flag { flex: 0 0 26px; font-size: 23px; }
+#tab-servers .server-item-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+#tab-servers .server-item-text strong {
+  overflow: hidden;
+  color: #eef4f4;
+  font-size: 13.5px;
+  font-weight: 750;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#tab-servers .server-item-text span { color: #89a6a0; font-size: 11px; }
+#tab-servers .mobile-server-sheet-footnote {
+  margin: 18px 0 0;
+  color: #688985;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.4;
+}
+@media (max-width: 410px) {
+  #tab-servers .servers-view-container { padding-inline: 18px; }
+}

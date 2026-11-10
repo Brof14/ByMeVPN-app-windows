@@ -162,8 +162,8 @@ mod tests {
 
     #[test]
     fn large_xray_log_is_inspected_from_the_bounded_recent_tail() {
-        let path = std::env::temp_dir()
-            .join(format!("bymevpn-health-log-{}", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("bymevpn-health-log-{}", uuid::Uuid::new_v4()));
         let mut noise = vec![b'x'; 128 * 1024];
         noise.extend_from_slice(b"\\nfailed to create Wintun: access is denied\\n");
         std::fs::write(&path, noise).unwrap();

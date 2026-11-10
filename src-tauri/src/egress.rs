@@ -39,6 +39,17 @@ pub fn classify_egress(
     }
 }
 
+/// Status for explicit, user-initiated diagnostics. This never exposes
+/// an address and never equates a reachable service with leak-free routing.
+pub fn egress_result_code(result: EgressCheck) -> &'static str {
+    match result {
+        EgressCheck::Verified(_) => "changed",
+        EgressCheck::Unchanged => "unchanged",
+        EgressCheck::Unverified(_) => "baseline_missing",
+        EgressCheck::Unavailable => "unavailable",
+    }
+}
+
 fn parse_ip(body: &str) -> Result<IpAddr, String> {
     if body.len() > 1024 {
         return Err("Сервис проверки вернул слишком большой ответ.".into());

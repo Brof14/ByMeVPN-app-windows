@@ -143,6 +143,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn diagnostic_statuses_never_confuse_no_probe_with_a_changed_ip() {
+        let old = "192.0.2.1".parse::<IpAddr>().unwrap();
+        let new = "198.51.100.2".parse::<IpAddr>().unwrap();
+        assert_eq!(egress_result_code(classify_egress(Some(old), Ok(new))), "changed");
+        assert_eq!(egress_result_code(classify_egress(Some(old), Ok(old))), "unchanged");
+        assert_eq!(egress_result_code(classify_egress(None, Ok(new))), "baseline_missing");
+        assert_eq!(
+            egress_result_code(classify_egress(Some(old), Err(EgressFailure::Unavailable))),
+            "unavailable"
+        );
+    }
+
+    #[test]
     fn missing_baseline_does_not_prevent_start_but_never_claims_verification() {
         let observed = "198.51.100.9".parse::<IpAddr>().unwrap();
         assert_eq!(

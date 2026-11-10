@@ -37,7 +37,12 @@ mod tests {
 
     #[test]
     fn desktop_portrait_window_stays_under_seventy_percent() {
-        for (width, height) in [(1920.0, 1040.0), (1366.0, 728.0), (1024.0, 728.0), (640.0, 360.0)] {
+        for (width, height) in [
+            (1920.0, 1040.0),
+            (1366.0, 728.0),
+            (1024.0, 728.0),
+            (640.0, 360.0),
+        ] {
             let (window_w, window_h) = initial_window_size(width, height);
             assert!(window_w <= width * MAX_MONITOR_SHARE);
             assert!(window_h <= height * MAX_MONITOR_SHARE);

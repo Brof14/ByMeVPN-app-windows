@@ -8,6 +8,7 @@ mod tun_config;
 mod tunnel_runtime;
 #[cfg(windows)]
 mod windows_job;
+mod window_layout;
 
 use tauri::{Manager, RunEvent};
 #[cfg(all(debug_assertions, windows))]
@@ -17,6 +18,9 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_layout::fit_to_monitor(&window)?;
+            }
             if let Ok(dir) = app.path().app_data_dir() {
                 let stale_config = dir.join("active_tunnel.json");
                 if stale_config.exists() {

@@ -36,7 +36,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn desktop_portrait_window_stays_under_seventy_percent() {
+    fn desktop_window_is_wide_without_occupying_more_than_seventy_percent_of_work_area() {
         for (width, height) in [
             (1920.0, 1040.0),
             (1366.0, 728.0),
@@ -44,15 +44,17 @@ mod tests {
             (640.0, 360.0),
         ] {
             let (window_w, window_h) = initial_window_size(width, height);
-            assert!(window_w <= width * MAX_MONITOR_SHARE);
-            assert!(window_h <= height * MAX_MONITOR_SHARE);
-            assert!(window_w <= TARGET_WIDTH && window_h <= TARGET_HEIGHT);
+            assert!(window_w * window_h <= 0.70 * width * height);
+            assert!(window_w <= 0.90 * width);
+            assert!(window_h <= 0.90 * height);
+            assert!(window_w > window_h, "Desktop first-launch should be landscape");
         }
     }
 
     #[test]
-    fn tall_desktop_keeps_an_android_like_portrait_canvas() {
-        assert_eq!(initial_window_size(1920.0, 1040.0), (480.0, 720.0));
-        assert_eq!(initial_window_size(1366.0, 728.0), (480.0, 509.0));
+    fn desktop_default_is_readable_not_a_phone_sized_viewport() {
+        assert_eq!(initial_window_size(1920.0, 1040.0), (960.0, 660.0));
+        let (w, h) = initial_window_size(1366.0, 728.0);
+        assert!(w >= 900.0 && h >= 620.0);
     }
 }

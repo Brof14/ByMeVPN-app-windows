@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createContext, runInContext} from 'node:vm';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url),'utf8');
 const html = read('ui/index.html');
@@ -41,4 +42,32 @@ test('VPN health reports real DNS resolution result, not a stale log keyword', (
   assert.match(native, /dns_resolution_check/);
   assert.match(app, /report\?\.dns_resolution/);
   assert.match(app, /DNS[^\n]*провер/);
+});
+
+test('unknown auto-renewal stays neutral in the rendered Account and Renewal views', () => {
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      textContent:'', className:'hidden', disabled:false,
+      classList:{toggle(){},add(){},remove(){}},
+      querySelector(){return null}
+    });
+    return nodes.get(id);
+  };
+  const context = createContext({
+    console, setTimeout, clearTimeout, setInterval, clearInterval,
+    window:{},
+    document:{addEventListener(){},querySelectorAll(){return[]},getElementById:node}
+  });
+  runInContext(app, context);
+  runInContext("state.subscription={status:'active',auto_renew:null,plan_name:'Pro',seconds_remaining:86400};updateSubscriptionUi()",context);
+  assert.equal(node('acc-autorenew-badge').className,'hidden');
+  assert.equal(node('renewal-current-status-badge').className,'renewal-status-neutral');
+  assert.equal(node('renewal-current-status-badge').textContent,'Информация недоступна');
+  runInContext("state.subscription.auto_renew=false;updateSubscriptionUi()",context);
+  assert.equal(node('acc-autorenew-badge').className,'renewal-status-neutral');
+  assert.equal(node('renewal-current-status-badge').textContent,'Отключено');
+  runInContext("state.subscription.auto_renew=true;updateSubscriptionUi()",context);
+  assert.equal(node('renewal-current-status-badge').textContent,'Включено');
+  assert.equal(node('acc-autorenew-badge').className,'badge-auto-renew');
 });

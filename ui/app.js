@@ -1427,7 +1427,7 @@ async function refreshVpnHealth() {
       adapter: uiText('Обнаружена ошибка сетевого адаптера Wintun.', 'Wintun adapter error detected.'),
       routes: uiText('Обнаружена ошибка таблицы маршрутов.', 'Routing table error detected.'),
       dns: uiText('В журнале Xray есть сообщение о сбое DNS.', 'Xray logged a DNS-related failure.'),
-      xray: uiText('В журнале Xray есть ошибка запуска.', 'Xray startup error found.'),
+      xray: uiText('В журнале Xray есть сообщения об ошибках соединений.', 'Xray logged connection errors.'),
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
     };
     const freshEgress = {
@@ -1456,16 +1456,22 @@ async function refreshVpnHealth() {
         (freshEgress[report?.egress_probe] || freshEgress.unavailable),
       uiText('Проверка внешнего IP: ', 'Exit IP verification: ') +
         checked(report?.ip_verified, uiText('подтверждена', 'verified'), uiText('не подтверждена', 'unverified')),
-      report?.xray_hint === 'dns' && report?.dns_resolution === true
-        ? uiText('Ранее Xray сообщал о DNS-сбое; текущий DNS-тест успешен.',
-          'Xray logged a DNS error; the current DNS test succeeded.')
-        : (issues[report?.xray_hint] || issues.unknown)
+      report?.runtime_healthy === true
+        ? uiText('Текущие сетевые проверки пройдены.', 'Current connectivity checks passed.')
+        : report?.xray_hint === 'dns' && report?.dns_resolution === true
+          ? uiText('Ранее Xray сообщал о DNS-сбое; текущий DNS-тест успешен.',
+            'Xray logged a DNS error; the current DNS test succeeded.')
+          : (issues[report?.xray_hint] || issues.unknown)
     ];
     if (report?.baseline_known === false) {
       lines.push(uiText('Исходный IP не удалось определить до подключения.',
         'Pre-connection IP was not available.'));
     }
     details.textContent = lines.join('\n');
+    // A fresh successful health check updates the native tunnel state.
+    // Synchronize the Home warning immediately instead of waiting for the
+    // 20-second watchdog cycle or displaying stale protection status.
+    if (state.vpnConnected && report?.process_tracked) await checkVpnStatus();
   } catch (_) {
     details.textContent = uiText('Не удалось выполнить локальную проверку. Проверьте журнал Windows.',
       'Local diagnostics unavailable. Check the Windows logs.');

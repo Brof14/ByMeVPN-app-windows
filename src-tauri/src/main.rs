@@ -6,6 +6,7 @@ mod google_desktop;
 mod service;
 mod tun_config;
 mod tunnel_runtime;
+mod tun_health;
 mod window_layout;
 #[cfg(windows)]
 mod windows_job;
@@ -71,6 +72,7 @@ fn main() {
             service::vpn_start,
             service::vpn_stop,
             service::vpn_status,
+            service::vpn_health_report,
             service::get_settings,
             service::save_setting,
             service::startup_enabled,

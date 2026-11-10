@@ -28,3 +28,10 @@ test('a status verification failure is shown as persistent inline warning, not r
   assert.match(js, /home-verification-notice/);
   assert.doesNotMatch(js,/showToast\(state\.vpnVerified\s*\?/);
 });
+test('desktop sign-in balances Android branding and real auth form without horizontal clipping', () => {
+  assert.match(desktop, /#view-auth\.auth-view/);
+  assert.match(desktop, /\.auth-hero-side/);
+  assert.match(desktop, /\.auth-card-side/);
+  assert.match(desktop, /grid-template-columns:/);
+});
+

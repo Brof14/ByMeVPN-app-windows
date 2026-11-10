@@ -10,10 +10,13 @@ const desktop = read('ui/desktop-layout.css');
 const app = read('ui/app.js');
 const native = read('src-tauri/src/service.rs');
 
-test('each power control contains the actual branded SVG, never an empty pseudo-element', () => {
+test('both power controls contain the Android image and a working SVG fallback', () => {
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     assert.match(html, new RegExp('id="' + id + '"[^>]*>[\\s\\S]*?<svg class="vpn-shield-mark"'));
   }
+  assert.equal((html.match(/src="\\.\\/assets\\/byme-connect-shield\\.png"/g) || []).length, 2);
+  assert.match(mobile, /\\.vpn-shield-image/);
+  assert.match(app, /showVectorFallback/);
   assert.match(mobile, /\.vpn-shield-mark/);
   assert.doesNotMatch(mobile, /#vpn-power-ring \.inner-shield-circle::after/);
   assert.match(mobile, /prefers-reduced-motion/);

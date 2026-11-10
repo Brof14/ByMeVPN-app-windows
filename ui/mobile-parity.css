@@ -985,3 +985,262 @@ html, body, .app-root, .app-shell-layout {
   outline: 2px solid #69d3bc;
   outline-offset: 3px;
 }
+
+/* PricingScreen.kt: Android has no desktop promo banner, cards grid or
+   feature matrix. It uses a 51dp device selector, 95dp offer rows, and CTA. */
+.app-shell-layout #tab-pricing {
+  background: #090f1d;
+  padding: 0 26px 28px;
+}
+#tab-pricing .mobile-pricing-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 24px;
+  padding: 5px 0 0;
+}
+#tab-pricing .mobile-pricing-back {
+  flex: 0 0 37px;
+  display: grid;
+  place-items: center;
+  width: 37px;
+  height: 37px;
+  border: 1px solid #2c4154;
+  border-radius: 14px;
+  background: #142235;
+  color: #c5d8d5;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+#tab-pricing .mobile-pricing-topbar h2 {
+  margin: 0 0 3px;
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -1.15px;
+  color: #eef4f4;
+}
+#tab-pricing .mobile-pricing-topbar p {
+  margin: 0;
+  color: #8fa3a4;
+  font-size: 12px;
+}
+#tab-pricing .section-micro-label,
+#tab-pricing .mobile-pricing-kicker {
+  display: block;
+  margin: 0 0 10px;
+  color: #7d94a8;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+}
+#tab-pricing .device-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 4px;
+  width: 100%;
+  height: 51px;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid #29403f;
+  border-radius: 15px;
+  background: #142022;
+}
+#tab-pricing .dev-seg-btn {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #829c9a;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+}
+#tab-pricing .dev-seg-btn.active {
+  background: #69d3bc;
+  color: #10241e;
+  font-weight: 750;
+}
+#tab-pricing .dev-seg-btn:disabled { opacity: .44; cursor: not-allowed; }
+#tab-pricing .pricing-devices-section { margin: 0 0 24px; }
+#tab-pricing .pricing-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+#tab-pricing .tariff-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  gap: 12px;
+  width: 100%;
+  min-height: 95px;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid #283c3e;
+  border-radius: 18px;
+  background: #111c1d;
+  color: #eef4f4;
+  box-shadow: none;
+  cursor: pointer;
+  transform: none;
+  text-align: left;
+}
+#tab-pricing .tariff-card.selected {
+  border-color: #69d3bc;
+  background: #132221;
+  box-shadow: none;
+}
+#tab-pricing .tariff-card.best-value.selected { background: #152a26; }
+#tab-pricing .tariff-card:hover { transform: none; border-color: #69d3bc; }
+#tab-pricing .tariff-card.unavailable { opacity: .45; cursor: not-allowed; }
+#tab-pricing .mobile-tariff-info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 6px;
+}
+#tab-pricing .tariff-period-name {
+  color: #eef4f4;
+  font-size: 15px;
+  font-weight: 750;
+}
+#tab-pricing .tariff-period-note {
+  display: block;
+  color: #8fa3a4;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+#tab-pricing .tariff-price-block {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+#tab-pricing .tariff-price-number {
+  display: inline;
+  margin: 0;
+  color: #eef4f4;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -.5px;
+}
+#tab-pricing .mobile-tariff-radio {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #607a77;
+  border-radius: 50%;
+  background: transparent;
+}
+#tab-pricing .tariff-card.selected .mobile-tariff-radio {
+  border-color: #78d3c9;
+  background: #78d3c9;
+}
+#tab-pricing .tariff-card.selected .mobile-tariff-radio::after {
+  content: '✓';
+  color: #0a281e;
+  font-size: 12px;
+  font-weight: 900;
+}
+#tab-pricing .best-badge-crown {
+  position: absolute;
+  top: -9px;
+  right: 16px;
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: #69d3bc;
+  color: #06231a;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: .4px;
+}
+#tab-pricing .mobile-pricing-payment-kicker { margin-top: 34px; }
+#tab-pricing .mobile-pricing-payment-method {
+  display: grid;
+  place-items: center;
+  min-height: 50px;
+  padding: 13px 12px;
+  border: 1px solid #263a3c;
+  border-radius: 14px;
+  background: #132023;
+  color: #b9ceca;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+}
+#tab-pricing .mobile-pricing-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 26px 0 4px;
+  color: #a1b5b3;
+  font-size: 13px;
+}
+#tab-pricing .mobile-pricing-summary strong {
+  color: #eef4f4;
+  font-size: 25px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+#tab-pricing .mobile-pricing-summary-note {
+  margin: 0 0 18px;
+  color: #8b9f9e;
+  font-size: 11px;
+}
+#tab-pricing .pricing-pay-actions { width: 100%; margin: 0; padding: 0; }
+#tab-pricing #btn-pay-yookassa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(90deg,#69d3bc,#64c0d4);
+  color: #0a2431;
+  font-size: 14px;
+  font-weight: 750;
+}
+#tab-pricing .mobile-pricing-secure {
+  margin: 16px 0 0;
+  color: #729d90;
+  font-size: 11px;
+  text-align: center;
+}
+#tab-pricing .payment-footnotes {
+  margin: 16px 0 0;
+  padding: 0;
+  color: #7d94a8;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+.app-shell-layout:has(#tab-pricing.active) .app-top-header { display: none; }
+@media (max-width: 410px) {
+  .app-shell-layout #tab-pricing { padding-inline: 18px; }
+  #tab-pricing .tariff-card { padding-inline: 14px; }
+  #tab-pricing .dev-seg-btn { font-size: 10.5px; }
+}

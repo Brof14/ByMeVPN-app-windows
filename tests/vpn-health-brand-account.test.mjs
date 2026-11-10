@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {createContext, runInContext} from 'node:vm';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url),'utf8');
@@ -20,6 +21,12 @@ test('both power controls contain the Android image and a working SVG fallback',
   assert.match(mobile, /\.vpn-shield-mark/);
   assert.doesNotMatch(mobile, /#vpn-power-ring \.inner-shield-circle::after/);
   assert.match(mobile, /prefers-reduced-motion/);
+});
+
+test('power shield asset is byte-for-byte the current Android drawable', () => {
+  const png = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
+  const gitBlob = createHash('sha1').update('blob ' + png.length + '\\0').update(png).digest('hex');
+  assert.equal(gitBlob, 'b1b269246a75c21742ebc968cb2c3ad6893a73d8');
 });
 
 test('unknown auto-renewal is neutral and does not imply disabled payments', () => {

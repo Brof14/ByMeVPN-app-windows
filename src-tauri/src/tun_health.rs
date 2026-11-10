@@ -127,20 +127,55 @@ pub fn startup_log_hint(path: &std::path::Path) -> &'static str {
 // Classifications only. Never expose log lines: Xray errors can embed hosts,
 // UUIDs, auth tokens and other details from private subscriptions.
 pub fn log_hint(text: &str) -> &'static str {
-    let lower = text.to_ascii_lowercase();
-    if lower.contains("access is denied") || lower.contains("permission denied") {
-        "permissions"
-    } else if lower.contains("wintun") || lower.contains("create tun") {
-        "adapter"
-    } else if lower.contains("failed to add route") || lower.contains("routing table") {
-        "routes"
-    } else if lower.contains("dns") || lower.contains("resolve") {
-        "dns"
-    } else if lower.contains("failed") || lower.contains("error") {
-        "xray"
-    } else {
-        "unknown"
+    // Only classify explicit failures, most recent first. In particular,
+    // the mere presence of 'dns' in Xray's normal routing messages is NOT a
+    // DNS error. Logs are overwritten at VPN startup, but may include both
+    // warnings and later successful recoveries.
+    for line in text.lines().rev().take(200) {
+        let line = line.to_ascii_lowercase();
+        let failure = [
+            "error", "failed", "failure", "denied", "cannot ", "unable to",
+            "timed out", "timeout", "refused",
+        ]
+        .iter()
+        .any(|part| line.contains(part));
+        if !failure {
+            continue;
+        }
+        if line.contains("access is denied") || line.contains("permission denied") {
+            return "permissions";
+        }
+        if line.contains("wintun") || line.contains("create tun") {
+            return "adapter";
+        }
+        if line.contains("failed to add route") || line.contains("routing table") {
+            return "routes";
+        }
+        if line.contains("dns") || line.contains("resolve") {
+            return "dns";
+        }
+        return "xray";
     }
+    "unknown"
+}
+
+/// Checks whether Windows can resolve a public hostname *while* the tunnel
+/// is active. A failure is only an observation; it does not prove why DNS
+/// failed, and must not be presented as a confirmed DNS leak.
+pub async fn dns_resolution_check() -> Option<bool> {
+    let lookup = async {
+        for hostname in ["example.com", "cloudflare.com"] {
+            if let Ok(mut addresses) = tokio::net::lookup_host((hostname, 443)).await {
+                if addresses.next().is_some() {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), lookup)
+        .await
+        .ok()
 }
 
 #[cfg(test)]

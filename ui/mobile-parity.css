@@ -227,8 +227,25 @@ html, body, .app-root, .app-shell-layout {
 /* The actual titlebar-brand SVG is part of the power control DOM.
    Unlike a CSS ::after background it survives WebView2 repaint and asset
    cache failures, and can receive keyboard focus through its parent. */
-#tab-home .vpn-shield-mark {
+#tab-home .vpn-shield-image {
   display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  flex: none;
+  opacity: .62;
+  transform: scale(.96);
+  filter: drop-shadow(0 0 13px rgba(81, 170, 194, .16));
+  transition: opacity .42s ease, transform .42s ease, filter .42s ease;
+  pointer-events: none;
+}
+#tab-home #vpn-power-ring.ring-connected .vpn-shield-image {
+  opacity: 1;
+  transform: scale(1);
+  filter: drop-shadow(0 0 17px rgba(70, 219, 177, .20));
+}
+#tab-home .vpn-shield-mark {
+  display: none;
   width: min(72%, 166px);
   height: 78%;
   flex: none;
@@ -238,6 +255,7 @@ html, body, .app-root, .app-shell-layout {
   transition: opacity .3s ease, filter .3s ease, transform .3s ease;
   pointer-events: none;
 }
+#tab-home .vpn-shield-mark.is-fallback-visible { display: block; }
 #tab-home #vpn-power-ring.ring-connected .vpn-shield-mark {
   opacity: 1;
   filter: drop-shadow(0 0 18px rgba(70, 219, 177, .36));

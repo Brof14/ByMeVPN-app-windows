@@ -21,8 +21,7 @@ impl Default for RouteReport {
 
 impl RouteReport {
     pub fn definitely_missing(&self) -> bool {
-        matches!(self.adapter.as_str(), "missing" | "down")
-            || self.ipv4_default == Some(false)
+        matches!(self.adapter.as_str(), "missing" | "down") || self.ipv4_default == Some(false)
     }
 }
 
@@ -74,7 +73,13 @@ Write-Output ('ipv4=' + [int]$v4)
 Write-Output ('ipv6=' + [int]$v6)
 "#;
     std::process::Command::new("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            SCRIPT,
+        ])
         .creation_flags(0x0800_0000)
         .output()
         .ok()

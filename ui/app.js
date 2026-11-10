@@ -186,6 +186,10 @@ const I18N = {
     server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
     vpn_unverified_help: "Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.",
+    vpn_health_action: "Диагностика соединения",
+    vpn_health_title: "Проверка подключения",
+    vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
+    vpn_health_refresh: "Проверить повторно",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
     no_plan_desc: "Подключайтесь, когда вам нужен VPN.",
@@ -448,6 +452,10 @@ const I18N = {
     server_sheet_footnote: "Only servers in your subscription are shown.",
     home_connection_kicker: "YOUR CONNECTION",
     vpn_unverified_help: "Xray is running, but routing and the external IP are unverified. Check connectivity before transferring sensitive data.",
+    vpn_health_action: "Connection diagnostics",
+    vpn_health_title: "Connection diagnostics",
+    vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
+    vpn_health_refresh: "Check again",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
     no_plan_desc: "Connect whenever you need a VPN.",
@@ -1052,6 +1060,13 @@ function setupEventListeners() {
 
   // Support & FAQ triggers
   document.getElementById('btn-top-help')?.addEventListener('click', () => openModal('modal-faq'));
+  document.getElementById('btn-vpn-health-check')?.addEventListener('click', () => {
+    openModal('modal-vpn-health');
+    void refreshVpnHealth();
+  });
+  document.getElementById('btn-vpn-health-refresh')?.addEventListener('click', () => {
+    void refreshVpnHealth();
+  });
   document.getElementById('tile-faq-modal')?.addEventListener('click', () => openModal('modal-faq'));
   document.getElementById('tile-support-telegram')?.addEventListener('click', handleOpenTelegramSupport);
 
@@ -1347,6 +1362,56 @@ async function handleDeleteAccount() {
       }
     }
   );
+}
+
+// Local health report, explicitly distinct from verified internet egress.
+async function refreshVpnHealth() {
+  const details = document.getElementById('vpn-health-details');
+  if (!details) return;
+  const refresh = document.getElementById('btn-vpn-health-refresh');
+  if (refresh) refresh.disabled = true;
+  details.textContent = uiText('Проверяем TUN, маршруты и Xray…', 'Checking TUN, routes and Xray…');
+  try {
+    const report = await invoke('vpn_health_report');
+    const checked = (v, yes, no) => v === true ? yes : v === false ? no :
+      uiText('проверка недоступна', 'check unavailable');
+    const adapter = {
+      up: uiText('активен', 'up'),
+      down: uiText('неактивен', 'down'),
+      missing: uiText('не обнаружен', 'missing'),
+      unknown: uiText('неизвестно', 'unknown')
+    }[report?.adapter] || uiText('неизвестно', 'unknown');
+    const issues = {
+      permissions: uiText('Возможна ошибка прав доступа Windows.', 'Possible Windows permission issue.'),
+      adapter: uiText('Обнаружена ошибка сетевого адаптера Wintun.', 'Wintun adapter error detected.'),
+      routes: uiText('Обнаружена ошибка таблицы маршрутов.', 'Routing table error detected.'),
+      dns: uiText('Обнаружена ошибка DNS.', 'DNS error detected.'),
+      xray: uiText('В журнале Xray есть ошибка запуска.', 'Xray startup error found.'),
+      unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
+    };
+    const lines = [
+      uiText('Процесс Xray: ', 'Xray process: ') +
+        checked(report?.process_tracked, uiText('запущен приложением', 'managed by app'), uiText('не запущен', 'not running')),
+      uiText('Адаптер TUN: ', 'TUN adapter: ') + adapter,
+      uiText('Маршрут IPv4: ', 'IPv4 route: ') +
+        checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Маршрут IPv6: ', 'IPv6 route: ') +
+        checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Проверка внешнего IP: ', 'Exit IP verification: ') +
+        checked(report?.ip_verified, uiText('подтверждена', 'verified'), uiText('не подтверждена', 'unverified')),
+      issues[report?.xray_hint] || issues.unknown
+    ];
+    if (report?.baseline_known === false) {
+      lines.push(uiText('Исходный IP не удалось определить до подключения.',
+        'Pre-connection IP was not available.'));
+    }
+    details.textContent = lines.join('\n');
+  } catch (_) {
+    details.textContent = uiText('Не удалось выполнить локальную проверку. Проверьте журнал Windows.',
+      'Local diagnostics unavailable. Check the Windows logs.');
+  } finally {
+    if (refresh) refresh.disabled = false;
+  }
 }
 
 // VPN Lifecycle & Real-time Metrics

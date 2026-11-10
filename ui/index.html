@@ -469,11 +469,14 @@
             <!-- TAB 3: SERVER SELECTION (Screen 6) -->
             <div id="tab-servers" class="tab-content">
               <div class="servers-view-container">
+                <div class="mobile-sheet-drag" aria-hidden="true"></div>
+                <div class="mobile-server-sheet-title">
+                  <h2 data-i18n="server_sheet_title">Серверы</h2>
+                  <button type="button" id="btn-back-from-servers" class="mobile-sheet-close"
+                    data-i18n-title="window_close" aria-label="Закрыть">×</button>
+                </div>
+                <p class="mobile-server-sheet-desc" data-i18n="server_sheet_desc">Выберите страну или доверьтесь автоматике.</p>
                 <div class="servers-top-bar">
-                  <button type="button" id="btn-back-from-servers" class="btn-back-pill">
-                    <span>‹</span>
-                    <span data-i18n="back">Назад</span>
-                  </button>
                   <div class="search-input-box">
                     <span class="search-icon">🔍</span>
                     <input type="text" id="server-search-input" data-i18n-placeholder="server_search_placeholder" placeholder="Поиск сервера или страны..." />
@@ -500,6 +503,7 @@
                 <div id="servers-dynamic-list" class="servers-cards-stack">
                   <!-- Populated by JS -->
                 </div>
+                <p class="mobile-server-sheet-footnote" data-i18n="server_sheet_footnote">Отображаются только серверы, доступные по вашей подписке.</p>
               </div>
             </div>
 

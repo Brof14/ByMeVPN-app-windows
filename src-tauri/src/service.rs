@@ -1994,12 +1994,22 @@ pub async fn vpn_health_report(
         }
     };
     let routes = crate::tun_health::inspect().await;
-    let hint = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|path| crate::tun_health::startup_log_hint(&path.join("xray_startup.log")))
-        .unwrap_or("unknown");
+    // A log keyword is not a DNS probe. Check the OS resolver explicitly,
+    // and do not run an unrelated network test when the tunnel is stopped.
+    let dns_resolution = if process_tracked {
+        crate::tun_health::dns_resolution_check().await
+    } else {
+        None
+    };
+    let hint = if process_tracked {
+        app.path()
+            .app_data_dir()
+            .ok()
+            .map(|path| crate::tun_health::startup_log_hint(&path.join("xray_startup.log")))
+            .unwrap_or("unknown")
+    } else {
+        "unknown"
+    };
     Ok(json!({
         "process_tracked": process_tracked,
         "ip_verified": ip_verified,
@@ -2007,6 +2017,7 @@ pub async fn vpn_health_report(
         "adapter": routes.adapter,
         "ipv4_default": routes.ipv4_default,
         "ipv6_default": routes.ipv6_default,
+        "dns_resolution": dns_resolution,
         "xray_hint": hint
     }))
 }

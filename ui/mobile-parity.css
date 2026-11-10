@@ -224,19 +224,48 @@ html, body, .app-root, .app-shell-layout {
   background: transparent;
   box-shadow: none;
 }
-#tab-home #vpn-power-ring .inner-shield-circle::after,
-#tab-home #vpn-power-ring-off .inner-shield-circle::after {
+/* The actual titlebar-brand SVG is part of the power control DOM.
+   Unlike a CSS ::after background it survives WebView2 repaint and asset
+   cache failures, and can receive keyboard focus through its parent. */
+#tab-home .vpn-shield-image {
   display: block;
-  content: '';
   width: 100%;
   height: 100%;
-  background: url('./assets/byme-connect-shield.png') center / contain no-repeat;
+  object-fit: contain;
+  flex: none;
   opacity: .62;
-  filter: none;
+  transform: scale(.96);
+  filter: drop-shadow(0 0 13px rgba(81, 170, 194, .16));
+  transition: opacity .42s ease, transform .42s ease, filter .42s ease;
+  pointer-events: none;
 }
-#tab-home #vpn-power-ring.ring-connected .inner-shield-circle::after {
+#tab-home #vpn-power-ring.ring-connected .vpn-shield-image {
   opacity: 1;
-  animation: none;
+  transform: scale(1);
+  filter: drop-shadow(0 0 17px rgba(70, 219, 177, .20));
+}
+#tab-home .vpn-shield-mark {
+  display: none;
+  width: min(72%, 166px);
+  height: 78%;
+  flex: none;
+  overflow: visible;
+  opacity: .67;
+  filter: drop-shadow(0 0 13px rgba(81, 170, 194, .22));
+  transition: opacity .3s ease, filter .3s ease, transform .3s ease;
+  pointer-events: none;
+}
+#tab-home .vpn-shield-mark.is-fallback-visible { display: block; }
+#tab-home #vpn-power-ring.ring-connected .vpn-shield-mark {
+  opacity: 1;
+  filter: drop-shadow(0 0 18px rgba(70, 219, 177, .36));
+}
+#tab-home .pulse-power-ring:hover .vpn-shield-mark {
+  transform: scale(1.035);
+}
+#tab-home .pulse-power-ring:focus-visible {
+  outline: 2px solid #69d3bc;
+  outline-offset: 5px;
 }
 #tab-home .pulse-power-ring:hover { transform: scale(1.014); }
 #tab-home .pulse-power-ring[aria-busy="true"] { cursor: wait; }

@@ -39,6 +39,17 @@ pub fn classify_egress(
     }
 }
 
+/// Status for explicit, user-initiated diagnostics. This never exposes
+/// an address and never equates a reachable service with leak-free routing.
+pub fn egress_result_code(result: EgressCheck) -> &'static str {
+    match result {
+        EgressCheck::Verified(_) => "changed",
+        EgressCheck::Unchanged => "unchanged",
+        EgressCheck::Unverified(_) => "baseline_missing",
+        EgressCheck::Unavailable => "unavailable",
+    }
+}
+
 fn parse_ip(body: &str) -> Result<IpAddr, String> {
     if body.len() > 1024 {
         return Err("Сервис проверки вернул слишком большой ответ.".into());
@@ -141,6 +152,28 @@ pub async fn verify_egress(baseline: Option<IpAddr>) -> EgressCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_statuses_never_confuse_no_probe_with_a_changed_ip() {
+        let old = "192.0.2.1".parse::<IpAddr>().unwrap();
+        let new = "198.51.100.2".parse::<IpAddr>().unwrap();
+        assert_eq!(
+            egress_result_code(classify_egress(Some(old), Ok(new))),
+            "changed"
+        );
+        assert_eq!(
+            egress_result_code(classify_egress(Some(old), Ok(old))),
+            "unchanged"
+        );
+        assert_eq!(
+            egress_result_code(classify_egress(None, Ok(new))),
+            "baseline_missing"
+        );
+        assert_eq!(
+            egress_result_code(classify_egress(Some(old), Err(EgressFailure::Unavailable))),
+            "unavailable"
+        );
+    }
 
     #[test]
     fn missing_baseline_does_not_prevent_start_but_never_claims_verification() {

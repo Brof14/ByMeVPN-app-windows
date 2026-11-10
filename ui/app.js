@@ -169,6 +169,21 @@ const I18N = {
     account_management_section: "Управление",
     account_settings_subtitle: "Профиль, устройства, подписка",
     account_manage_renewal: "Автопродление",
+    account_settings_overline: "ВАШ ПРОФИЛЬ",
+    account_settings_intro: "Управляйте подпиской и безопасностью аккаунта.",
+    account_settings_identity: "Профиль",
+    account_settings_billing: "Подписка",
+    account_settings_app: "Приложение",
+    account_settings_help: "Помощь",
+    account_settings_security: "Безопасность",
+    account_settings_refresh_desc: "Получить актуальные данные аккаунта",
+    account_settings_copy_desc: "Идентификатор для поддержки",
+    account_settings_billing_desc: "Статус и условия продления",
+    account_settings_app_desc: "Подключение, язык и параметры",
+    account_settings_advanced_desc: "Сеть, маршруты и диагностика",
+    account_settings_help_desc: "Связаться со службой поддержки",
+    account_settings_logout_desc: "Завершить текущий сеанс",
+    account_settings_delete_desc: "Запросить удаление через поддержку",
     language_short_title: "Язык",
     language_dialog_title: "Язык приложения",
     language_dialog_desc: "Выберите язык приложения.",
@@ -435,6 +450,21 @@ const I18N = {
     account_management_section: "Management",
     account_settings_subtitle: "Profile, devices, subscription",
     account_manage_renewal: "Auto-renewal",
+    account_settings_overline: "YOUR PROFILE",
+    account_settings_intro: "Manage your subscription and account security.",
+    account_settings_identity: "Profile",
+    account_settings_billing: "Subscription",
+    account_settings_app: "Application",
+    account_settings_help: "Help",
+    account_settings_security: "Security",
+    account_settings_refresh_desc: "Fetch the latest account details",
+    account_settings_copy_desc: "Identifier for contacting support",
+    account_settings_billing_desc: "Renewal status and terms",
+    account_settings_app_desc: "Connection, language and preferences",
+    account_settings_advanced_desc: "Network, routing and diagnostics",
+    account_settings_help_desc: "Contact support",
+    account_settings_logout_desc: "End the current session",
+    account_settings_delete_desc: "Request account removal through support",
     language_short_title: "Language",
     language_dialog_title: "App language",
     language_dialog_desc: "Choose the app language.",
@@ -947,6 +977,17 @@ function setupEventListeners() {
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
+  // Android's exact drawable is primary. Keep the built-in vector shield
+  // available if an installation unexpectedly cannot load its bundled PNG.
+  document.querySelectorAll('.vpn-shield-image').forEach(img => {
+    const showVectorFallback = () => {
+      img.style.display = 'none';
+      img.nextElementSibling?.classList?.add('is-fallback-visible');
+    };
+    img.addEventListener('error', showVectorFallback, { once: true });
+    if (img.complete && img.naturalWidth === 0) showVectorFallback();
+  });
+
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
   document.getElementById('vpn-power-ring-off')?.addEventListener('click', toggleVpn);
@@ -1385,9 +1426,20 @@ async function refreshVpnHealth() {
       permissions: uiText('Возможна ошибка прав доступа Windows.', 'Possible Windows permission issue.'),
       adapter: uiText('Обнаружена ошибка сетевого адаптера Wintun.', 'Wintun adapter error detected.'),
       routes: uiText('Обнаружена ошибка таблицы маршрутов.', 'Routing table error detected.'),
-      dns: uiText('Обнаружена ошибка DNS.', 'DNS error detected.'),
+      dns: uiText('В журнале Xray есть сообщение о сбое DNS.', 'Xray logged a DNS-related failure.'),
       xray: uiText('В журнале Xray есть ошибка запуска.', 'Xray startup error found.'),
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
+    };
+    const freshEgress = {
+      changed: uiText('IPv4 отличается от исходного (не проверка утечек)',
+        'IPv4 differs from baseline (not a leak test)'),
+      unchanged: uiText('IPv4 совпадает с исходным — возможен обход VPN',
+        'IPv4 matches baseline — possible VPN bypass'),
+      baseline_missing: uiText('IP получен, но исходный IP неизвестен',
+        'IP received, but baseline IP was unavailable'),
+      unavailable: uiText('HTTPS-проверка выхода недоступна',
+        'HTTPS exit probe unavailable'),
+      not_running: uiText('проверка не проводилась', 'not checked')
     };
     const lines = [
       uiText('Процесс Xray: ', 'Xray process: ') +
@@ -1397,9 +1449,17 @@ async function refreshVpnHealth() {
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
       uiText('Маршрут IPv6: ', 'IPv6 route: ') +
         checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Системный DNS: ', 'System DNS: ') +
+        checked(report?.dns_resolution, uiText('тестовый домен разрешён', 'test hostname resolved'),
+          uiText('тестовый запрос не прошёл', 'test lookup unsuccessful')),
+      uiText('Свежий HTTPS-тест выхода: ', 'Live HTTPS egress test: ') +
+        (freshEgress[report?.egress_probe] || freshEgress.unavailable),
       uiText('Проверка внешнего IP: ', 'Exit IP verification: ') +
         checked(report?.ip_verified, uiText('подтверждена', 'verified'), uiText('не подтверждена', 'unverified')),
-      issues[report?.xray_hint] || issues.unknown
+      report?.xray_hint === 'dns' && report?.dns_resolution === true
+        ? uiText('Ранее Xray сообщал о DNS-сбое; текущий DNS-тест успешен.',
+          'Xray logged a DNS error; the current DNS test succeeded.')
+        : (issues[report?.xray_hint] || issues.unknown)
     ];
     if (report?.baseline_known === false) {
       lines.push(uiText('Исходный IP не удалось определить до подключения.',
@@ -1736,11 +1796,15 @@ function updateVpnUi() {
     connectedBox?.classList.remove('hidden');
     disconnectedBox?.classList.add('hidden');
     activePill?.classList.toggle('hidden', !state.vpnVerified || state.connectionBusy);
+    const verificationMark = document.querySelector('#home-state-connected .status-check-icon');
+    if (verificationMark) {
+      verificationMark.textContent = state.vpnVerified ? '✓' : '·';
+      verificationMark.classList.toggle('verification-pending', !state.vpnVerified);
+    }
     const heading = document.querySelector('#home-state-connected .status-title-text');
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
-      ? uiText('Отключаем VPN…', 'Disconnecting VPN…') : state.vpnVerified ?
-      uiText('VPN запущен', 'VPN started') :
-      uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
+      ? uiText('Отключаем VPN…', 'Disconnecting VPN…')
+      : uiText('VPN запущен', 'VPN started');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Завершаем соединение…', 'Closing the connection…')
@@ -1859,6 +1923,30 @@ function updateUserUi() {
 
   if (nameEl) nameEl.textContent = state.user.name || uiText('Пользователь', 'User');
   if (emailEl) emailEl.textContent = state.user.email || 'ByMeVPN User';
+  const profileName = document.getElementById('account-settings-profile-name');
+  const profileEmail = document.getElementById('account-settings-profile-email');
+  if (profileName) profileName.textContent = state.user.name || uiText('Пользователь', 'User');
+  if (profileEmail) profileEmail.textContent = state.user.email || 'ByMeVPN';
+}
+
+function renewalStatusPresentation(value) {
+  if (value === true) return {
+    label: uiText('Автопродление включено', 'Auto-renewal enabled'),
+    short: uiText('Включено', 'Enabled'),
+    badgeClass: 'badge-auto-renew'
+  };
+  if (value === false) return {
+    label: uiText('Автопродление отключено', 'Auto-renewal disabled'),
+    short: uiText('Отключено', 'Disabled'),
+    badgeClass: 'renewal-status-neutral'
+  };
+  // Unknown is not an error, a failed payment, or proof of disabled renewal.
+  return {
+    label: uiText('Информация об автопродлении недоступна',
+      'Auto-renewal information unavailable'),
+    short: uiText('Информация недоступна', 'Information unavailable'),
+    badgeClass: 'renewal-status-neutral'
+  };
 }
 
 function updateSubscriptionUi() {
@@ -1932,12 +2020,13 @@ function updateSubscriptionUi() {
   document.getElementById('btn-account-pricing')?.classList?.toggle('hidden', isUnknown);
   if (accPlanName) accPlanName.textContent = title;
   if (accPlanValidity) accPlanValidity.textContent = expiry;
+  const renewal = renewalStatusPresentation(sub?.auto_renew);
   if (accPlanBadge) {
-    accPlanBadge.textContent = sub?.auto_renew === true ?
-      uiText('Автопродление включено', 'Auto-renewal on') :
-      sub?.auto_renew === false ? uiText('Автопродление выключено', 'Auto-renewal off') :
-      uiText('Статус автопродления неизвестен', 'Auto-renewal status unknown');
-    accPlanBadge.className = sub?.auto_renew === true ? 'badge-auto-renew' : 'badge-inactive';
+    accPlanBadge.textContent = renewal.label;
+    // This badge was previously a hidden placeholder whose className
+    // replacement accidentally exposed a red "unknown" warning on Account.
+    accPlanBadge.className = hasPlan && typeof sub?.auto_renew === 'boolean'
+      ? renewal.badgeClass : 'hidden';
   }
 
   if (accRenewBtn) {
@@ -1948,10 +2037,9 @@ function updateSubscriptionUi() {
 
   const renewalBadge = document.getElementById('renewal-current-status-badge');
   if (renewalBadge) {
-    renewalBadge.textContent = sub?.auto_renew === true ? uiText('Включено', 'Enabled') :
-      sub?.auto_renew === false ? uiText('Отключено', 'Disabled') :
-      uiText('Неизвестно', 'Unknown');
-    renewalBadge.className = sub?.auto_renew === true ? 'badge-active-mini' : 'badge-inactive';
+    renewalBadge.textContent = renewal.short;
+    renewalBadge.className = sub?.auto_renew === true
+      ? 'badge-active-mini' : 'renewal-status-neutral';
   }
 }
 

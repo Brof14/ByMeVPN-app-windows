@@ -30,7 +30,9 @@ test('VPN UI only claims protection when native egress verification passed', () 
   assert.match(ui, /state\.vpnVerified = metrics\?\.verified === true/);
   assert.match(ui, /state\.vpnVerified = status\.verified === true/);
   assert.match(ui, /status\?\.connected === true && status\?\.verified === true/);
-  assert.match(ui, /VPN запущен — IP не подтверждён/);
+  assert.match(ui, /uiText\('VPN запущен', 'VPN started'\)/);
+  assert.match(ui, /verificationMark\.textContent = state\.vpnVerified \? '✓' : '·'/);
+  assert.match(ui, /home-verification-notice/);
   assert.match(ui, /Защита не подтверждена/);
 });
 

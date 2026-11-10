@@ -1986,13 +1986,14 @@ pub async fn vpn_health_report(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    let (process_tracked, ip_verified, baseline_known) = {
+    let (process_tracked, ip_verified, baseline_ip) = {
         let guard = state.tunnel.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
-            Some(tunnel) => (true, tunnel.egress_verified, tunnel.baseline_ip.is_some()),
-            None => (false, false, false),
+            Some(tunnel) => (true, tunnel.egress_verified, tunnel.baseline_ip),
+            None => (false, false, None),
         }
     };
+    let baseline_known = baseline_ip.is_some();
     let routes = crate::tun_health::inspect().await;
     // A log keyword is not a DNS probe. Check the OS resolver explicitly,
     // and do not run an unrelated network test when the tunnel is stopped.
@@ -2000,6 +2001,20 @@ pub async fn vpn_health_report(
         crate::tun_health::dns_resolution_check().await
     } else {
         None
+    };
+    // Explicitly probe HTTPS egress again, separately from the cached
+    // connection status. Unknown/unchanged are never treated as protected.
+    let egress_probe = if process_tracked {
+        let _probe_guard = state.status_probe_gate.lock().await;
+        let check = tokio::time::timeout(
+            Duration::from_secs(9),
+            verify_egress(baseline_ip),
+        )
+        .await
+        .unwrap_or(EgressCheck::Unavailable);
+        crate::egress::egress_result_code(check)
+    } else {
+        "not_running"
     };
     let hint = if process_tracked {
         app.path()
@@ -2018,6 +2033,7 @@ pub async fn vpn_health_report(
         "ipv4_default": routes.ipv4_default,
         "ipv6_default": routes.ipv6_default,
         "dns_resolution": dns_resolution,
+        "egress_probe": egress_probe,
         "xray_hint": hint
     }))
 }

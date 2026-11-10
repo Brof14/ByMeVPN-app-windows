@@ -164,7 +164,10 @@ test('Android primary settings contains only everyday connection toggles and lan
     assert.match(advanced, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));
   }
-  assert.match(primary, /class="lang-segmented-control"/);
+  assert.match(primary, /id="btn-language-dialog"/);
+  assert.doesNotMatch(primary, /class="lang-segmented-control"/);
+  assert.match(html, /id="modal-language"/);
+  assert.match(html, /class="lang-segmented-control"/);
   assert.match(primary, /id="row-open-advanced-settings"/);
   assert.match(css, /\.android-settings-essential \.setting-item-row/);
 });

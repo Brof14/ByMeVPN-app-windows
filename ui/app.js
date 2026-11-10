@@ -1583,8 +1583,18 @@ function updateVpnUi() {
   const disconnectedBox = document.getElementById('home-state-disconnected');
   const activePill = document.getElementById('vpn-active-pill');
   const sharedDock = document.getElementById('home-shared-dock');
-  sharedDock?.classList.toggle('hidden', !hasPlan || accessUnknown);
-  document.getElementById('btn-toggle-vpn')?.classList.toggle('hidden', !accessUnknown);
+  sharedDock?.classList?.toggle('hidden', !hasPlan || accessUnknown);
+  document.getElementById('btn-toggle-vpn')?.classList?.toggle('hidden', !accessUnknown);
+  // Android hides free-trial activation once the API says it was consumed.
+  const trialButton = document.getElementById('btn-no-plan-trial');
+  if (trialButton) {
+    const available = sub == null || (!hasPlan && sub.trial_available === true);
+    trialButton.disabled = !available || state.trialBusy;
+    const label = trialButton.querySelector?.('[data-i18n="no_plan_trial_button"]');
+    if (label) label.textContent = available
+      ? uiText('Активировать бесплатно', 'Activate free trial')
+      : uiText('Пробный период недоступен', 'Free trial unavailable');
+  }
 
   if (isConn) {
     noPlanBox?.classList.add('hidden');
@@ -1740,8 +1750,19 @@ function updateSubscriptionUi() {
   const accPlanBadge = document.getElementById('acc-autorenew-badge');
   const accRenewBtn = document.getElementById('btn-acc-renew');
 
-  if (homeSubTitle) homeSubTitle.textContent = title;
-  if (homeSubExpiry) homeSubExpiry.textContent = expiry;
+  // Android Home displays a compact access strip, not the pricing-plan name.
+  if (homeSubTitle) homeSubTitle.textContent = hasPlan
+    ? uiText('Подписка активна', 'Subscription active') : title;
+  if (homeSubExpiry) {
+    const remaining = sub?.seconds_remaining;
+    const days = Number.isFinite(remaining) && remaining > 0
+      ? Math.ceil(remaining / 86400) : null;
+    homeSubExpiry.textContent = hasPlan
+      ? (days === null
+        ? uiText('Срок подписки не подтверждён', 'Subscription duration not confirmed')
+        : uiText(`Осталось ${days} дней`, `${days} days remaining`))
+      : expiry;
+  }
   if (homeSubBadge) {
     homeSubBadge.textContent = hasPlan ? uiText('Активна', 'Active') :
       isUnknown ? uiText('Неизвестно', 'Unknown') : uiText('Не активна', 'Inactive');

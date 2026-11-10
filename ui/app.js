@@ -772,8 +772,8 @@ function switchTab(tabId) {
   }
 
   // Android uses the shield brand instead of a duplicate "Home" headline.
-  document.getElementById('mobile-header-brand')?.classList.toggle('hidden', tabId !== 'tab-home');
-  titleEl?.classList.toggle('hidden', tabId === 'tab-home');
+  document.getElementById('mobile-header-brand')?.classList?.toggle('hidden', tabId !== 'tab-home');
+  titleEl?.classList?.toggle('hidden', tabId === 'tab-home');
 }
 
 // Event Listeners Binding

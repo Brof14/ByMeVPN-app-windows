@@ -25,6 +25,21 @@ impl RouteReport {
     }
 }
 
+/// Conservative evidence for a *current* tunnel, not a proof against all
+/// DNS/IPv6 leaks. A changed public IPv4 alone never qualifies.
+pub fn health_proves_connection(
+    routes: &RouteReport,
+    dns_ok: Option<bool>,
+    process_running: bool,
+    egress_changed: bool,
+) -> bool {
+    process_running
+        && routes.adapter == "up"
+        && routes.ipv4_default == Some(true)
+        && dns_ok == Some(true)
+        && egress_changed
+}
+
 fn parse_report(text: &str) -> RouteReport {
     let mut report = RouteReport::default();
     for line in text.lines() {

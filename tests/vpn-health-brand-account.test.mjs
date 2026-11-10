@@ -14,8 +14,8 @@ test('both power controls contain the Android image and a working SVG fallback',
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     assert.match(html, new RegExp('id="' + id + '"[^>]*>[\\s\\S]*?<svg class="vpn-shield-mark"'));
   }
-  assert.equal((html.match(/src="\\.\\/assets\\/byme-connect-shield\\.png"/g) || []).length, 2);
-  assert.match(mobile, /\\.vpn-shield-image/);
+  assert.equal(html.split('src="./assets/byme-connect-shield.png"').length - 1, 2);
+  assert.match(mobile, /\.vpn-shield-image/);
   assert.match(app, /showVectorFallback/);
   assert.match(mobile, /\.vpn-shield-mark/);
   assert.doesNotMatch(mobile, /#vpn-power-ring \.inner-shield-circle::after/);
@@ -44,10 +44,10 @@ test('VPN health reports real DNS resolution result, not a stale log keyword', (
   assert.match(native, /"dns_resolution"/);
   assert.match(native, /dns_resolution_check/);
   assert.match(native, /"egress_probe"/);
-  assert.match(app, /report\\?\\.egress_probe/);
+  assert.match(app, /report\?\.egress_probe/);
 
   assert.match(app, /report\?\.dns_resolution/);
-  assert.match(app, /DNS[^\n]*провер/);
+  assert.match(app, /Системный DNS/);
 });
 
 test('unknown auto-renewal stays neutral in the rendered Account and Renewal views', () => {

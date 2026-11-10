@@ -181,6 +181,9 @@ const I18N = {
     pricing_total: "Итого",
     pricing_pay_action: "Оплатить",
     pricing_secure: "Безопасная оплата через ЮKassa",
+    server_sheet_title: "Серверы",
+    server_sheet_desc: "Выберите страну или доверьтесь автоматике.",
+    server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
@@ -439,6 +442,9 @@ const I18N = {
     pricing_total: "Total",
     pricing_pay_action: "Pay",
     pricing_secure: "Secure checkout via YooKassa",
+    server_sheet_title: "Servers",
+    server_sheet_desc: "Choose a country or use automatic selection.",
+    server_sheet_footnote: "Only servers in your subscription are shown.",
     home_connection_kicker: "YOUR CONNECTION",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
@@ -783,7 +789,8 @@ function switchTab(tabId) {
 
   // Update tab content visibility
   document.querySelectorAll('.tab-content').forEach(tab => {
-    tab.classList.toggle('active', tab.id === tabId);
+    // Android's server picker is a bottom sheet over the existing Home.
+    tab.classList.toggle('active', tab.id === tabId || (tabId === 'tab-servers' && tab.id === 'tab-home'));
   });
 
   // Update top header title
@@ -954,6 +961,9 @@ function setupEventListeners() {
   document.getElementById('btn-active-location-pill')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('row-server-info')?.addEventListener('click', () => switchTab('tab-servers'));
   document.getElementById('btn-back-from-servers')?.addEventListener('click', () => switchTab('tab-home'));
+  document.getElementById('tab-servers')?.addEventListener('click', event => {
+    if (event.target === event.currentTarget) switchTab('tab-home');
+  });
   document.getElementById('btn-refresh-servers')?.addEventListener('click', async () => {
     const button = document.getElementById('btn-refresh-servers');
     if (button?.disabled) return;

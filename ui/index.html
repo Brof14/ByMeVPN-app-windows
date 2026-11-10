@@ -7,6 +7,7 @@
   <title>ByMeVPN</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./mobile-parity.css">
+  <link rel="stylesheet" href="./desktop-layout.css">
 </head>
 <body>
   <div id="app" class="app-root">
@@ -319,6 +320,8 @@
                       <span data-i18n="conn_secured">Проверяем внешний IP</span>
                     </p>
                     <span id="vpn-live-timer" class="mobile-connection-timer">00:00:00</span>
+                    <p id="home-verification-notice" class="mobile-verification-notice hidden" role="status"
+                       data-i18n="vpn_unverified_help">Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.</p>
                   </div>
                 </div>
               </div>

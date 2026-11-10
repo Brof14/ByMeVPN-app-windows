@@ -206,3 +206,40 @@
   #tab-home .pulse-power-ring { width: 175px; height: 175px; }
   .app-shell-layout #tab-home.active { padding: 12px 20px; }
 }
+
+#tab-home .mobile-verification-notice p { margin: 0; }
+#tab-home .mobile-health-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 5px 11px;
+  border: 1px solid #9a7956;
+  border-radius: 9px;
+  background: rgba(232, 174, 109, .07);
+  color: #f1d5b3;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+#tab-home .mobile-health-button:hover { background: rgba(232, 174, 109, .18); }
+#tab-home .mobile-health-button:focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+.mobile-vpn-health-modal .mobile-health-results {
+  margin: 15px 0;
+  padding: 13px 15px;
+  border: 1px solid #28424b;
+  border-radius: 13px;
+  background: #101d28;
+  color: #c6ddd8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+  user-select: text;
+}
+.mobile-vpn-health-modal #btn-vpn-health-refresh {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+}

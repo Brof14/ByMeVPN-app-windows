@@ -203,6 +203,20 @@ mod tests {
     }
 
     #[test]
+    fn only_live_confirmed_tunnel_and_dns_qualify_as_healthy_diagnostics() {
+        let ready = parse_report("adapter=up\nipv4=1\nipv6=1\n");
+        assert!(health_proves_connection(&ready, Some(true), true, true));
+        assert!(!health_proves_connection(&ready, Some(true), true, false));
+        assert!(!health_proves_connection(&ready, None, true, true));
+        assert!(!health_proves_connection(&ready, Some(false), true, true));
+        assert!(!health_proves_connection(&ready, Some(true), false, true));
+        let bad_route = parse_report("adapter=up\nipv4=0\nipv6=1\n");
+        assert!(!health_proves_connection(&bad_route, Some(true), true, true));
+        let down = parse_report("adapter=down\nipv4=1\n");
+        assert!(!health_proves_connection(&down, Some(true), true, true));
+    }
+
+    #[test]
     fn large_xray_log_is_inspected_from_the_bounded_recent_tail() {
         let path =
             std::env::temp_dir().join(format!("bymevpn-health-log-{}", uuid::Uuid::new_v4()));

@@ -1,0 +1,208 @@
+/* Windows-only composition: Android components, desktop ergonomics.
+ * Mobile styles are preserved below 760px; no second visual identity. */
+
+.toast-popup {
+  top: 54px;
+  bottom: auto;
+  right: 18px;
+  left: auto;
+  width: max-content;
+  max-width: min(370px, calc(100vw - 36px));
+  padding: 12px 16px;
+  border-radius: 14px;
+  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  overflow-wrap: anywhere;
+  transform: translateY(-10px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
+}
+.toast-popup.show { transform: translateY(0); }
+.toast-popup.error { background: #271e29; color: #ffc0c0; }
+#tab-home .mobile-verification-notice {
+  max-width: 360px;
+  margin: 10px 0 0;
+  padding: 10px 13px;
+  border: 1px solid rgba(232, 174, 109, .34);
+  border-radius: 12px;
+  background: rgba(84, 62, 37, .17);
+  color: #e9c6a0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (min-width: 760px) {
+  .app-shell-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex-direction: row;
+  }
+  .app-shell-layout .app-sidebar {
+    position: relative;
+    inset: auto;
+    flex: 0 0 174px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 174px;
+    height: 100%;
+    margin: 0;
+    padding: 76px 9px 18px;
+    border: 0;
+    border-right: 1px solid #243447;
+    background: #101a29;
+  }
+  .app-shell-layout .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    gap: 5px;
+  }
+  .app-shell-layout .sidebar-tab {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    flex: none;
+    width: 100%;
+    height: 52px;
+    gap: 13px;
+    padding: 0 15px;
+    border-radius: 13px;
+    font-size: 13px;
+  }
+  .app-shell-layout .sidebar-tab.active {
+    background: rgba(105, 211, 188, .10);
+    color: #b6eee0;
+  }
+  .app-shell-layout .sidebar-tab.active::after {
+    position: absolute;
+    top: 50%;
+    left: 1px;
+    width: 3px;
+    height: 22px;
+    transform: translateY(-50%);
+    border-radius: 3px;
+  }
+  .app-shell-layout .sidebar-tab .tab-icon,
+  .app-shell-layout .sidebar-tab .tab-icon svg {
+    width: 21px;
+    height: 21px;
+  }
+  .app-shell-layout .app-main-frame {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: auto;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .app-shell-layout .app-top-header {
+    height: 74px;
+    min-height: 74px;
+    padding-inline: 30px;
+    border-bottom: 1px solid rgba(36, 52, 71, .54);
+  }
+  .app-shell-layout .app-tab-pages {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+  }
+  .app-shell-layout #tab-home.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+    align-items: stretch;
+    gap: 12px;
+    min-height: 100%;
+    padding: 22px;
+  }
+  #tab-home .home-state-box:not(.hidden) {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+  }
+  #tab-home .mobile-status-layout {
+    justify-content: center;
+    min-height: 410px;
+    padding: 16px 10px 12px;
+  }
+  #tab-home .mobile-power-space {
+    flex: 1 1 auto;
+    min-height: 220px;
+    padding: 17px 0 10px;
+  }
+  #tab-home .pulse-power-ring {
+    width: clamp(175px, 34vh, 244px);
+    height: clamp(175px, 34vh, 244px);
+  }
+  #tab-home .mobile-status-summary { padding-bottom: 4px; }
+  #tab-home .status-title-text { font-size: clamp(20px, 2.7vw, 25px); }
+  #tab-home .mobile-home-dock:not(.hidden) {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    min-width: 0;
+    margin: 0;
+    padding: 0 4px 0 0;
+    gap: 13px;
+  }
+  #tab-home .mobile-server-card { min-height: 128px; }
+  #tab-home .mobile-subscription-card { min-height: 82px; }
+
+  #tab-home #home-state-no-plan:not(.hidden) { grid-column: 1 / -1; }
+  #tab-home .mobile-no-plan {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-content: center;
+    align-items: center;
+    gap: 12px 30px;
+    padding-inline: 20px;
+  }
+  #tab-home .mobile-no-plan-hero { grid-row: span 2; }
+  #tab-home .no-plan-shield-circle { width: 142px; height: 142px; }
+  #tab-home .mobile-pricing-link { margin: 0; }
+
+  .app-shell-layout .app-tab-pages > #tab-account.active,
+  .app-shell-layout .app-tab-pages > #tab-settings.active,
+  .app-shell-layout .app-tab-pages > #tab-devices.active,
+  .app-shell-layout .app-tab-pages > #tab-advanced.active,
+  .app-shell-layout .app-tab-pages > #tab-renewal.active,
+  .app-shell-layout .app-tab-pages > #tab-support.active {
+    width: min(100%, 720px);
+    margin: 0 auto;
+    padding: 24px 32px 36px;
+  }
+
+  .app-shell-layout:has(#tab-pricing.active) .app-sidebar { display: flex; }
+  .app-shell-layout:has(#tab-pricing.active) .app-main-frame { height: 100%; }
+  .app-shell-layout #tab-pricing.active {
+    max-width: 690px;
+    margin: 0 auto;
+    padding: 24px 30px 40px;
+  }
+
+  #tab-servers.active { align-items: center; justify-content: center; }
+  #tab-servers .servers-view-container {
+    width: min(540px, calc(100vw - 90px));
+    max-height: min(90vh, 650px);
+    border: 1px solid #294453;
+    border-radius: 24px;
+  }
+}
+
+@media (max-height: 600px) and (min-width: 760px) {
+  #tab-home .mobile-status-layout { min-height: 310px; }
+  #tab-home .mobile-power-space { min-height: 155px; }
+  #tab-home .pulse-power-ring { width: 175px; height: 175px; }
+  .app-shell-layout #tab-home.active { padding: 12px 20px; }
+}

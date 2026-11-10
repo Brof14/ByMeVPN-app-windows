@@ -99,6 +99,31 @@ pub async fn inspect() -> RouteReport {
         .unwrap_or_default()
 }
 
+// Xray writes continuously while the tunnel is active; a diagnostics request
+// must never load an unbounded file or return its sensitive raw content.
+pub fn startup_log_hint(path: &std::path::Path) -> &'static str {
+    use std::io::{Read, Seek, SeekFrom};
+    const MAX_TAIL_BYTES: u64 = 64 * 1024;
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return "unknown";
+    };
+    let Ok(size) = file.metadata().map(|metadata| metadata.len()) else {
+        return "unknown";
+    };
+    if file
+        .seek(SeekFrom::Start(size.saturating_sub(MAX_TAIL_BYTES)))
+        .is_err()
+    {
+        return "unknown";
+    }
+    let mut tail = Vec::new();
+    if file.take(MAX_TAIL_BYTES).read_to_end(&mut tail).is_err() {
+        return "unknown";
+    }
+    log_hint(&String::from_utf8_lossy(&tail))
+}
+
 // Classifications only. Never expose log lines: Xray errors can embed hosts,
 // UUIDs, auth tokens and other details from private subscriptions.
 pub fn log_hint(text: &str) -> &'static str {

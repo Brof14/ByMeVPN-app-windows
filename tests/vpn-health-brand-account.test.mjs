@@ -43,6 +43,9 @@ test('account settings remain functionally complete and accessible', () => {
 test('VPN health reports real DNS resolution result, not a stale log keyword', () => {
   assert.match(native, /"dns_resolution"/);
   assert.match(native, /dns_resolution_check/);
+  assert.match(native, /"egress_probe"/);
+  assert.match(app, /report\\?\\.egress_probe/);
+
   assert.match(app, /report\?\.dns_resolution/);
   assert.match(app, /DNS[^\n]*провер/);
 });

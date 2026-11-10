@@ -6,9 +6,9 @@ mod google_desktop;
 mod service;
 mod tun_config;
 mod tunnel_runtime;
+mod window_layout;
 #[cfg(windows)]
 mod windows_job;
-mod window_layout;
 
 use tauri::{Manager, RunEvent};
 #[cfg(all(debug_assertions, windows))]

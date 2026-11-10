@@ -1430,6 +1430,17 @@ async function refreshVpnHealth() {
       xray: uiText('В журнале Xray есть ошибка запуска.', 'Xray startup error found.'),
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
     };
+    const freshEgress = {
+      changed: uiText('IPv4 отличается от исходного (не проверка утечек)',
+        'IPv4 differs from baseline (not a leak test)'),
+      unchanged: uiText('IPv4 совпадает с исходным — возможен обход VPN',
+        'IPv4 matches baseline — possible VPN bypass'),
+      baseline_missing: uiText('IP получен, но исходный IP неизвестен',
+        'IP received, but baseline IP was unavailable'),
+      unavailable: uiText('HTTPS-проверка выхода недоступна',
+        'HTTPS exit probe unavailable'),
+      not_running: uiText('проверка не проводилась', 'not checked')
+    };
     const lines = [
       uiText('Процесс Xray: ', 'Xray process: ') +
         checked(report?.process_tracked, uiText('запущен приложением', 'managed by app'), uiText('не запущен', 'not running')),
@@ -1441,6 +1452,8 @@ async function refreshVpnHealth() {
       uiText('Системный DNS: ', 'System DNS: ') +
         checked(report?.dns_resolution, uiText('тестовый домен разрешён', 'test hostname resolved'),
           uiText('тестовый запрос не прошёл', 'test lookup unsuccessful')),
+      uiText('Свежий HTTPS-тест выхода: ', 'Live HTTPS egress test: ') +
+        (freshEgress[report?.egress_probe] || freshEgress.unavailable),
       uiText('Проверка внешнего IP: ', 'Exit IP verification: ') +
         checked(report?.ip_verified, uiText('подтверждена', 'verified'), uiText('не подтверждена', 'unverified')),
       report?.xray_hint === 'dns' && report?.dns_resolution === true

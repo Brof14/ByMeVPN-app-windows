@@ -185,6 +185,7 @@ const I18N = {
     server_sheet_desc: "Выберите страну или доверьтесь автоматике.",
     server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
+    vpn_unverified_help: "Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
     no_plan_desc: "Подключайтесь, когда вам нужен VPN.",
@@ -446,6 +447,7 @@ const I18N = {
     server_sheet_desc: "Choose a country or use automatic selection.",
     server_sheet_footnote: "Only servers in your subscription are shown.",
     home_connection_kicker: "YOUR CONNECTION",
+    vpn_unverified_help: "Xray is running, but routing and the external IP are unverified. Check connectivity before transferring sensitive data.",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
     no_plan_desc: "Connect whenever you need a VPN.",
@@ -1415,11 +1417,11 @@ async function toggleVpn(allowServerSwitch = false) {
       startLiveTimer();
       startStatusPolling();
       updateVpnUi();
-      showToast(state.vpnVerified
-        ? uiText('VPN подключён, внешний IP подтверждён.', 'VPN connected; exit IP verified.')
-        : uiText('Xray запущен, но проверить внешний IP не удалось. Защита не подтверждена.',
-            'Xray is running, but the exit IP cannot be verified. Protection is unconfirmed.'),
-        !state.vpnVerified);
+      // A persistent transport-health state belongs beside the VPN control;
+      // a transient toast would obscure navigation and hide the problem.
+      if (state.vpnVerified) {
+        showToast(uiText('Внешний IPv4 подтверждён.', 'External IPv4 verified.'));
+      }
     } catch (err) {
       state.vpnConnected = false;
       state.vpnVerified = false;
@@ -1647,6 +1649,9 @@ function updateVpnUi() {
   const connectedBox = document.getElementById('home-state-connected');
   const disconnectedBox = document.getElementById('home-state-disconnected');
   const activePill = document.getElementById('vpn-active-pill');
+  document.getElementById('home-verification-notice')?.classList?.toggle(
+    'hidden', !isConn || state.vpnVerified
+  );
   const sharedDock = document.getElementById('home-shared-dock');
   sharedDock?.classList?.toggle('hidden', !hasPlan || accessUnknown);
   document.getElementById('btn-toggle-vpn')?.classList?.toggle('hidden', !accessUnknown);

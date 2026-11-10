@@ -1989,11 +1989,7 @@ pub async fn vpn_health_report(
     let (process_tracked, ip_verified, baseline_known) = {
         let guard = state.tunnel.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
-            Some(tunnel) => (
-                true,
-                tunnel.egress_verified,
-                tunnel.baseline_ip.is_some(),
-            ),
+            Some(tunnel) => (true, tunnel.egress_verified, tunnel.baseline_ip.is_some()),
             None => (false, false, false),
         }
     };

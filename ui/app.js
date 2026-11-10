@@ -156,6 +156,19 @@ const I18N = {
     paywall_subtitle_safe: "Доступ к совместимым VPN-серверам без сложной настройки",
 
     no_plan_title_line1: "VPN для ваших устройств",
+    account_subscription_eyebrow: "ПОДПИСКА BYMEVPN",
+    account_days_suffix: " дн.",
+    account_days_caption: "до окончания доступа",
+    account_your_plan: "Ваш тариф",
+    account_renew_subscription: "Продлить подписку",
+    account_access_eyebrow: "ВАШ ДОСТУП",
+    account_inactive_title: "Подписка не активна",
+    account_inactive_desc: "Оформите подписку, чтобы подключаться к серверам ByMeVPN.",
+    account_free_trial: "3 дня бесплатно",
+    account_view_plans: "Посмотреть тарифы",
+    account_management_section: "Управление",
+    account_settings_subtitle: "Профиль, устройства, подписка",
+    account_manage_renewal: "Автопродление",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
@@ -389,6 +402,19 @@ const I18N = {
     paywall_subtitle_safe: "Compatible VPN servers without complex setup",
 
     no_plan_title_line1: "VPN for your devices",
+    account_subscription_eyebrow: "BYMEVPN SUBSCRIPTION",
+    account_days_suffix: " days",
+    account_days_caption: "until access expires",
+    account_your_plan: "Your plan",
+    account_renew_subscription: "Renew subscription",
+    account_access_eyebrow: "YOUR ACCESS",
+    account_inactive_title: "Subscription inactive",
+    account_inactive_desc: "Choose a plan to connect to ByMeVPN servers.",
+    account_free_trial: "3 days free",
+    account_view_plans: "View plans",
+    account_management_section: "Management",
+    account_settings_subtitle: "Profile, devices, subscription",
+    account_manage_renewal: "Auto-renewal",
     home_connection_kicker: "YOUR CONNECTION",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
@@ -872,6 +898,9 @@ function setupEventListeners() {
   });
   document.getElementById('btn-account-app-settings')?.addEventListener('click', () => switchTab('tab-settings'));
   document.getElementById('btn-account-advanced')?.addEventListener('click', () => switchTab('tab-advanced'));
+  document.getElementById('btn-account-settings-open')?.addEventListener('click', () => openModal('modal-account-settings'));
+  document.getElementById('btn-account-trial')?.addEventListener('click', handleActivateTrial);
+  document.getElementById('btn-account-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
@@ -1769,6 +1798,32 @@ function updateSubscriptionUi() {
     homeSubBadge.className = hasPlan ? 'badge-active-mini' : 'badge-inactive';
   }
 
+  // Android AccountScreen uses explicit active/inactive states, a large day count
+  // and a lightweight profile chip; never claim a paid plan when status is unknown.
+  document.getElementById('account-active-state')?.classList?.toggle('hidden', !hasPlan);
+  document.getElementById('account-inactive-state')?.classList?.toggle('hidden', !!hasPlan);
+  const statusPill = document.getElementById('acc-user-status-pill');
+  if (statusPill) {
+    statusPill.textContent = hasPlan ? uiText('Активен', 'Active')
+      : isUnknown ? uiText('Проверяем', 'Checking') : uiText('Без подписки', 'No subscription');
+    statusPill.className = hasPlan ? 'mobile-account-badge'
+      : 'mobile-account-badge mobile-account-badge-inactive';
+  }
+  const remainingDays = Number.isFinite(sub?.seconds_remaining) && sub.seconds_remaining > 0
+    ? Math.ceil(sub.seconds_remaining / 86400) : null;
+  const remainingLabel = document.getElementById('acc-remaining-days');
+  if (remainingLabel) remainingLabel.textContent = remainingDays == null ? '—' : String(remainingDays);
+  document.getElementById('acc-days-suffix')?.classList?.toggle('hidden', remainingDays === null);
+  const inactiveHeading = document.getElementById('acc-inactive-title');
+  if (inactiveHeading) inactiveHeading.textContent = isUnknown
+    ? uiText('Проверяем подписку', 'Checking subscription')
+    : uiText('Подписка не активна', 'Subscription inactive');
+  const inactiveTrial = document.getElementById('btn-account-trial');
+  if (inactiveTrial) {
+    inactiveTrial.disabled = sub?.trial_available !== true || state.trialBusy || isUnknown;
+    inactiveTrial.classList?.toggle('hidden', sub?.trial_available !== true || isUnknown);
+  }
+  document.getElementById('btn-account-pricing')?.classList?.toggle('hidden', isUnknown);
   if (accPlanName) accPlanName.textContent = title;
   if (accPlanValidity) accPlanValidity.textContent = expiry;
   if (accPlanBadge) {
@@ -1780,8 +1835,8 @@ function updateSubscriptionUi() {
   }
 
   if (accRenewBtn) {
-    const renewText = accRenewBtn.querySelector('[data-i18n="renew"]') || accRenewBtn;
-    renewText.textContent = hasPlan ? uiText('Продлить', 'Renew') :
+    const renewText = accRenewBtn.querySelector?.('[data-i18n="renew"]') || accRenewBtn;
+    renewText.textContent = hasPlan ? uiText('Продлить подписку', 'Renew subscription') :
       uiText('Оформить подписку', 'Subscribe');
   }
 

@@ -5,7 +5,8 @@ use serde_json::Value;
 pub const API_BASES: [&str; 1] = ["https://bymevpn.duckdns.org/api/v1"];
 // Only advertise protocols implemented in the pinned Xray build. The backend
 // keeps legacy Windows selection when this header is absent.
-pub const VPN_CAPABILITIES: &str = "hysteria2,vless-xhttp,vless-tls";
+pub const VPN_CAPABILITIES: &str =
+    "hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none";
 
 #[tauri::command]
 pub fn api_transport_encrypted() -> bool {
@@ -134,7 +135,7 @@ mod tests {
         for path in ["/servers", "/vpn/session"] {
             let headers = received_headers(path);
             assert!(
-                headers.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls"),
+                headers.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
                 "Missing desktop capabilities for {path}"
             );
         }

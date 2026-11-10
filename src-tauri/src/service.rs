@@ -1737,6 +1737,22 @@ pub async fn vpn_start(
                 }
             }
         }
+        // An Xray process may remain alive even though Windows never installed
+        // a usable Wintun route. Treat a *definitely* absent route as startup
+        // failure; an unavailable OS inspection remains UNKNOWN, not success.
+        if fatal_error.is_none() {
+            let mut routes = crate::tun_health::inspect().await;
+            if routes.definitely_missing() {
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                routes = crate::tun_health::inspect().await;
+                if routes.definitely_missing() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = fs::remove_file(&config_path);
+                    return Err("Xray запущен, но Windows не создала рабочий TUN-маршрут. Проверьте сетевой адаптер ByMeVPN, системные права и журнал Xray.".into());
+                }
+            }
+        }
         if let Some(cause) = fatal_error {
             let _ = child.kill();
             let _ = child.wait();
@@ -1961,6 +1977,38 @@ pub async fn vpn_status(
         country: String::new(),
         ip: String::new(),
     })
+}
+
+/// Read-only local checks for a user-initiated diagnostics dialog. Never
+/// return a subscription URL, a key, an IP address, or the raw Xray log.
+#[tauri::command]
+pub async fn vpn_health_report(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let (process_tracked, ip_verified, baseline_known) = {
+        let guard = state.tunnel.lock().map_err(|e| e.to_string())?;
+        match guard.as_ref() {
+            Some(tunnel) => (true, tunnel.egress_verified, tunnel.baseline_ip.is_some()),
+            None => (false, false, false),
+        }
+    };
+    let routes = crate::tun_health::inspect().await;
+    let hint = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|path| crate::tun_health::startup_log_hint(&path.join("xray_startup.log")))
+        .unwrap_or("unknown");
+    Ok(json!({
+        "process_tracked": process_tracked,
+        "ip_verified": ip_verified,
+        "baseline_known": baseline_known,
+        "adapter": routes.adapter,
+        "ipv4_default": routes.ipv4_default,
+        "ipv6_default": routes.ipv6_default,
+        "xray_hint": hint
+    }))
 }
 
 #[cfg(windows)]

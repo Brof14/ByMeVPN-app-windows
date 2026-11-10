@@ -11,10 +11,10 @@
     "windows": [
       {
         "title": "ByMeVPN",
-        "width": 480,
-        "height": 720,
-        "minWidth": 320,
-        "minHeight": 320,
+        "width": 960,
+        "height": 660,
+        "minWidth": 600,
+        "minHeight": 420,
         "decorations": false,
         "center": true,
         "resizable": true,

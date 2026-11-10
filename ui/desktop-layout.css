@@ -1,0 +1,305 @@
+/* Windows-only composition: Android components, desktop ergonomics.
+ * Mobile styles are preserved below 760px; no second visual identity. */
+
+.toast-popup {
+  top: 54px;
+  bottom: auto;
+  right: 18px;
+  left: auto;
+  width: max-content;
+  max-width: min(370px, calc(100vw - 36px));
+  padding: 12px 16px;
+  border-radius: 14px;
+  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  overflow-wrap: anywhere;
+  transform: translateY(-10px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
+}
+.toast-popup.show { transform: translateY(0); }
+.toast-popup.error { background: #271e29; color: #ffc0c0; }
+#tab-home .mobile-verification-notice {
+  max-width: 360px;
+  margin: 10px 0 0;
+  padding: 10px 13px;
+  border: 1px solid rgba(232, 174, 109, .34);
+  border-radius: 12px;
+  background: rgba(84, 62, 37, .17);
+  color: #e9c6a0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (min-width: 760px) {
+  #view-auth.auth-view {
+    display: grid;
+    grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+    align-items: center;
+    justify-items: center;
+    column-gap: clamp(24px, 4vw, 56px);
+    width: 100%;
+    height: 100%;
+    padding: 28px clamp(25px, 4.4vw, 48px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  #view-auth .auth-hero-side {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 360px;
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+  }
+  #view-auth .auth-hero-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0;
+    text-align: center;
+  }
+  #view-auth .hero-shield-emblem { width: 166px; min-height: 168px; margin-bottom: 10px; }
+  #view-auth .hero-shield-emblem::after { width: 154px; height: 154px; }
+  #view-auth .auth-brand-name { font-size: 34px; letter-spacing: -.8px; }
+  #view-auth .auth-slogan { font-size: 13px; max-width: 270px; line-height: 1.5; }
+  #view-auth .auth-card-side {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 480px;
+    padding: 0;
+  }
+  #view-auth .auth-card {
+    width: 100%;
+    padding: 24px clamp(18px, 3vw, 30px);
+    border: 1px solid #2b4051;
+    border-radius: 22px;
+    background: #121c2b;
+    box-shadow: 0 18px 45px rgba(3, 13, 23, .25);
+  }
+  #view-auth .auth-card:hover { border-color: #2b4051; }
+  #view-auth .auth-title { font-size: 24px; }
+  #view-auth .auth-subtitle { margin-bottom: 17px; }
+  #view-auth .auth-form-fields { gap: 11px; }
+  #view-auth .input-field-box { min-height: 43px; }
+  #view-auth .btn-google { min-height: 47px; }
+  #view-auth .auth-submit-btn { min-height: 48px; }
+
+  .app-shell-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex-direction: row;
+  }
+  .app-shell-layout .app-sidebar {
+    position: relative;
+    inset: auto;
+    flex: 0 0 174px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 174px;
+    height: 100%;
+    margin: 0;
+    padding: 76px 9px 18px;
+    border: 0;
+    border-right: 1px solid #243447;
+    background: #101a29;
+  }
+  .app-shell-layout .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    gap: 5px;
+  }
+  .app-shell-layout .sidebar-tab {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    flex: none;
+    width: 100%;
+    height: 52px;
+    gap: 13px;
+    padding: 0 15px;
+    border-radius: 13px;
+    font-size: 13px;
+  }
+  .app-shell-layout .sidebar-tab.active {
+    background: rgba(105, 211, 188, .10);
+    color: #b6eee0;
+  }
+  .app-shell-layout .sidebar-tab.active::after {
+    position: absolute;
+    top: 50%;
+    left: 1px;
+    width: 3px;
+    height: 22px;
+    transform: translateY(-50%);
+    border-radius: 3px;
+  }
+  .app-shell-layout .sidebar-tab .tab-icon,
+  .app-shell-layout .sidebar-tab .tab-icon svg {
+    width: 21px;
+    height: 21px;
+  }
+  .app-shell-layout .app-main-frame {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: auto;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .app-shell-layout .app-top-header {
+    height: 74px;
+    min-height: 74px;
+    padding-inline: 30px;
+    border-bottom: 1px solid rgba(36, 52, 71, .54);
+  }
+  .app-shell-layout .app-tab-pages {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+  }
+  .app-shell-layout #tab-home.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+    align-items: stretch;
+    gap: 12px;
+    min-height: 100%;
+    padding: 22px;
+  }
+  #tab-home .home-state-box:not(.hidden) {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+  }
+  #tab-home .mobile-status-layout {
+    justify-content: center;
+    min-height: 410px;
+    padding: 16px 10px 12px;
+  }
+  #tab-home .mobile-power-space {
+    flex: 1 1 auto;
+    min-height: 220px;
+    padding: 17px 0 10px;
+  }
+  #tab-home .pulse-power-ring {
+    width: clamp(175px, 34vh, 244px);
+    height: clamp(175px, 34vh, 244px);
+  }
+  #tab-home .mobile-status-summary { padding-bottom: 4px; }
+  #tab-home .status-title-text { font-size: clamp(20px, 2.7vw, 25px); }
+  #tab-home .mobile-home-dock:not(.hidden) {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    min-width: 0;
+    margin: 0;
+    padding: 0 4px 0 0;
+    gap: 13px;
+  }
+  #tab-home .mobile-server-card { min-height: 128px; }
+  #tab-home .mobile-subscription-card { min-height: 82px; }
+
+  #tab-home #home-state-no-plan:not(.hidden) { grid-column: 1 / -1; }
+  #tab-home .mobile-no-plan {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-content: center;
+    align-items: center;
+    gap: 12px 30px;
+    padding-inline: 20px;
+  }
+  #tab-home .mobile-no-plan-hero { grid-row: span 2; }
+  #tab-home .no-plan-shield-circle { width: 142px; height: 142px; }
+  #tab-home .mobile-pricing-link { margin: 0; }
+
+  .app-shell-layout .app-tab-pages > #tab-account.active,
+  .app-shell-layout .app-tab-pages > #tab-settings.active,
+  .app-shell-layout .app-tab-pages > #tab-devices.active,
+  .app-shell-layout .app-tab-pages > #tab-advanced.active,
+  .app-shell-layout .app-tab-pages > #tab-renewal.active,
+  .app-shell-layout .app-tab-pages > #tab-support.active {
+    width: min(100%, 720px);
+    margin: 0 auto;
+    padding: 24px 32px 36px;
+  }
+
+  .app-shell-layout:has(#tab-pricing.active) .app-sidebar { display: flex; }
+  .app-shell-layout:has(#tab-pricing.active) .app-main-frame { height: 100%; }
+  .app-shell-layout #tab-pricing.active {
+    max-width: 690px;
+    margin: 0 auto;
+    padding: 24px 30px 40px;
+  }
+
+  #tab-servers.active { align-items: center; justify-content: center; }
+  #tab-servers .servers-view-container {
+    width: min(540px, calc(100vw - 90px));
+    max-height: min(90vh, 650px);
+    border: 1px solid #294453;
+    border-radius: 24px;
+  }
+}
+
+@media (max-height: 600px) and (min-width: 760px) {
+  #tab-home .mobile-status-layout { min-height: 310px; }
+  #tab-home .mobile-power-space { min-height: 155px; }
+  #tab-home .pulse-power-ring { width: 175px; height: 175px; }
+  .app-shell-layout #tab-home.active { padding: 12px 20px; }
+}
+
+#tab-home .mobile-verification-notice p { margin: 0; }
+#tab-home .mobile-health-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 5px 11px;
+  border: 1px solid #9a7956;
+  border-radius: 9px;
+  background: rgba(232, 174, 109, .07);
+  color: #f1d5b3;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+#tab-home .mobile-health-button:hover { background: rgba(232, 174, 109, .18); }
+#tab-home .mobile-health-button:focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+.mobile-vpn-health-modal .mobile-health-results {
+  margin: 15px 0;
+  padding: 13px 15px;
+  border: 1px solid #28424b;
+  border-radius: 13px;
+  background: #101d28;
+  color: #c6ddd8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+  user-select: text;
+}
+.mobile-vpn-health-modal #btn-vpn-health-refresh {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+}

@@ -27,12 +27,12 @@ test('Tauri frontend loads Android mobile parity CSS after historical desktop st
   assert.match(css,/\.app-shell-layout \.app-main-frame/);
 });
 
-test('desktop starts inside 70% of monitor usable width and height',()=>{
-  assert.match(rust,/MAX_MONITOR_SHARE: f64 = 0\.70/);
+test('desktop starts landscape at up to 70% of monitor usable area',()=>{
+  assert.match(rust,/MAX_MONITOR_AREA_SHARE: f64 = 0\.70/);
   assert.match(rust,/fn initial_window_size/);
   assert.match(read('src-tauri/src/main.rs'),/window_layout::fit_to_monitor/);
   const w=JSON.parse(read('src-tauri/tauri.conf.json')).app.windows[0];
-  assert.ok(w.width < 800 && w.height > w.width);
+  assert.ok(w.width >= 900 && w.height < w.width);
   assert.equal(w.maximized,false);
 });
 

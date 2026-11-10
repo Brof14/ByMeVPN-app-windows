@@ -7,6 +7,7 @@
   <title>ByMeVPN</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./mobile-parity.css">
+  <link rel="stylesheet" href="./desktop-layout.css">
 </head>
 <body>
   <div id="app" class="app-root">
@@ -319,6 +320,11 @@
                       <span data-i18n="conn_secured">Проверяем внешний IP</span>
                     </p>
                     <span id="vpn-live-timer" class="mobile-connection-timer">00:00:00</span>
+                    <div id="home-verification-notice" class="mobile-verification-notice hidden" role="status">
+                      <p data-i18n="vpn_unverified_help">Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.</p>
+                      <button type="button" id="btn-vpn-health-check" class="mobile-health-button"
+                              data-i18n="vpn_health_action">Диагностика соединения</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1201,6 +1207,20 @@
             <span>English</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Read-only Windows TUN and Xray health. No keys or raw logs leave the client. -->
+    <div id="modal-vpn-health" class="modal-backdrop hidden">
+      <div class="glass-card modal-window mobile-account-settings-modal mobile-vpn-health-modal">
+        <div class="modal-head">
+          <h3 data-i18n="vpn_health_title">Проверка подключения</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-vpn-health" aria-label="Закрыть">×</button>
+        </div>
+        <p class="modal-desc" data-i18n="vpn_health_desc">Проверка выполняется локально. Пароли и ключи не отображаются.</p>
+        <div id="vpn-health-details" class="mobile-health-results" role="status" aria-live="polite">—</div>
+        <button type="button" id="btn-vpn-health-refresh" class="btn-secondary"
+                data-i18n="vpn_health_refresh">Проверить повторно</button>
       </div>
     </div>
 

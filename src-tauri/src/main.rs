@@ -5,6 +5,7 @@ mod egress;
 mod google_desktop;
 mod service;
 mod tun_config;
+mod tun_health;
 mod tunnel_runtime;
 mod window_layout;
 #[cfg(windows)]
@@ -71,6 +72,7 @@ fn main() {
             service::vpn_start,
             service::vpn_stop,
             service::vpn_status,
+            service::vpn_health_report,
             service::get_settings,
             service::save_setting,
             service::startup_enabled,

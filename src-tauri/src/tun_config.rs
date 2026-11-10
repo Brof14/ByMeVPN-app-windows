@@ -96,10 +96,22 @@ pub fn build_tun_config_ext(
 
     let proxy_outbound = match protocol.as_str() {
         "vless" => {
-            if !matches!(security.as_str(), "reality" | "tls")
-                || !matches!(network.as_str(), "tcp" | "raw" | "xhttp")
+            // Match Android XrayConfigGenerator: transport support is one
+            // boundary decision, not a different list in each UI/API layer.
+            let transport = match network.as_str() {
+                "tcp" | "raw" => "tcp",
+                "grpc" => "grpc",
+                "xhttp" => "xhttp",
+                "ws" | "websocket" => "ws",
+                "httpupgrade" => "httpupgrade",
+                _ => return Err("Сервер использует неподдерживаемый транспорт VLESS.".into()),
+            };
+            if !matches!(security.as_str(), "reality" | "tls" | "none")
+                || (security == "reality" && !matches!(transport, "tcp" | "grpc" | "xhttp"))
             {
-                return Err("Сервер использует пока не поддерживаемый протокол Windows.".into());
+                return Err(
+                    "Сервер использует неподдерживаемую комбинацию транспорта и защиты.".into(),
+                );
             }
             let id = text(session, &["uuid", "id"])
                 .and_then(|s| Uuid::parse_str(s).ok())
@@ -124,10 +136,40 @@ pub fn build_tun_config_ext(
                 user["flow"] = json!(flow);
             }
             let mut stream_settings = json!({
-                "network": if network == "raw" { "tcp" } else { network.as_str() },
+                "network": transport,
                 "security": security,
             });
-            if network == "xhttp" {
+            if transport == "grpc" {
+                let mut grpc =
+                    json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
+                if text(session, &["transport_mode"])
+                    .is_some_and(|mode| mode.eq_ignore_ascii_case("multi"))
+                {
+                    grpc["multiMode"] = json!(true);
+                }
+                stream_settings["grpcSettings"] = grpc;
+            }
+            if transport == "ws" {
+                let mut ws = json!({});
+                if let Some(path) = text(session, &["transport_path"]) {
+                    ws["path"] = json!(path);
+                }
+                if let Some(host) = text(session, &["transport_host"]) {
+                    ws["headers"] = json!({"Host": host});
+                }
+                stream_settings["wsSettings"] = ws;
+            }
+            if transport == "httpupgrade" {
+                let mut upgrade = json!({});
+                if let Some(path) = text(session, &["transport_path"]) {
+                    upgrade["path"] = json!(path);
+                }
+                if let Some(host) = text(session, &["transport_host"]) {
+                    upgrade["host"] = json!(host);
+                }
+                stream_settings["httpupgradeSettings"] = upgrade;
+            }
+            if transport == "xhttp" {
                 let mut settings = json!({});
                 for (field, aliases) in [
                     ("path", &["transport_path"][..]),
@@ -161,7 +203,7 @@ pub fn build_tun_config_ext(
                     "publicKey": key,
                     "shortId": short_id
                 });
-            } else {
+            } else if security == "tls" {
                 let mut tls_settings = json!({"fingerprint": fingerprint});
                 if let Some(name) = sni {
                     tls_settings["serverName"] = json!(name);
@@ -672,6 +714,98 @@ mod tests {
             assert!(
                 output.status.success(),
                 "Xray rejected the generated {name} config: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+    #[test]
+    fn android_transport_matrix_grpc_ws_and_httpupgrade_matches_subscription() {
+        for (network, security) in [
+            ("grpc", "tls"),
+            ("grpc", "reality"),
+            ("ws", "tls"),
+            ("websocket", "tls"),
+            ("httpupgrade", "tls"),
+            ("ws", "none"),
+            ("tcp", "none"),
+        ] {
+            let mut node = session();
+            node["network"] = json!(network);
+            node["security"] = json!(security);
+            node["flow"] = json!("");
+            node["transport_path"] = json!(if network == "grpc" {
+                "my-service"
+            } else {
+                "/cdn"
+            });
+            node["transport_host"] = json!("proxy.example.com");
+            node["transport_mode"] = json!("multi");
+            assert!(supports_windows_session(&node), "{network} / {security}");
+            let config = build_tun_config(&node).unwrap();
+            let stream = &config["outbounds"][0]["streamSettings"];
+            match network {
+                "grpc" => {
+                    assert_eq!(stream["grpcSettings"]["serviceName"], "my-service");
+                    assert_eq!(stream["grpcSettings"]["multiMode"], true);
+                }
+                "ws" | "websocket" => {
+                    assert_eq!(stream["network"], "ws");
+                    assert_eq!(stream["wsSettings"]["path"], "/cdn");
+                    assert_eq!(stream["wsSettings"]["headers"]["Host"], "proxy.example.com");
+                }
+                "httpupgrade" => {
+                    assert_eq!(stream["httpupgradeSettings"]["path"], "/cdn");
+                    assert_eq!(stream["httpupgradeSettings"]["host"], "proxy.example.com");
+                }
+                _ => {}
+            }
+            if security == "none" {
+                assert!(stream.get("tlsSettings").is_none());
+                assert!(stream.get("realitySettings").is_none());
+            }
+        }
+        let mut invalid = session();
+        invalid["network"] = json!("ws");
+        assert!(
+            !supports_windows_session(&invalid),
+            "Android forbids Reality over WS"
+        );
+        invalid["network"] = json!("httpupgrade");
+        assert!(!supports_windows_session(&invalid));
+    }
+
+    #[test]
+    fn xray_accepts_android_grpc_and_ws_transport_configs() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        for (name, security) in [
+            ("grpc", "tls"),
+            ("grpc", "reality"),
+            ("ws", "tls"),
+            ("httpupgrade", "tls"),
+        ] {
+            let mut node = session();
+            node["network"] = json!(name);
+            node["security"] = json!(security);
+            node["flow"] = json!("");
+            node["transport_path"] = json!(if name == "grpc" {
+                "grpc-service"
+            } else {
+                "/edge"
+            });
+            node["transport_host"] = json!("cdn.example.com");
+            let config = build_tun_config(&node).unwrap();
+            let path = std::env::temp_dir().join(format!("bymevpn-{name}-{}.json", Uuid::new_v4()));
+            std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+            let result = std::process::Command::new(&root)
+                .args(["run", "-test", "-config"])
+                .arg(&path)
+                .output();
+            let _ = std::fs::remove_file(path);
+            let output = result.expect("Verified Xray binary required for transport acceptance");
+            assert!(
+                output.status.success(),
+                "Xray rejected {name}/{security}: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
         }

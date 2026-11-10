@@ -1184,23 +1184,91 @@
       </div>
     </div>
 
-    <!-- AccountScreen.kt account settings dialog: secondary controls, never an extra main dashboard. -->
+    <!-- Android-inspired account controls, grouped for desktop and accessible on mobile. -->
     <div id="modal-account-settings" class="modal-backdrop hidden">
-      <div class="glass-card modal-window mobile-account-settings-modal">
-        <div class="modal-head">
-          <h3 data-i18n="account_settings_title">Настройки аккаунта</h3>
-          <button type="button" class="btn-modal-close" data-close-modal="modal-account-settings" aria-label="Закрыть">×</button>
+      <div class="glass-card modal-window mobile-account-settings-modal account-settings-dialog">
+        <div class="modal-head account-settings-dialog-head">
+          <div>
+            <span class="account-settings-overline" data-i18n="account_settings_overline">ВАШ ПРОФИЛЬ</span>
+            <h3 data-i18n="account_settings_title">Настройки аккаунта</h3>
+            <p class="account-settings-intro" data-i18n="account_settings_intro">Управляйте подпиской и безопасностью аккаунта.</p>
+          </div>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-account-settings" data-i18n-title="window_close" aria-label="Закрыть">×</button>
         </div>
-        <p class="modal-desc" data-i18n="account_settings_subtitle">Профиль, устройства, подписка</p>
+        <div class="account-settings-profile">
+          <div class="account-settings-avatar"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></div>
+          <div class="account-settings-profile-copy">
+            <strong id="account-settings-profile-name">—</strong>
+            <span id="account-settings-profile-email">ByMeVPN</span>
+          </div>
+          <span class="account-settings-profile-check" aria-hidden="true">✓</span>
+        </div>
         <div class="account-settings-button-grid">
-          <button type="button" id="btn-account-refresh" class="btn-secondary" data-i18n="account_refresh">Обновить данные</button>
-          <button type="button" id="btn-account-copy-id" class="btn-secondary" data-i18n="account_copy_id">Скопировать ID</button>
-          <button type="button" id="btn-acc-manage" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_manage_renewal">Автопродление</button>
-          <button type="button" id="btn-acc-open-support" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="support_title">Поддержка</button>
-          <button type="button" id="btn-account-app-settings" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_app_settings">Настройки приложения</button>
-          <button type="button" id="btn-account-advanced" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_advanced">Дополнительные настройки</button>
-          <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout" data-close-modal="modal-account-settings" data-i18n="logout">Выйти из аккаунта</button>
-          <button type="button" id="btn-acc-delete" class="footer-action-btn action-delete" data-close-modal="modal-account-settings" data-i18n="delete_account">Удалить аккаунт</button>
+<section class="account-settings-section identity">
+          <h4 data-i18n="account_settings_identity">Профиль</h4>
+          <div class="account-settings-rows">
+            <button type="button" id="btn-account-refresh" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8V4h-4M4 16v4h4"/><path d="M20 8a8 8 0 0 0-13.7-2M4 16a8 8 0 0 0 13.7 2"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="account_refresh">Обновить данные</strong><small data-i18n="account_settings_refresh_desc">Получить актуальные данные аккаунта</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" id="btn-account-copy-id" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="account_copy_id">Скопировать ID</strong><small data-i18n="account_settings_copy_desc">Идентификатор для поддержки</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+<section class="account-settings-section billing">
+          <h4 data-i18n="account_settings_billing">Подписка</h4>
+          <div class="account-settings-rows">
+            <button type="button" id="btn-acc-manage" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16 15h2"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="account_manage_renewal">Автопродление</strong><small data-i18n="account_settings_billing_desc">Статус и условия продления</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+<section class="account-settings-section application">
+          <h4 data-i18n="account_settings_app">Приложение</h4>
+          <div class="account-settings-rows">
+            <button type="button" id="btn-account-app-settings" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="#162c32"/><circle cx="15" cy="17" r="2" fill="#162c32"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="account_app_settings">Настройки приложения</strong><small data-i18n="account_settings_app_desc">Подключение, язык и параметры</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" id="btn-account-advanced" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="account_advanced">Дополнительные настройки</strong><small data-i18n="account_settings_advanced_desc">Сеть, маршруты и диагностика</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+<section class="account-settings-section help">
+          <h4 data-i18n="account_settings_help">Помощь</h4>
+          <div class="account-settings-rows">
+            <button type="button" id="btn-acc-open-support" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-3a8 8 0 0 1 16 0v3"/><rect x="2" y="12" width="4" height="7" rx="2"/><rect x="18" y="12" width="4" height="7" rx="2"/><path d="M20 19a5 5 0 0 1-5 3h-3"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="support_title">Поддержка</strong><small data-i18n="account_settings_help_desc">Связаться со службой поддержки</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+<section class="account-settings-section security">
+          <h4 data-i18n="account_settings_security">Безопасность</h4>
+          <div class="account-settings-rows">
+            <button type="button" id="btn-acc-logout" class="account-settings-action " data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M14 16l4-4-4-4M8 12h10"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="logout">Выйти из аккаунта</strong><small data-i18n="account_settings_logout_desc">Завершить текущий сеанс</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" id="btn-acc-delete" class="account-settings-action account-settings-danger" data-close-modal="modal-account-settings">
+              <span class="account-settings-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 4h4M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg></span>
+              <span class="account-settings-action-copy"><strong data-i18n="delete_account">Удалить аккаунт</strong><small data-i18n="account_settings_delete_desc">Запросить удаление через поддержку</small></span>
+              <span class="account-settings-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
         </div>
       </div>
     </div>

@@ -25,6 +25,7 @@ function makeHarness() {
     document: {
       getElementById: get,
       querySelectorAll() { return []; },
+      addEventListener() {},
       documentElement: {lang:'ru'}
     },
     navigator: {language:'ru-RU'},

@@ -655,7 +655,7 @@
                 <div class="section-micro-label android-settings-section-label" data-i18n="settings_connection_label">Подключение</div>
                 <div class="glass-card settings-group-card android-settings-essential">
                   <div class="setting-item-row">
-                    <span class="setting-row-icon">⏻</span>
+                    <span class="setting-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M7 6.8a9 9 0 1 0 10 0"/></svg></span>
                     <div class="setting-copy-column">
                       <strong data-i18n="autoconnect_title">Подключаться при запуске</strong>
                       <span data-i18n="autoconnect_desc">Автоматически подключать VPN при открытии приложения</span>
@@ -667,7 +667,7 @@
                   </div>
                   <div class="card-divider-line"></div>
                   <div class="setting-item-row">
-                    <span class="setting-row-icon">🌐</span>
+                    <span class="setting-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-5 6-5 12 0 18M12 3c5 6 5 12 0 18"/></svg></span>
                     <div class="setting-copy-column">
                       <strong data-i18n="bypass_title">Умный обход российских сервисов</strong>
                       <span data-i18n="bypass_desc">Российские сайты и сервисы будут открываться без VPN</span>
@@ -681,19 +681,14 @@
 
                 <div class="section-micro-label android-settings-section-label" data-i18n="settings_language_section">Язык приложения</div>
                 <div class="glass-card settings-group-card android-settings-language">
-                  <div class="lang-selector-block">
-                    <span class="lang-globe-icon">🌐</span>
-                    <span class="lang-label" data-i18n="app_language">Язык приложения</span>
-                    <div class="lang-segmented-control">
-                      <button type="button" class="lang-btn active" data-lang="system" data-i18n="system_language">Системный</button>
-                      <button type="button" class="lang-btn" data-lang="ru">
-                        <span>🇷🇺</span> Русский
-                      </button>
-                      <button type="button" class="lang-btn" data-lang="en">
-                        <span>🇬🇧</span> English
-                      </button>
-                    </div>
-                  </div>
+                  <button type="button" id="btn-language-dialog" class="mobile-language-row">
+                    <span class="setting-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-5 6-5 12 0 18M12 3c5 6 5 12 0 18"/></svg></span>
+                    <span class="setting-copy-column">
+                      <strong data-i18n="language_short_title">Язык</strong>
+                      <span id="current-language-label">Системный</span>
+                    </span>
+                    <span class="mobile-language-chevron" aria-hidden="true">›</span>
+                  </button>
                 </div>
 
                 <p class="android-settings-default-tip" data-i18n="settings_default_tip">Не уверены, что выбрать? Оставьте настройки по умолчанию.</p>
@@ -1248,6 +1243,31 @@
           <button type="button" id="btn-account-advanced" class="btn-secondary" data-close-modal="modal-account-settings" data-i18n="account_advanced">Дополнительные настройки</button>
           <button type="button" id="btn-acc-logout" class="footer-action-btn action-logout" data-close-modal="modal-account-settings" data-i18n="logout">Выйти из аккаунта</button>
           <button type="button" id="btn-acc-delete" class="footer-action-btn action-delete" data-close-modal="modal-account-settings" data-i18n="delete_account">Удалить аккаунт</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Android SettingsScreen.kt: language selection is a dialog, not a segmented control on the settings page. -->
+    <div id="modal-language" class="modal-backdrop hidden">
+      <div class="glass-card modal-window mobile-language-modal">
+        <div class="modal-head">
+          <h3 data-i18n="language_dialog_title">Язык приложения</h3>
+          <button type="button" class="btn-modal-close" data-close-modal="modal-language" aria-label="Закрыть">×</button>
+        </div>
+        <p class="modal-desc" data-i18n="language_dialog_desc">Выберите язык приложения.</p>
+        <div class="lang-segmented-control">
+          <button type="button" class="lang-btn active" data-lang="system" data-close-modal="modal-language">
+            <span class="mobile-language-radio" aria-hidden="true"></span>
+            <span data-i18n="system_language">Системный</span>
+          </button>
+          <button type="button" class="lang-btn" data-lang="ru" data-close-modal="modal-language">
+            <span class="mobile-language-radio" aria-hidden="true"></span>
+            <span>Русский</span>
+          </button>
+          <button type="button" class="lang-btn" data-lang="en" data-close-modal="modal-language">
+            <span class="mobile-language-radio" aria-hidden="true"></span>
+            <span>English</span>
+          </button>
         </div>
       </div>
     </div>

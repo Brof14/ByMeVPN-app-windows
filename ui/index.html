@@ -308,7 +308,17 @@
                   <div class="mobile-power-space">
                     <div id="vpn-power-ring" class="pulse-power-ring ring-connected" role="button" tabindex="0"
                          aria-label="Выключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
-                      <div class="inner-shield-circle" aria-hidden="true"></div>
+                      <div class="inner-shield-circle" aria-hidden="true"><svg class="vpn-shield-mark" width="175" height="198" viewBox="0 0 92 104" fill="none">
+            <defs>
+              <linearGradient id="vpnPowerActiveGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#468ff0"/>
+                <stop offset="0.55" stop-color="#53bfcf"/>
+                <stop offset="1" stop-color="#79d9bc"/>
+              </linearGradient>
+            </defs>
+            <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vpnPowerActiveGrad)" stroke-width="7" stroke-linejoin="round"/>
+            <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vpnPowerActiveGrad)"/>
+          </svg></div>
                     </div>
                   </div>
                   <div class="mobile-status-summary">
@@ -335,7 +345,17 @@
                   <div class="mobile-power-space">
                     <div id="vpn-power-ring-off" class="pulse-power-ring ring-off" role="button" tabindex="0"
                          aria-label="Включить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
-                      <div class="inner-shield-circle" aria-hidden="true"></div>
+                      <div class="inner-shield-circle" aria-hidden="true"><svg class="vpn-shield-mark" width="175" height="198" viewBox="0 0 92 104" fill="none">
+            <defs>
+              <linearGradient id="vpnPowerInactiveGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#468ff0"/>
+                <stop offset="0.55" stop-color="#53bfcf"/>
+                <stop offset="1" stop-color="#79d9bc"/>
+              </linearGradient>
+            </defs>
+            <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vpnPowerInactiveGrad)" stroke-width="7" stroke-linejoin="round"/>
+            <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vpnPowerInactiveGrad)"/>
+          </svg></div>
                     </div>
                   </div>
                   <div class="mobile-status-summary">

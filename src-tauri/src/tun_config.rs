@@ -561,8 +561,14 @@ mod tests {
         ipv6["server"] = json!("2001:db8::1");
         ipv6["port"] = json!("16287");
         let config = build_tun_config(&ipv6).unwrap();
-        assert_eq!(config["outbounds"][0]["settings"]["vnext"][0]["address"], "2001:db8::1");
-        assert_eq!(config["outbounds"][0]["settings"]["vnext"][0]["port"], 16287);
+        assert_eq!(
+            config["outbounds"][0]["settings"]["vnext"][0]["address"],
+            "2001:db8::1"
+        );
+        assert_eq!(
+            config["outbounds"][0]["settings"]["vnext"][0]["port"],
+            16287
+        );
     }
 
     #[test]

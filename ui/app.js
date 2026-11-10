@@ -155,15 +155,17 @@ const I18N = {
     paywall_dns_claim: "DNS-фильтрация зависит от выбранного режима",
     paywall_subtitle_safe: "Доступ к совместимым VPN-серверам без сложной настройки",
 
-    no_plan_title_line1: "Свободный интернет.",
+    no_plan_title_line1: "VPN для ваших устройств",
+    home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
+    home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
-    no_plan_desc: "Подключайтесь к привычным сервисам с ByMeVPN — без сложных настроек.",
+    no_plan_desc: "Подключайтесь, когда вам нужен VPN.",
     no_plan_perk_connection: "VPN-подключение",
     no_plan_perk_simple: "Простое управление",
     no_plan_trial_badge: "3 ДНЯ БЕСПЛАТНО",
-    no_plan_trial_heading: "Попробуйте сервис перед покупкой",
-    no_plan_trial_desc: "3 дня без оплаты и привязки банковской карты.",
-    no_plan_trial_button: "Попробовать бесплатно",
+    no_plan_trial_heading: "3 дня бесплатно",
+    no_plan_trial_desc: "Попробуйте сервис перед покупкой.",
+    no_plan_trial_button: "Активировать бесплатно",
     no_plan_pricing_button: "Посмотреть все тарифы",
     pay_telegram_bot: "Оплатить через Telegram-бота",
     feature_speed_title: "Скорость зависит от сервера и сети",
@@ -215,7 +217,7 @@ const I18N = {
     nav_account: 'Аккаунт',
     nav_settings: 'Настройки',
     protection_active: 'Внешний IP подтверждён',
-    vpn_connected: 'VPN подключён',
+    vpn_connected: 'VPN запущен',
     conn_secured: 'Соединение защищено',
     download: 'Скачивание',
     upload: 'Отправка',
@@ -386,15 +388,17 @@ const I18N = {
     paywall_dns_claim: "DNS filtering depends on the selected mode",
     paywall_subtitle_safe: "Compatible VPN servers without complex setup",
 
-    no_plan_title_line1: "An open internet.",
+    no_plan_title_line1: "VPN for your devices",
+    home_connection_kicker: "YOUR CONNECTION",
+    home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
-    no_plan_desc: "Access familiar services with ByMeVPN, without complicated setup.",
+    no_plan_desc: "Connect whenever you need a VPN.",
     no_plan_perk_connection: "VPN connection",
     no_plan_perk_simple: "Simple controls",
     no_plan_trial_badge: "3 DAYS FREE",
-    no_plan_trial_heading: "Try the service before you buy",
-    no_plan_trial_desc: "3 days free, with no payment card required.",
-    no_plan_trial_button: "Start free trial",
+    no_plan_trial_heading: "3 days free",
+    no_plan_trial_desc: "Try the service before buying.",
+    no_plan_trial_button: "Activate free trial",
     no_plan_pricing_button: "Explore all plans",
     pay_telegram_bot: "Pay via Telegram bot",
     feature_speed_title: "Speed depends on your server and network",
@@ -446,7 +450,7 @@ const I18N = {
     nav_account: 'Account',
     nav_settings: 'Settings',
     protection_active: 'Exit IP verified',
-    vpn_connected: 'VPN Connected',
+    vpn_connected: 'VPN started',
     conn_secured: 'Connection secured',
     download: 'Download',
     upload: 'Upload',
@@ -766,6 +770,10 @@ function switchTab(tabId) {
       titleEl.textContent = lang === 'ru' ? 'Расширенные настройки' : 'Advanced Settings';
       break;
   }
+
+  // Android uses the shield brand instead of a duplicate "Home" headline.
+  document.getElementById('mobile-header-brand')?.classList.toggle('hidden', tabId !== 'tab-home');
+  titleEl?.classList.toggle('hidden', tabId === 'tab-home');
 }
 
 // Event Listeners Binding
@@ -1574,6 +1582,9 @@ function updateVpnUi() {
   const connectedBox = document.getElementById('home-state-connected');
   const disconnectedBox = document.getElementById('home-state-disconnected');
   const activePill = document.getElementById('vpn-active-pill');
+  const sharedDock = document.getElementById('home-shared-dock');
+  sharedDock?.classList.toggle('hidden', !hasPlan || accessUnknown);
+  document.getElementById('btn-toggle-vpn')?.classList.toggle('hidden', !accessUnknown);
 
   if (isConn) {
     noPlanBox?.classList.add('hidden');
@@ -1583,7 +1594,7 @@ function updateVpnUi() {
     const heading = document.querySelector('#home-state-connected .status-title-text');
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…') : state.vpnVerified ?
-      uiText('VPN подключён', 'VPN connected') :
+      uiText('VPN запущен', 'VPN started') :
       uiText('VPN запущен — IP не подтверждён', 'VPN running — IP unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'

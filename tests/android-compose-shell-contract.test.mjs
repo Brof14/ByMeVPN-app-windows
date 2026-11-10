@@ -15,7 +15,7 @@ test('Android Compose home has one shared server and subscription dock for conne
   assert.match(html,/data-i18n="home_location_title"/);
   assert.match(html,/id="home-server-country">Автоматически/);
   assert.equal((html.match(/id="home-sub-title"/g)||[]).length,1);
-  assert.match(read('ui/app.js'),/sharedDock\?\.classList\.toggle\('hidden', !hasPlan \|\| accessUnknown\)/);
+  assert.match(read('ui/app.js'),/sharedDock\?\.classList\?\.toggle\('hidden', !hasPlan \|\| accessUnknown\)/);
 });
 
 test('Tauri frontend loads Android mobile parity CSS after historical desktop styles',()=>{

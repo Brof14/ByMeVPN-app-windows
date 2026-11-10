@@ -134,8 +134,15 @@ pub fn log_hint(text: &str) -> &'static str {
     for line in text.lines().rev().take(200) {
         let line = line.to_ascii_lowercase();
         let failure = [
-            "error", "failed", "failure", "denied", "cannot ", "unable to",
-            "timed out", "timeout", "refused",
+            "error",
+            "failed",
+            "failure",
+            "denied",
+            "cannot ",
+            "unable to",
+            "timed out",
+            "timeout",
+            "refused",
         ]
         .iter()
         .any(|part| line.contains(part));
@@ -209,18 +216,36 @@ mod tests {
 
     #[test]
     fn dns_keyword_alone_or_warning_does_not_claim_dns_failure() {
-        assert_eq!(log_hint("2026/11/10 20:00:00 [Info] dns lookup started"), "unknown");
-        assert_eq!(log_hint("DNS servers: 1.1.1.1; routing bymevpn-dns-query"), "unknown");
+        assert_eq!(
+            log_hint("2026/11/10 20:00:00 [Info] dns lookup started"),
+            "unknown"
+        );
+        assert_eq!(
+            log_hint("DNS servers: 1.1.1.1; routing bymevpn-dns-query"),
+            "unknown"
+        );
         assert_eq!(log_hint("2026/11/10 [Warning] DNS was slow"), "unknown");
-        assert_eq!(log_hint("2026/11/10 [Error] DNS query failed: timeout"), "dns");
+        assert_eq!(
+            log_hint("2026/11/10 [Error] DNS query failed: timeout"),
+            "dns"
+        );
         assert_eq!(log_hint("failed to resolve host"), "dns");
     }
 
     #[test]
     fn recent_error_line_takes_precedence_over_older_unrelated_diagnostics() {
-        assert_eq!(log_hint("error: DNS request failed\\ninfo: route applied"), "dns");
-        assert_eq!(log_hint("failed to resolve host\\nWintun access is denied"), "permissions");
-        assert_eq!(log_hint("DNS warning from a previous connection"), "unknown");
+        assert_eq!(
+            log_hint("error: DNS request failed\\ninfo: route applied"),
+            "dns"
+        );
+        assert_eq!(
+            log_hint("failed to resolve host\\nWintun access is denied"),
+            "permissions"
+        );
+        assert_eq!(
+            log_hint("DNS warning from a previous connection"),
+            "unknown"
+        );
     }
 
     #[test]

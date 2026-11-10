@@ -96,10 +96,20 @@ pub fn build_tun_config_ext(
 
     let proxy_outbound = match protocol.as_str() {
         "vless" => {
-            if !matches!(security.as_str(), "reality" | "tls")
-                || !matches!(network.as_str(), "tcp" | "raw" | "xhttp")
+            // Match Android XrayConfigGenerator: transport support is one
+            // boundary decision, not a different list in each UI/API layer.
+            let transport = match network.as_str() {
+                "tcp" | "raw" => "tcp",
+                "grpc" => "grpc",
+                "xhttp" => "xhttp",
+                "ws" | "websocket" => "ws",
+                "httpupgrade" => "httpupgrade",
+                _ => return Err("Сервер использует неподдерживаемый транспорт VLESS.".into()),
+            };
+            if !matches!(security.as_str(), "reality" | "tls" | "none")
+                || (security == "reality" && !matches!(transport, "tcp" | "grpc" | "xhttp"))
             {
-                return Err("Сервер использует пока не поддерживаемый протокол Windows.".into());
+                return Err("Сервер использует неподдерживаемую комбинацию транспорта и защиты.".into());
             }
             let id = text(session, &["uuid", "id"])
                 .and_then(|s| Uuid::parse_str(s).ok())
@@ -124,10 +134,37 @@ pub fn build_tun_config_ext(
                 user["flow"] = json!(flow);
             }
             let mut stream_settings = json!({
-                "network": if network == "raw" { "tcp" } else { network.as_str() },
+                "network": transport,
                 "security": security,
             });
-            if network == "xhttp" {
+            if transport == "grpc" {
+                let mut grpc = json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
+                if text(session, &["transport_mode"]).is_some_and(|mode| mode.eq_ignore_ascii_case("multi")) {
+                    grpc["multiMode"] = json!(true);
+                }
+                stream_settings["grpcSettings"] = grpc;
+            }
+            if transport == "ws" {
+                let mut ws = json!({});
+                if let Some(path) = text(session, &["transport_path"]) {
+                    ws["path"] = json!(path);
+                }
+                if let Some(host) = text(session, &["transport_host"]) {
+                    ws["headers"] = json!({"Host": host});
+                }
+                stream_settings["wsSettings"] = ws;
+            }
+            if transport == "httpupgrade" {
+                let mut upgrade = json!({});
+                if let Some(path) = text(session, &["transport_path"]) {
+                    upgrade["path"] = json!(path);
+                }
+                if let Some(host) = text(session, &["transport_host"]) {
+                    upgrade["host"] = json!(host);
+                }
+                stream_settings["httpupgradeSettings"] = upgrade;
+            }
+            if transport == "xhttp" {
                 let mut settings = json!({});
                 for (field, aliases) in [
                     ("path", &["transport_path"][..]),
@@ -161,7 +198,7 @@ pub fn build_tun_config_ext(
                     "publicKey": key,
                     "shortId": short_id
                 });
-            } else {
+            } else if security == "tls" {
                 let mut tls_settings = json!({"fingerprint": fingerprint});
                 if let Some(name) = sni {
                     tls_settings["serverName"] = json!(name);

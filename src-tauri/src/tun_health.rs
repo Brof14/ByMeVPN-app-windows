@@ -136,6 +136,18 @@ mod tests {
     }
 
     #[test]
+    fn large_xray_log_is_inspected_from_the_bounded_recent_tail() {
+        let path = std::env::temp_dir()
+            .join(format!("bymevpn-health-log-{}", uuid::Uuid::new_v4()));
+        let mut noise = vec![b'x'; 128 * 1024];
+        noise.extend_from_slice(b"\\nfailed to create Wintun: access is denied\\n");
+        std::fs::write(&path, noise).unwrap();
+        let hint = startup_log_hint(&path);
+        let _ = std::fs::remove_file(path);
+        assert_eq!(hint, "permissions");
+    }
+
+    #[test]
     fn log_hints_never_include_subscription_secrets() {
         let raw = "Wintun access is denied for uuid=secret";
         assert_eq!(log_hint(raw), "permissions");

@@ -85,11 +85,13 @@ pub fn build_tun_config_ext(
     if !(1..=65535).contains(&port) {
         return Err("Сервер вернул некорректный порт VPN.".into());
     }
-    let fingerprint = text(session, &["fingerprint"]).unwrap_or(if matches!(protocol.as_str(), "hysteria2" | "hy2") {
-        "firefox"
-    } else {
-        "chrome"
-    });
+    let fingerprint = text(session, &["fingerprint"]).unwrap_or(
+        if matches!(protocol.as_str(), "hysteria2" | "hy2") {
+            "firefox"
+        } else {
+            "chrome"
+        },
+    );
     let alpn = session_alpn(session)?;
 
     let proxy_outbound = match protocol.as_str() {
@@ -551,6 +553,16 @@ mod tests {
             config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
             json!(["h3"])
         );
+    }
+
+    #[test]
+    fn accepts_valid_ipv6_server_and_numeric_string_port() {
+        let mut ipv6 = session();
+        ipv6["server"] = json!("2001:db8::1");
+        ipv6["port"] = json!("16287");
+        let config = build_tun_config(&ipv6).unwrap();
+        assert_eq!(config["outbounds"][0]["settings"]["vnext"][0]["address"], "2001:db8::1");
+        assert_eq!(config["outbounds"][0]["settings"]["vnext"][0]["port"], 16287);
     }
 
     #[test]

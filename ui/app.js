@@ -977,6 +977,17 @@ function setupEventListeners() {
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
+  // Android's exact drawable is primary. Keep the built-in vector shield
+  // available if an installation unexpectedly cannot load its bundled PNG.
+  document.querySelectorAll('.vpn-shield-image').forEach(img => {
+    const showVectorFallback = () => {
+      img.style.display = 'none';
+      img.nextElementSibling?.classList?.add('is-fallback-visible');
+    };
+    img.addEventListener('error', showVectorFallback, { once: true });
+    if (img.complete && img.naturalWidth === 0) showVectorFallback();
+  });
+
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
   document.getElementById('vpn-power-ring-off')?.addEventListener('click', toggleVpn);

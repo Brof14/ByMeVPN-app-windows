@@ -25,7 +25,7 @@ test('both power controls contain the Android image and a working SVG fallback',
 
 test('power shield asset is byte-for-byte the current Android drawable', () => {
   const png = readFileSync(new URL('../ui/assets/byme-connect-shield.png', import.meta.url));
-  const gitBlob = createHash('sha1').update('blob ' + png.length + '\\0').update(png).digest('hex');
+  const gitBlob = createHash('sha1').update('blob ' + png.length).update(Uint8Array.of(0)).update(png).digest('hex');
   assert.equal(gitBlob, 'b1b269246a75c21742ebc968cb2c3ad6893a73d8');
 });
 

@@ -2006,12 +2006,9 @@ pub async fn vpn_health_report(
     // connection status. Unknown/unchanged are never treated as protected.
     let egress_probe = if process_tracked {
         let _probe_guard = state.status_probe_gate.lock().await;
-        let check = tokio::time::timeout(
-            Duration::from_secs(9),
-            verify_egress(baseline_ip),
-        )
-        .await
-        .unwrap_or(EgressCheck::Unavailable);
+        let check = tokio::time::timeout(Duration::from_secs(9), verify_egress(baseline_ip))
+            .await
+            .unwrap_or(EgressCheck::Unavailable);
         crate::egress::egress_result_code(check)
     } else {
         "not_running"

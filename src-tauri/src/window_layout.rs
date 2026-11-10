@@ -8,14 +8,17 @@ const TARGET_HEIGHT: f64 = 660.0;
 // Pure geometry is independently tested; Windows DPI scaling is handled once
 // at the boundary in fit_to_monitor.
 fn initial_window_size(work_width: f64, work_height: f64) -> (f64, f64) {
-    let area_scale =
-        ((MAX_MONITOR_AREA_SHARE * work_width * work_height) / (TARGET_WIDTH * TARGET_HEIGHT))
-            .sqrt();
+    let area_scale = ((MAX_MONITOR_AREA_SHARE * work_width * work_height)
+        / (TARGET_WIDTH * TARGET_HEIGHT))
+        .sqrt();
     let scale = 1.0_f64
         .min(area_scale)
         .min(MAX_MONITOR_AXIS_SHARE * work_width / TARGET_WIDTH)
         .min(MAX_MONITOR_AXIS_SHARE * work_height / TARGET_HEIGHT);
-    ((TARGET_WIDTH * scale).floor(), (TARGET_HEIGHT * scale).floor())
+    (
+        (TARGET_WIDTH * scale).floor(),
+        (TARGET_HEIGHT * scale).floor(),
+    )
 }
 
 pub fn fit_to_monitor(window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -53,7 +56,10 @@ mod tests {
             assert!(window_w * window_h <= MAX_MONITOR_AREA_SHARE * width * height);
             assert!(window_w <= MAX_MONITOR_AXIS_SHARE * width);
             assert!(window_h <= MAX_MONITOR_AXIS_SHARE * height);
-            assert!(window_w > window_h, "Desktop first-launch should be landscape");
+            assert!(
+                window_w > window_h,
+                "Desktop first-launch should be landscape"
+            );
         }
     }
 

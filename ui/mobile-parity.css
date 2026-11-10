@@ -543,3 +543,264 @@ html, body, .app-root, .app-shell-layout {
 @media (prefers-reduced-motion: reduce) {
   #tab-home .pulse-power-ring[aria-busy="true"]::before { animation: none; }
 }
+
+/* AccountScreen.kt: one profile row, single 21dp plan card, two section rows. */
+.app-shell-layout #tab-account {
+  display: none;
+  padding: 10px 26px 28px;
+}
+.app-shell-layout #tab-account.active { display: block; }
+#tab-account .account-top-cards-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+}
+#tab-account .account-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 79px;
+  padding: 10px 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#tab-account .profile-avatar-circle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 51px;
+  width: 51px;
+  height: 51px;
+  border: 1px solid #294a41;
+  border-radius: 16px;
+  background: #192c3d;
+  color: #79c7c6;
+}
+#tab-account .profile-avatar-circle svg { width: 25px; height: 25px; }
+#tab-account .profile-details-column { flex: 1 1 auto; min-width: 0; text-align: left; }
+#tab-account .profile-name-text {
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: #eef4f4;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#tab-account .profile-email-text {
+  display: block;
+  overflow: hidden;
+  color: #8ca5a2;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tab-account .mobile-account-badge {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 112px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #193743;
+  color: #8cdeca;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  text-align: center;
+}
+#tab-account .mobile-account-badge-inactive { background: #2b2424; color: #e3a29a; }
+#tab-account .account-sub-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  padding: 21px;
+  background: #1a2d40;
+  border: 1px solid #34566a;
+  border-radius: 21px;
+  box-shadow: none;
+}
+#tab-account .mobile-account-active,
+#tab-account .mobile-account-inactive {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+#tab-account .mobile-account-active.hidden,
+#tab-account .mobile-account-inactive.hidden { display: none; }
+#tab-account .mobile-account-kicker {
+  display: block;
+  margin-bottom: 10px;
+  color: #8fbbca;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+}
+#tab-account .mobile-account-days {
+  display: flex;
+  align-items: baseline;
+  min-height: 81px;
+  gap: 4px;
+  color: #eef4f4;
+}
+#tab-account .mobile-account-days strong {
+  font-size: 64px;
+  line-height: 1.14;
+  font-weight: 750;
+  letter-spacing: -3px;
+  font-variant-numeric: tabular-nums;
+}
+#tab-account .mobile-account-days span {
+  color: #80d3c6;
+  font-size: 20px;
+  font-weight: 700;
+}
+#tab-account .mobile-account-active > p {
+  margin: 0;
+  color: #9ab1a7;
+  font-size: 13px;
+}
+#tab-account .mobile-account-separator {
+  width: 100%;
+  height: 1px;
+  margin: 16px 0 14px;
+  background: #305248;
+}
+#tab-account .acc-sub-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+#tab-account .acc-sub-plan-row span { color: #99b3a8; font-size: 12px; }
+#tab-account .acc-plan-title {
+  margin: 0;
+  color: #e5f3ec;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
+}
+#tab-account .acc-sub-actions-row { display: flex; width: 100%; margin: 0; }
+#tab-account #btn-acc-renew {
+  display: block;
+  min-height: 48px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #526f80;
+  border-radius: 13px;
+  background: #eaf8f8;
+  color: #0a2431;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+#tab-account .mobile-account-inactive h3 {
+  margin: 6px 0 10px;
+  color: #eef4f4;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.5px;
+}
+#tab-account .mobile-account-inactive p {
+  margin: 0 0 20px;
+  color: #96b0a6;
+  font-size: 12.5px;
+  line-height: 18px;
+}
+#tab-account #btn-account-trial {
+  min-height: 50px;
+  width: 100%;
+  margin-bottom: 14px;
+  border: 0;
+  border-radius: 13px;
+  color: #0a2431;
+  background: linear-gradient(95deg, #69d3bc, #64c0d4);
+  font-size: 14px;
+  font-weight: 700;
+}
+#tab-account #btn-account-pricing {
+  min-height: 28px;
+  width: 100%;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: #90cfce;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+  cursor: pointer;
+}
+#tab-account .mobile-account-section-label {
+  margin: 22px 0 10px 2px;
+  color: #8ba3a4;
+  font-size: 12px;
+  font-weight: 600;
+}
+#tab-account .account-devices-section,
+#tab-account .mobile-account-settings-row {
+  display: flex;
+  align-items: center;
+  min-height: 69px;
+  gap: 13px;
+  width: 100%;
+  padding: 14px 17px;
+  border: 1px solid #263647;
+  border-radius: 16px;
+  background: #121c2b;
+  color: #eef4f4;
+  box-shadow: none;
+  cursor: pointer;
+}
+#tab-account .mobile-account-row-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #1b2f3c;
+  color: #7ac9cb;
+}
+#tab-account .mobile-account-row-icon svg { width: 20px; height: 20px; }
+#tab-account .mobile-account-row-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
+#tab-account .mobile-account-row-copy strong { color: #eef4f4; font-size: 13.5px; font-weight: 650; }
+#tab-account .mobile-account-row-copy span { font-size: 11px; font-weight: 400; color: #8ca5a2; }
+#tab-account .mobile-account-row-arrow { flex: 0 0 auto; color: #71898a; font-size: 24px; line-height: 1; }
+#tab-account :is(.account-devices-section, .mobile-account-settings-row):focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+
+.mobile-account-settings-modal {
+  width: min(440px, calc(100vw - 34px));
+  max-width: calc(100vw - 34px);
+  max-height: calc(100dvh - 58px);
+  overflow-y: auto;
+  border: 1px solid #263647;
+  border-radius: 22px;
+  background: #121c2b;
+}
+.mobile-account-settings-modal .account-settings-button-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mobile-account-settings-modal .account-settings-button-grid > button {
+  width: 100%;
+  min-height: 42px;
+  white-space: normal;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.mobile-account-settings-modal .account-settings-button-grid > .footer-action-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+@media (max-width: 410px) {
+  .app-shell-layout #tab-account { padding-inline: 18px; }
+  #tab-account .account-sub-card { padding: 18px; }
+}

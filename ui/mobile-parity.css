@@ -1238,7 +1238,10 @@ html, body, .app-root, .app-shell-layout {
   line-height: 1.5;
   text-align: center;
 }
-.app-shell-layout:has(#tab-pricing.active) .app-top-header { display: none; }
+/* Android PricingScreen is a full-screen secondary flow, not a bottom-tab page. */
+.app-shell-layout:has(#tab-pricing.active) .app-top-header,
+.app-shell-layout:has(#tab-pricing.active) .app-sidebar { display: none; }
+.app-shell-layout:has(#tab-pricing.active) .app-main-frame { height: 100%; }
 @media (max-width: 410px) {
   .app-shell-layout #tab-pricing { padding-inline: 18px; }
   #tab-pricing .tariff-card { padding-inline: 14px; }

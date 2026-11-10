@@ -15,8 +15,37 @@ fn valid_host(host: &str) -> bool {
     if host.contains(['/', '@', '?', '#', ' ', '\\']) {
         return false;
     }
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
     url::Url::parse(&format!("https://{host}"))
         .is_ok_and(|url| url.host_str().is_some() && url.port().is_none())
+}
+
+fn session_alpn(session: &Value) -> Result<Option<Vec<String>>, String> {
+    let entries: Vec<&str> = match session.get("alpn") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(value)) => value.split(',').collect(),
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|value| value.as_str().ok_or("Сервер вернул некорректный TLS ALPN."))
+            .collect::<Result<_, _>>()?,
+        _ => return Err("Сервер вернул некорректный TLS ALPN.".into()),
+    };
+    let protocols: Vec<String> = entries
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    if protocols.len() > 16
+        || protocols.iter().any(|value| {
+            value.len() > 255 || !value.is_ascii() || value.bytes().any(|b| b.is_ascii_control())
+        })
+    {
+        return Err("Сервер вернул некорректный TLS ALPN.".into());
+    }
+    Ok((!protocols.is_empty()).then_some(protocols))
 }
 
 #[allow(dead_code)]
@@ -42,18 +71,26 @@ pub fn build_tun_config_ext(
     let host = text(session, &["server", "endpoint"])
         .filter(|s| valid_host(s))
         .ok_or("Сервер вернул некорректный адрес VPN.")?;
-    let sni = text(session, &["server_name", "sni"])
-        .filter(|s| valid_host(s))
-        .ok_or("Сервер не вернул корректное имя TLS.")?;
-    let port = session.get("port").and_then(Value::as_u64).unwrap_or(443);
+    let sni = text(session, &["server_name", "sni"]);
+    if sni.is_some_and(|name| !valid_host(name)) || (security == "reality" && sni.is_none()) {
+        return Err("Сервер не вернул корректное имя TLS.".into());
+    }
+    let port = session
+        .get("port")
+        .and_then(|port| {
+            port.as_u64()
+                .or_else(|| port.as_str().and_then(|value| value.parse::<u64>().ok()))
+        })
+        .unwrap_or(0);
     if !(1..=65535).contains(&port) {
         return Err("Сервер вернул некорректный порт VPN.".into());
     }
-    let fingerprint = text(session, &["fingerprint"]).unwrap_or(if protocol == "hysteria2" {
+    let fingerprint = text(session, &["fingerprint"]).unwrap_or(if matches!(protocol.as_str(), "hysteria2" | "hy2") {
         "firefox"
     } else {
         "chrome"
     });
+    let alpn = session_alpn(session)?;
 
     let proxy_outbound = match protocol.as_str() {
         "vless" => {
@@ -118,16 +155,19 @@ pub fn build_tun_config_ext(
                 }
                 stream_settings["realitySettings"] = json!({
                     "fingerprint": fingerprint,
-                    "serverName": sni,
+                    "serverName": sni.ok_or("Сервер не вернул корректное имя TLS.")?,
                     "publicKey": key,
                     "shortId": short_id
                 });
             } else {
-                stream_settings["tlsSettings"] = json!({
-                    "serverName": sni,
-                    "fingerprint": fingerprint,
-                    "alpn": ["h2", "http/1.1"]
-                });
+                let mut tls_settings = json!({"fingerprint": fingerprint});
+                if let Some(name) = sni {
+                    tls_settings["serverName"] = json!(name);
+                }
+                if let Some(values) = alpn.as_ref() {
+                    tls_settings["alpn"] = json!(values);
+                }
+                stream_settings["tlsSettings"] = tls_settings;
             }
             json!({
                 "tag": "proxy",
@@ -154,15 +194,18 @@ pub fn build_tun_config_ext(
             if obfuscation == "salamander" && obfuscation_password.is_empty() {
                 return Err("Сервер не вернул пароль обфускации Hysteria 2.".into());
             }
+            let mut tls_settings = json!({
+                "fingerprint": fingerprint,
+                "alpn": alpn.unwrap_or_else(|| vec!["h3".to_string()])
+            });
+            if let Some(name) = sni {
+                tls_settings["serverName"] = json!(name);
+            }
             let mut stream_settings = json!({
                 "network": "hysteria",
                 "security": "tls",
                 "hysteriaSettings": {"version": 2, "auth": auth},
-                "tlsSettings": {
-                    "serverName": sni,
-                    "fingerprint": fingerprint,
-                    "alpn": ["h3"]
-                }
+                "tlsSettings": tls_settings
             });
             if obfuscation == "salamander" {
                 stream_settings["finalmask"] = json!({

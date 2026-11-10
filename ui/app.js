@@ -172,6 +172,15 @@ const I18N = {
     language_short_title: "Язык",
     language_dialog_title: "Язык приложения",
     language_dialog_desc: "Выберите язык приложения.",
+    pricing_choose_plan: "Выберите тариф",
+    pricing_one_plan: "Одна подписка для всех ваших устройств",
+    pricing_devices_kicker: "СКОЛЬКО УСТРОЙСТВ?",
+    pricing_term_kicker: "СРОК ПОДПИСКИ",
+    pricing_payment_kicker: "СПОСОБ ОПЛАТЫ",
+    pricing_payment_method: "Карта или СБП через ЮKassa",
+    pricing_total: "Итого",
+    pricing_pay_action: "Оплатить",
+    pricing_secure: "Безопасная оплата через ЮKassa",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
@@ -260,13 +269,13 @@ const I18N = {
     devices_5: '5 устройств',
     devices_10: '10 устройств',
     plan_1m: '1 месяц',
-    plan_3m: '3 месяца',
-    plan_6m: '6 месяцев',
-    plan_12m: '12 месяцев',
+    plan_3m: '3 + 1 месяц',
+    plan_6m: '6 + 2 месяца',
+    plan_12m: '12 + 3 месяца',
     plus_1_gift: '+ 1 в подарок',
     plus_2_gift: '+ 2 в подарок',
     plus_3_gift: '+ 3 в подарок',
-    best_price: 'Лучшая цена',
+    best_price: 'ЛУЧШАЯ ЦЕНА',
     pay_via_yookassa: 'Оплатить через ЮKassa',
     payment_methods_text: 'СБП, карты, SberPay, T-Pay',
     auto_renew_note: 'Проверьте условия продления перед оплатой. Управление автопродлением доступно через поддержку.',
@@ -421,6 +430,15 @@ const I18N = {
     language_short_title: "Language",
     language_dialog_title: "App language",
     language_dialog_desc: "Choose the app language.",
+    pricing_choose_plan: "Choose a plan",
+    pricing_one_plan: "One plan for all your devices",
+    pricing_devices_kicker: "HOW MANY DEVICES?",
+    pricing_term_kicker: "SUBSCRIPTION LENGTH",
+    pricing_payment_kicker: "PAYMENT METHOD",
+    pricing_payment_method: "Card or SBP via YooKassa",
+    pricing_total: "Total",
+    pricing_pay_action: "Pay",
+    pricing_secure: "Secure checkout via YooKassa",
     home_connection_kicker: "YOUR CONNECTION",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
@@ -509,13 +527,13 @@ const I18N = {
     devices_5: '5 devices',
     devices_10: '10 devices',
     plan_1m: '1 month',
-    plan_3m: '3 months',
-    plan_6m: '6 months',
-    plan_12m: '12 months',
+    plan_3m: '3 + 1 months',
+    plan_6m: '6 + 2 months',
+    plan_12m: '12 + 3 months',
     plus_1_gift: '+ 1 free month',
     plus_2_gift: '+ 2 free months',
     plus_3_gift: '+ 3 free months',
-    best_price: 'Best Value',
+    best_price: 'BEST VALUE',
     pay_via_yookassa: 'Pay with YooKassa',
     payment_methods_text: 'SBP, Cards, SberPay, T-Pay',
     auto_renew_note: 'Review recurring payment terms before checkout. Contact support to manage renewal until account controls are available.',
@@ -908,6 +926,7 @@ function setupEventListeners() {
   document.getElementById('btn-language-dialog')?.addEventListener('click', () => openModal('modal-language'));
   document.getElementById('btn-account-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-account-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
+  document.getElementById('btn-pricing-back')?.addEventListener('click', () => switchTab('tab-home'));
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
 
@@ -988,6 +1007,24 @@ function setupEventListeners() {
     invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
 
+  const priceLabel = document.getElementById('pricing-selected-plan-price');
+  const titleLabel = document.getElementById('pricing-selected-plan-title');
+  const planNote = document.getElementById('pricing-selected-plan-note');
+  const payButton = document.getElementById('btn-pay-yookassa');
+  if (priceLabel) priceLabel.textContent = chosen ? `${chosen.price} ₽` : '—';
+  if (titleLabel) titleLabel.textContent = chosen
+    ? uiText('Итого', 'Total') : uiText('Тариф недоступен', 'Plan unavailable');
+  if (planNote) {
+    const months = VERIFIED_PLAN_TYPES[state.selectedPlanCode]?.months || 1;
+    planNote.textContent = chosen
+      ? uiText(`Доступ на ${months} мес. · до ${dev} устройств`,
+        `Access for ${months} months · up to ${dev} devices`)
+      : uiText('Не удалось подтвердить стоимость тарифа', 'Plan price not confirmed');
+  }
+  if (payButton) payButton.textContent = !state.catalogReady
+    ? uiText('Проверяем цену…', 'Checking price…')
+    : canPay ? uiText(`Оплатить · ${chosen.price} ₽`, `Pay · ${chosen.price} RUB`)
+      : uiText('Оплата временно недоступна', 'Checkout temporarily unavailable');
   document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(card => {
     card.addEventListener('click', () => {
       document.querySelectorAll('.paywall-mini-tariffs .tariff-card').forEach(c => c.classList.remove('selected'));
@@ -1955,10 +1992,13 @@ function escapeHtml(str) {
 // Pricing Matrix UI Calculation
 function priceNoteForOffer(code, offer) {
   if (!offer) return uiText('Тариф недоступен', 'Plan unavailable');
-  if (code === 'month') return uiText('30 дней', '30 days');
   const months = VERIFIED_PLAN_TYPES[code]?.months || 1;
-  return Math.round(offer.price / months) + ' ' +
-    uiText('₽ / месяц', 'RUB / month');
+  const monthly = Math.round(offer.price / months);
+  const price = uiText(`${monthly} ₽`, `${monthly} RUB`);
+  if (code === 'month') return uiText(`${price} за месяц`, `${price} per month`);
+  const bonus = {quarter: 1, half_year: 2, year: 3}[code] || 0;
+  return uiText(`${price} / месяц · 🎁 ${bonus} мес. в подарок`,
+    `${price}/month · 🎁 ${bonus} bonus month(s)`);
 }
 
 function updatePricingMatrixUi() {
@@ -2415,6 +2455,7 @@ function applyLanguage(lang) {
   updateVpnUi();
   updateSubscriptionUi();
   updateDevicesUi();
+  updatePricingMatrixUi();
   renderServersList();
 }
 

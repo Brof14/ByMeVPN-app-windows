@@ -383,159 +383,87 @@
               </div>
             </div>
 
-            <!-- TAB 2: PRICING & PAYMENT (Screen 4) -->
-            <div id="tab-pricing" class="tab-content">
-              <!-- Top Banner -->
-              <div class="glass-card promo-trial-banner">
-                <div class="banner-texts">
-                  <span class="dock-badge-gift" data-i18n="trial_no_card">БЕЗ ПРИВЯЗКИ КАРТЫ</span>
-                  <h2 class="banner-headline">
-                    <span data-i18n="trial_try_three">Попробуйте 3 дня бесплатно</span>
-                  </h2>
-                  <p class="banner-sub" data-i18n="trial_all_locations">Полный доступ ко всем локациям для новых пользователей</p>
-                  <p class="banner-sub-note" data-i18n="trial_no_cancel">Все серверы сразу • Без оплаты и карты</p>
-                  <button type="button" id="btn-pricing-activate-trial" class="btn-primary btn-glow banner-cta-btn">
-                    <span data-i18n="trial_activate_three">Активировать 3 дня бесплатно</span>
-                    <span class="btn-arrow">›</span>
-                  </button>
-                </div>
-                <div class="banner-art-right">
-                  <svg width="100" height="110" viewBox="0 0 92 104" fill="none">
-                    <defs>
-                      <linearGradient id="banShieldGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#468ff0"/>
-                        <stop offset="0.55" stop-color="#53bfcf"/>
-                        <stop offset="1" stop-color="#79d9bc"/>
-                      </linearGradient>
-                    </defs>
-                    <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#banShieldGrad)" stroke-width="6" stroke-linejoin="round"/>
-                    <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#banShieldGrad)"/>
-                  </svg>
+            <!-- PricingScreen.kt: Android chooser, one 51dp device switch and vertical 95dp offers. -->
+            <div id="tab-pricing" class="tab-content mobile-pricing">
+              <div class="mobile-pricing-topbar">
+                <button id="btn-pricing-back" type="button" class="mobile-pricing-back" aria-label="Назад" data-i18n-title="back">‹</button>
+                <div>
+                  <h2 data-i18n="pricing_choose_plan">Выберите тариф</h2>
+                  <p data-i18n="pricing_one_plan">Одна подписка для всех ваших устройств</p>
                 </div>
               </div>
 
-              <!-- Device Selection Tabs -->
               <div class="pricing-devices-section">
-                <span class="section-micro-label" data-i18n="select_device_count">Выберите количество устройств</span>
+                <span class="section-micro-label" data-i18n="pricing_devices_kicker">СКОЛЬКО УСТРОЙСТВ?</span>
                 <div class="device-segmented-control">
-                  <button type="button" class="dev-seg-btn active" data-devices="2">
-                    <span class="dev-icon">💻</span>
-                    <span data-i18n="devices_2">2 устройства</span>
-                  </button>
-                  <button type="button" class="dev-seg-btn" data-devices="5">
-                    <span class="dev-icon">💻📱</span>
-                    <span data-i18n="devices_5">5 устройств</span>
-                  </button>
-                  <button type="button" class="dev-seg-btn" data-devices="10">
-                    <span class="dev-icon">💻📱📺</span>
-                    <span data-i18n="devices_10">10 устройств</span>
-                  </button>
+                  <button type="button" class="dev-seg-btn active" data-devices="2" data-i18n="devices_2">2 устройства</button>
+                  <button type="button" class="dev-seg-btn" data-devices="5" data-i18n="devices_5">5 устройств</button>
+                  <button type="button" class="dev-seg-btn" data-devices="10" data-i18n="devices_10">10 устройств</button>
                 </div>
               </div>
 
-              <!-- 4 Tariff Cards Grid -->
+              <h3 class="mobile-pricing-kicker" data-i18n="pricing_term_kicker">СРОК ПОДПИСКИ</h3>
               <div class="pricing-cards-grid">
-                <div class="glass-card tariff-card" data-plan="month" role="button" tabindex="0" aria-pressed="false">
-                  <span class="tariff-period-name" data-i18n="plan_1m">1 месяц</span>
-                  <div class="tariff-price-block">
-                    <strong class="tariff-price-number" id="price-month">—</strong>
+                <div class="tariff-card" data-plan="month" role="button" tabindex="0" aria-pressed="false">
+                  <div class="mobile-tariff-info">
+                    <span class="tariff-period-name" data-i18n="plan_1m">1 месяц</span>
                     <span class="tariff-period-note" id="days-month">30 дней</span>
                   </div>
+                  <div class="tariff-price-block">
+                    <strong class="tariff-price-number" id="price-month">—</strong>
+                    <span class="mobile-tariff-radio" aria-hidden="true"></span>
+                  </div>
                 </div>
-
-                <div class="glass-card tariff-card" data-plan="quarter" role="button" tabindex="0" aria-pressed="false">
-                  <div class="tariff-head-line">
+                <div class="tariff-card" data-plan="quarter" role="button" tabindex="0" aria-pressed="false">
+                  <div class="mobile-tariff-info">
                     <span class="tariff-period-name" data-i18n="plan_3m">3 месяца</span>
-                    <span class="gift-badge" data-i18n="plus_1_gift">+ 1 в подарок</span>
+                    <span class="tariff-period-note" id="rate-quarter">—</span>
                   </div>
                   <div class="tariff-price-block">
                     <strong class="tariff-price-number" id="price-quarter">—</strong>
-                    <span class="tariff-period-note" id="rate-quarter">—</span>
+                    <span class="mobile-tariff-radio" aria-hidden="true"></span>
                   </div>
                 </div>
-
-                <div class="glass-card tariff-card" data-plan="half_year" role="button" tabindex="0" aria-pressed="false">
-                  <div class="tariff-head-line">
+                <div class="tariff-card" data-plan="half_year" role="button" tabindex="0" aria-pressed="false">
+                  <div class="mobile-tariff-info">
                     <span class="tariff-period-name" data-i18n="plan_6m">6 месяцев</span>
-                    <span class="gift-badge" data-i18n="plus_2_gift">+ 2 в подарок</span>
+                    <span class="tariff-period-note" id="rate-half_year">—</span>
                   </div>
                   <div class="tariff-price-block">
                     <strong class="tariff-price-number" id="price-half_year">—</strong>
-                    <span class="tariff-period-note" id="rate-half_year">—</span>
+                    <span class="mobile-tariff-radio" aria-hidden="true"></span>
                   </div>
                 </div>
-
-                <!-- Best Value Card (Selected by default) -->
-                <div class="glass-card tariff-card selected best-value" data-plan="year" role="button" tabindex="0" aria-pressed="true">
-                  <div class="best-badge-crown">
-                    <span class="crown-icon">👑</span>
-                    <span data-i18n="best_price">Лучшая цена</span>
-                  </div>
-                  <div class="tariff-head-line">
+                <div class="tariff-card selected best-value" data-plan="year" role="button" tabindex="0" aria-pressed="true">
+                  <span class="best-badge-crown" data-i18n="best_price">ЛУЧШАЯ ЦЕНА</span>
+                  <div class="mobile-tariff-info">
                     <span class="tariff-period-name" data-i18n="plan_12m">12 месяцев</span>
-                    <span class="gift-badge" data-i18n="plus_3_gift">+ 3 в подарок</span>
+                    <span class="tariff-period-note" id="rate-year">—</span>
                   </div>
                   <div class="tariff-price-block">
                     <strong class="tariff-price-number" id="price-year">—</strong>
-                    <span class="tariff-period-note" id="rate-year">—</span>
+                    <span class="mobile-tariff-radio" aria-hidden="true"></span>
                   </div>
                 </div>
               </div>
 
-              <!-- Features highlights list matching Android Paywall & Pricing -->
-              <div class="pricing-perks-summary">
-                <div class="pricing-perk-item">
-                  <span class="perk-bullet">⚡</span>
-                  <div>
-                    <strong data-i18n="feature_speed_title">Скорость зависит от сервера и сети</strong>
-                    <span data-i18n="feature_speed_desc">Реальная скорость зависит от вашего подключения</span>
-                  </div>
-                </div>
-                <div class="pricing-perk-item">
-                  <span class="perk-bullet">🛡️</span>
-                  <div>
-                    <strong data-i18n="feature_protocol_title">VLESS + Reality</strong>
-                    <span data-i18n="feature_protocol_desc">Доступен на совместимых серверах Windows</span>
-                  </div>
-                </div>
-                <div class="pricing-perk-item">
-                  <span class="perk-bullet">🚫</span>
-                  <div>
-                    <strong data-i18n="feature_adblock_title">Блокировка рекламы</strong>
-                    <span data-i18n="feature_adblock_desc">Выберите режим фильтрации в настройках</span>
-                  </div>
-                </div>
-                <div class="pricing-perk-item">
-                  <span class="perk-bullet">📱</span>
-                  <div>
-                    <strong data-i18n="feature_devices_title">Тарифы на 2, 5 и 10 устройств</strong>
-                    <span data-i18n="feature_devices_desc">Лимит зависит от выбранного тарифа</span>
-                  </div>
-                </div>
+              <h3 class="mobile-pricing-kicker mobile-pricing-payment-kicker" data-i18n="pricing_payment_kicker">СПОСОБ ОПЛАТЫ</h3>
+              <div class="mobile-pricing-payment-method" data-i18n="pricing_payment_method">Карта или СБП через ЮKassa</div>
+              <div class="mobile-pricing-summary">
+                <span id="pricing-selected-plan-title" data-i18n="pricing_total">Итого</span>
+                <strong id="pricing-selected-plan-price">—</strong>
               </div>
+              <p id="pricing-selected-plan-note" class="mobile-pricing-summary-note">—</p>
 
-              <!-- Pay Buttons Stack -->
               <div class="pricing-pay-actions">
-                <button type="button" id="btn-pay-yookassa" class="btn-primary btn-pay-large">
-                  <span data-i18n="pay_via_yookassa">Оплатить через ЮKassa</span>
-                  <span class="btn-arrow">›</span>
-                </button>
-                <button type="button" id="btn-pay-telegram-bot" class="btn-secondary btn-pay-tg-bot" style="width: 100%; margin-top: 10px; height: 50px;">
-                  <span class="tg-paperplane-icon">✈</span>
-                  <span data-i18n="pay_telegram_bot">Оплатить через Telegram-бота</span>
-                  <span class="btn-arrow">›</span>
-                </button>
+                <button type="button" id="btn-pay-yookassa" class="btn-primary btn-pay-large" data-i18n="pricing_pay_action">Оплатить</button>
+                <button type="button" id="btn-pay-telegram-bot" class="hidden" data-i18n="pay_telegram_bot">Оплатить через Telegram-бота</button>
               </div>
-
-              <!-- Payment Footnote -->
+              <p class="mobile-pricing-secure" data-i18n="pricing_secure">Безопасная оплата через ЮKassa</p>
               <div class="payment-footnotes">
-                <div class="payment-methods-row">
-                  <span class="sbp-icon-stars">❖</span>
-                  <span data-i18n="payment_methods_text">СБП, карты, SberPay, T-Pay</span>
-                </div>
-                <p data-i18n="auto_renew_note">Проверьте условия продления и списаний перед оплатой. Управление автопродлением доступно через поддержку.</p>
                 <p class="terms-agreement"><span data-i18n="terms_prefix">Нажимая «Оплатить», вы соглашаетесь с </span><a href="#" id="link-pricing-terms" class="cyan-link" data-i18n="terms_link">Условиями использования</a><span data-i18n="terms_and"> и </span><a href="#" id="link-pricing-privacy" class="cyan-link" data-i18n="privacy_link">Политикой конфиденциальности</a>.</p>
               </div>
+              <button type="button" id="btn-pricing-activate-trial" class="hidden" data-i18n="trial_activate_three">Активировать 3 дня бесплатно</button>
             </div>
 
             <!-- TAB 3: SERVER SELECTION (Screen 6) -->

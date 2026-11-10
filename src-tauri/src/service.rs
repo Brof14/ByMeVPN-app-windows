@@ -1998,9 +1998,8 @@ pub async fn vpn_health_report(
         .path()
         .app_data_dir()
         .ok()
-        .and_then(|path| fs::read_to_string(path.join("xray_startup.log")).ok())
-        .map(|log| crate::tun_health::log_hint(&log).to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|path| crate::tun_health::startup_log_hint(&path.join("xray_startup.log")))
+        .unwrap_or("unknown");
     Ok(json!({
         "process_tracked": process_tracked,
         "ip_verified": ip_verified,

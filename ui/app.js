@@ -169,6 +169,9 @@ const I18N = {
     account_management_section: "Управление",
     account_settings_subtitle: "Профиль, устройства, подписка",
     account_manage_renewal: "Автопродление",
+    language_short_title: "Язык",
+    language_dialog_title: "Язык приложения",
+    language_dialog_desc: "Выберите язык приложения.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
     no_plan_title_line2: "Одно касание.",
@@ -415,6 +418,9 @@ const I18N = {
     account_management_section: "Management",
     account_settings_subtitle: "Profile, devices, subscription",
     account_manage_renewal: "Auto-renewal",
+    language_short_title: "Language",
+    language_dialog_title: "App language",
+    language_dialog_desc: "Choose the app language.",
     home_connection_kicker: "YOUR CONNECTION",
     home_location_title: "LOCATION",
     no_plan_title_line2: "One tap away.",
@@ -899,6 +905,7 @@ function setupEventListeners() {
   document.getElementById('btn-account-app-settings')?.addEventListener('click', () => switchTab('tab-settings'));
   document.getElementById('btn-account-advanced')?.addEventListener('click', () => switchTab('tab-advanced'));
   document.getElementById('btn-account-settings-open')?.addEventListener('click', () => openModal('modal-account-settings'));
+  document.getElementById('btn-language-dialog')?.addEventListener('click', () => openModal('modal-language'));
   document.getElementById('btn-account-trial')?.addEventListener('click', handleActivateTrial);
   document.getElementById('btn-account-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
   document.getElementById('btn-renewal-switch-pricing')?.addEventListener('click', () => switchTab('tab-pricing'));
@@ -2115,6 +2122,7 @@ function filterServers(query) {
 const TRIAL_ACTION_IDS = [
   'btn-home-activate-trial',
   'btn-no-plan-trial',
+  'btn-account-trial',
   'btn-pricing-activate-trial',
   'btn-paywall-trial'
 ];
@@ -2365,6 +2373,12 @@ function applyLanguage(lang) {
     btn.classList.toggle('active', selected);
     btn.setAttribute('aria-pressed', String(selected));
   });
+  const currentLanguageLabel = document.getElementById('current-language-label');
+  if (currentLanguageLabel) {
+    currentLanguageLabel.textContent = lang === 'ru' ? 'Русский'
+      : lang === 'en' ? 'English'
+      : (effectiveLanguage() === 'en' ? 'System' : 'Системный');
+  }
 
   const resolved = lang === 'system' ? effectiveLanguage() : lang;
   const dict = I18N[resolved] || I18N.ru;

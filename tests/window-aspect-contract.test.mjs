@@ -2,14 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const config = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
-const windowConfig = config.app.windows[0];
+const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+const win = JSON.parse(read('src-tauri/tauri.conf.json')).app.windows[0];
+const source = read('src-tauri/src/window_layout.rs');
 
-test('ByMeVPN starts in the requested 3:2 desktop window, with a proportional minimum', () => {
-  assert.equal(windowConfig.width * 2, windowConfig.height * 3);
-  assert.equal(windowConfig.minWidth * 2, windowConfig.minHeight * 3);
-  assert.ok(windowConfig.minWidth < windowConfig.width);
-  assert.ok(windowConfig.minHeight < windowConfig.height);
-  assert.equal(windowConfig.resizable, true);
-  assert.equal(windowConfig.maximized, false);
+test('new default opens as a compact portrait window with full user resize control', () => {
+  assert.equal(win.width, 480);
+  assert.equal(win.height, 720);
+  assert.ok(win.width < win.height);
+  assert.ok(win.minWidth <= win.width);
+  assert.ok(win.minHeight <= win.height);
+  assert.equal(win.resizable, true);
+  assert.equal(win.maximized, false);
+});
+
+test('initial window is capped to 70% of actual monitor work area', () => {
+  assert.match(source, /MAX_MONITOR_SHARE: f64 = 0\.70/);
+  assert.match(source, /work_area\(\)/);
+  assert.match(source, /scale_factor\(\)/);
+  assert.match(source, /window\.set_size\(tauri::LogicalSize::new\(width, height\)\)/);
+  assert.match(read('src-tauri/src/main.rs'), /window_layout::fit_to_monitor/);
 });

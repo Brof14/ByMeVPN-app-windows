@@ -226,7 +226,12 @@ mod tests {
         assert!(!health_proves_connection(&ready, Some(false), true, true));
         assert!(!health_proves_connection(&ready, Some(true), false, true));
         let bad_route = parse_report("adapter=up\nipv4=0\nipv6=1\n");
-        assert!(!health_proves_connection(&bad_route, Some(true), true, true));
+        assert!(!health_proves_connection(
+            &bad_route,
+            Some(true),
+            true,
+            true
+        ));
         let down = parse_report("adapter=down\nipv4=1\n");
         assert!(!health_proves_connection(&down, Some(true), true, true));
     }

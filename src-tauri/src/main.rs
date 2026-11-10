@@ -5,8 +5,8 @@ mod egress;
 mod google_desktop;
 mod service;
 mod tun_config;
-mod tunnel_runtime;
 mod tun_health;
+mod tunnel_runtime;
 mod window_layout;
 #[cfg(windows)]
 mod windows_job;

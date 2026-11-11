@@ -1852,42 +1852,40 @@ pub async fn vpn_status(
 ) -> Result<TunnelMetrics, String> {
     let _probe_guard = state.status_probe_gate.lock().await;
     let mut revoke_session = false;
-    // A check outage is an UNKNOWN health signal, not an observed route leak.
-    // If the original (pre-VPN) IP is actually observed, stop Xray.
-    // Run outside the process lock to keep disconnect responsive.
+    // This is evidence of an actual Xray server path AND the normal Windows
+    // TUN path to the SAME HTTPS endpoint. Do not equate a changing WAN IP
+    // with VPN connectivity. Keep the lock free during network requests.
     let probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
-            let baseline_ip = active.baseline_ip?;
-            (active.last_egress_probe.elapsed() >= Duration::from_secs(20))
-                .then_some((active.started_at, baseline_ip))
+            (active.last_egress_probe.elapsed() >= Duration::from_secs(20)).then(|| {
+                (
+                    active.started_at,
+                    active.baseline_ip,
+                    active.probe_port,
+                    active.probe_password.clone(),
+                )
+            })
         })
     };
-    if let Some((started_at, baseline_ip)) = probe {
-        let result = tokio::time::timeout(Duration::from_secs(9), verify_egress(Some(baseline_ip)))
-            .await
-            .unwrap_or(EgressCheck::Unavailable);
+    if let Some((started_at, baseline_ip, port, password)) = probe {
+        let result = verify_tunnel_path(baseline_ip, port, &password).await;
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
                 active.last_egress_probe = std::time::Instant::now();
-                match result {
-                    EgressCheck::Verified(ip) => {
-                        active.egress_verified = true;
-                        active.server_ip = ip.to_string();
-                    }
-                    EgressCheck::Unavailable | EgressCheck::Unverified(_) => {
-                        active.egress_verified = false;
-                        active.server_ip.clear();
-                    }
-                    EgressCheck::Unchanged => {
-                        // This is evidence of bypass, unlike a probe outage.
-                        let _ = active.child.kill();
-                        let _ = active.child.wait();
-                        if let Some(active) = lock.take() {
-                            let _ = fs::remove_file(active.config_path);
-                            revoke_session = true;
-                        }
+                active.last_tunnel_proof = result;
+                active.egress_verified = result.verified_ip().is_some();
+                active.server_ip = result
+                    .verified_ip()
+                    .map(|ip| ip.to_string())
+                    .unwrap_or_default();
+                if result == TunnelProof::RoutingBypass {
+                    let _ = active.child.kill();
+                    let _ = active.child.wait();
+                    if let Some(active) = lock.take() {
+                        let _ = fs::remove_file(active.config_path);
+                        revoke_session = true;
                     }
                 }
             }
@@ -1944,6 +1942,7 @@ pub async fn vpn_status(
                 active.server_ip.clone(),
                 active.egress_verified,
                 active.cached_ping_ms,
+                active.last_tunnel_proof.status().to_string(),
             )
         })
     };
@@ -1953,10 +1952,11 @@ pub async fn vpn_status(
     if revoke_session {
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
-    if let Some((elapsed, server_name, country, ip, verified, ping)) = active_info {
+    if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {
         return Ok(TunnelMetrics {
             connected: true,
             verified,
+            proof,
             connected_seconds: elapsed,
             download_mbps: 0.0,
             upload_mbps: 0.0,
@@ -1969,6 +1969,7 @@ pub async fn vpn_status(
     Ok(TunnelMetrics {
         connected: false,
         verified: false,
+        proof: "disconnected".into(),
         connected_seconds: 0,
         download_mbps: 0.0,
         upload_mbps: 0.0,

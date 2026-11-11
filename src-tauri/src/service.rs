@@ -2059,7 +2059,10 @@ pub async fn vpn_health_report(
             tunnel.last_egress_probe = std::time::Instant::now();
             tunnel.egress_verified = verified;
             tunnel.server_ip = if verified {
-                proof.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
+                proof
+                    .verified_ip()
+                    .map(|ip| ip.to_string())
+                    .unwrap_or_default()
             } else {
                 String::new()
             };

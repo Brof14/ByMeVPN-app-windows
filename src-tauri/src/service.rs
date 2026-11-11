@@ -1802,56 +1802,51 @@ pub async fn vpn_start(
             }
         };
 
-        // Verify the actual configured proxy before trusting public IP changes.
-        // An unrelated change of network/WAN IP is not evidence of VPN traffic.
-        tokio::time::sleep(Duration::from_millis(750)).await;
-        if !matches!(child.try_wait(), Ok(None)) {
-            stop_failed_tun(&mut child, &config_path).await?;
-            return Err("Xray завершился до установления VPN. Сетевые настройки восстановлены.".into());
-        }
-        let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
-        let verified_ip = proof.verified_ip();
-        if verified_ip.is_none() {
-            // Never keep a system-wide TUN route installed after Xray has
-            // failed a real traffic check. The previous app hung the PC here.
-            stop_failed_tun(&mut child, &config_path).await?;
-            return Err(format!(
-                "VPN не подключён ({}). Изменения сети Windows отменены.",
-                proof.status()
-            ));
-        }
-        // An Xray process may remain alive even though Windows never installed
-        // a usable Wintun route. Treat a *definitely* absent route as startup
-        // failure; an unavailable OS inspection remains UNKNOWN, not success.
-        let mut routes = crate::tun_health::inspect().await;
-        if routes.definitely_missing() {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            routes = crate::tun_health::inspect().await;
-            if routes.definitely_missing() {
-                stop_failed_tun(&mut child, &config_path).await?;
-                return Err("Windows не создала рабочий VPN-маршрут. Подключение отменено для восстановления интернета.".into());
+        // Bound the ENTIRE period that Windows routes through an unverified
+        // TUN. Includes route inspection and DNS, not just the HTTPS probe.
+        let handoff = tokio::time::timeout(Duration::from_secs(9), async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
+            if proof.verified_ip().is_none() {
+                return (proof, false);
             }
-        }
+            let (mut routes, dns) = tokio::join!(
+                crate::tun_health::inspect(),
+                crate::tun_health::dns_resolution_check(),
+            );
+            if routes.definitely_missing() {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                routes = crate::tun_health::inspect().await;
+            }
+            let healthy = crate::tun_health::health_proves_connection(
+                &routes,
+                dns,
+                true,
+                true,
+            );
+            (proof, healthy)
+        })
+        .await;
 
-        // Even a successful proxy/HTTPS comparison is not enough for a
-        // green VPN indicator if the Windows TUN adapter or resolver is not
-        // usable. Reuse one conservative health predicate throughout.
-        let verified_ip = if crate::tun_health::health_proves_connection(
-            &routes,
-            crate::tun_health::dns_resolution_check().await,
-            matches!(child.try_wait(), Ok(None)),
-            verified_ip.is_some(),
-        ) {
-            verified_ip
+        let (proof, route_and_dns_ok) = match handoff {
+            Ok(result) => result,
+            Err(_) => {
+                stop_failed_tun(&mut child, &config_path).await?;
+                return Err("Проверка VPN превысила безопасный лимит. Системный интернет восстановлен.".into());
+            }
+        };
+        let verified_ip = if route_and_dns_ok && matches!(child.try_wait(), Ok(None)) {
+            proof.verified_ip()
         } else {
             None
         };
-
         if verified_ip.is_none() {
-            // DNS, adapter or the effective Windows route remains unhealthy.
-            // An Xray process alone is NOT a connection.
             stop_failed_tun(&mut child, &config_path).await?;
-            return Err("Трафик через Windows TUN не подтверждён. Подключение отменено для восстановления интернета.".into());
+            return Err(if proof.verified_ip().is_none() {
+                format!("VPN не передаёт трафик ({}). Сетевые настройки Windows восстановлены.", proof.status())
+            } else {
+                "VPN-сервер отвечает, но Windows TUN или DNS не работает. Подключение отменено, обычный интернет восстановлен.".into()
+            });
         }
 
         let server_port = session

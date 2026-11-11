@@ -1987,11 +1987,16 @@ pub async fn vpn_health_report(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    let (process_tracked, baseline_ip, tunnel_started_at) = {
+    let (process_tracked, baseline_ip, tunnel_started_at, probe_auth) = {
         let guard = state.tunnel.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
-            Some(tunnel) => (true, tunnel.baseline_ip, Some(tunnel.started_at)),
-            None => (false, None, None),
+            Some(tunnel) => (
+                true,
+                tunnel.baseline_ip,
+                Some(tunnel.started_at),
+                Some((tunnel.probe_port, tunnel.probe_password.clone())),
+            ),
+            None => (false, None, None, None),
         }
     };
     let baseline_known = baseline_ip.is_some();
@@ -2003,45 +2008,39 @@ pub async fn vpn_health_report(
     } else {
         None
     };
-    // A manual diagnostic must reconcile its *fresh* evidence with the same
-    // live tunnel; the old cached flag caused "IPv4 changed" and "IP not
-    // verified" to appear simultaneously. Serialize with the watchdog.
-    let (egress_probe, ip_verified, runtime_healthy) = if process_tracked {
-        let _probe_guard = state.status_probe_gate.lock().await;
-        let check = tokio::time::timeout(Duration::from_secs(9), verify_egress(baseline_ip))
-            .await
-            .unwrap_or(EgressCheck::Unavailable);
-        let route_dns_ok = crate::tun_health::health_proves_connection(
-            &routes,
-            dns_resolution,
-            true,
-            matches!(check, EgressCheck::Verified(_)),
-        );
-        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        let mut verified = false;
-        if let Some(tunnel) = lock
-            .as_mut()
-            .filter(|active| Some(active.started_at) == tunnel_started_at)
-        {
-            // Do not accept a prior process' HTTPS result after a disconnect,
-            // reconnect or crash while the health dialog was open.
-            verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
-            tunnel.egress_verified = verified;
-            if verified {
-                if let EgressCheck::Verified(ip) = check {
-                    tunnel.server_ip = ip.to_string();
-                }
+    // The manual diagnostic cannot claim a tunnel from a changing WAN IP:
+    // it must reach the configured Xray outbound via a credentialed loopback
+    // proxy, then observe the same exit through Windows' ordinary TUN route.
+    let (egress_probe, ip_verified, runtime_healthy) =
+        if let Some((port, password)) = probe_auth {
+            let _probe_guard = state.status_probe_gate.lock().await;
+            let proof = verify_tunnel_path(baseline_ip, port, &password).await;
+            let route_dns_ok = crate::tun_health::health_proves_connection(
+                &routes,
+                dns_resolution,
+                true,
+                proof.verified_ip().is_some(),
+            );
+            let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+            let mut verified = false;
+            if let Some(tunnel) = lock
+                .as_mut()
+                .filter(|active| Some(active.started_at) == tunnel_started_at)
+            {
+                verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
+                tunnel.last_tunnel_proof = proof;
                 tunnel.last_egress_probe = std::time::Instant::now();
-            } else {
-                tunnel.server_ip.clear();
-                // Leave the watchdog free to recheck and stop an observed
-                // unchanged-IP bypass; never label probe outages as leaks.
+                tunnel.egress_verified = verified;
+                tunnel.server_ip = if verified {
+                    proof.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
+                } else {
+                    String::new()
+                };
             }
-        }
-        (crate::egress::egress_result_code(check), verified, verified)
-    } else {
-        ("not_running", false, false)
-    };
+            (proof.status(), verified, verified)
+        } else {
+            ("not_running", false, false)
+        };
     let hint = if process_tracked {
         app.path()
             .app_data_dir()

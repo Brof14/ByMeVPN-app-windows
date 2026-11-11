@@ -218,8 +218,29 @@ mod tests {
     }
 
     #[test]
+    fn installed_but_not_selected_tun_route_is_not_vpn_protection() {
+        let selected = parse_report(
+            "adapter=up\nipv4=1\nipv6=1\neffective_ipv4=1\n",
+        );
+        assert_eq!(selected.effective_ipv4, Some(true));
+        assert!(!selected.definitely_missing());
+        assert!(health_proves_connection(&selected, Some(true), true, true));
+
+        let bypass = parse_report(
+            "adapter=up\nipv4=1\nipv6=1\neffective_ipv4=0\n",
+        );
+        assert_eq!(bypass.effective_ipv4, Some(false));
+        assert!(bypass.definitely_missing());
+        assert!(!health_proves_connection(&bypass, Some(true), true, true));
+
+        let unknown = parse_report("adapter=up\nipv4=1\n");
+        assert_eq!(unknown.effective_ipv4, None);
+        assert!(!health_proves_connection(&unknown, Some(true), true, true));
+    }
+
+    #[test]
     fn only_live_confirmed_tunnel_and_dns_qualify_as_healthy_diagnostics() {
-        let ready = parse_report("adapter=up\nipv4=1\nipv6=1\n");
+        let ready = parse_report("adapter=up\nipv4=1\nipv6=1\neffective_ipv4=1\n");
         assert!(health_proves_connection(&ready, Some(true), true, true));
         assert!(!health_proves_connection(&ready, Some(true), true, false));
         assert!(!health_proves_connection(&ready, None, true, true));

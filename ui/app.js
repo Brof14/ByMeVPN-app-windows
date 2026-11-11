@@ -1435,8 +1435,8 @@ async function refreshVpnHealth() {
         'Xray and Windows TUN exits match (not a complete leak test)'),
       routing_bypass: uiText('Windows обходит VPN: выходы Xray и TUN различаются',
         'Windows bypasses VPN: Xray and TUN exits differ'),
-      server_unreachable: uiText('VPN-сервер не отвечает на защищённый тестовый запрос',
-        'VPN server did not answer the authenticated test request'),
+      server_unreachable: uiText('Не прошёл защищённый тест через Xray (причина не установлена)',
+        'Protected request through Xray failed (cause not confirmed)'),
       tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
         'Xray server responds, but Windows TUN cannot pass the HTTPS probe'),
       baseline_unknown: uiText('Маршруты совпадают, но исходный IPv4 неизвестен',
@@ -1821,7 +1821,7 @@ function updateVpnUi() {
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…')
       : state.vpnVerified ? uiText('VPN подключён', 'VPN connected')
-      : proof === 'server_unreachable' ? uiText('Нет ответа от VPN-сервера', 'VPN server not responding')
+      : proof === 'server_unreachable' ? uiText('Не прошёл тест через VPN-сервер', 'VPN server test failed')
       : proof === 'tun_no_traffic' ? uiText('Нет трафика через Windows TUN', 'Windows TUN has no traffic')
       : uiText('Соединение не подтверждено', 'Connection unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
@@ -1830,7 +1830,7 @@ function updateVpnUi() {
       : state.vpnVerified
         ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
         : proof === 'server_unreachable' ?
-          uiText('Проверьте протокол, подписку и доступность сервера.', 'Check protocol, subscription and server reachability.')
+          uiText('Проверьте диагностику подключения.', 'Review connection diagnostics.')
           : proof === 'tun_no_traffic' ?
             uiText('Xray отвечает, но системный трафик Windows не проходит.', 'Xray responds, but Windows system traffic does not pass.')
             : uiText('Реальный VPN-трафик пока не подтверждён.', 'Real VPN traffic is not yet verified.');

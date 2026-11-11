@@ -144,14 +144,18 @@ $ErrorActionPreference = 'Stop'
 $a = Get-NetAdapter -Name 'ByMeVPN' -ErrorAction SilentlyContinue
 if ($null -eq $a) { exit 0 }
 $prefixes = @('0.0.0.0/0', '0.0.0.0/1', '128.0.0.0/1', '::/0', '::/1', '8000::/1')
-$stale = @(Get-NetRoute -InterfaceIndex $a.ifIndex -ErrorAction Stop |
+$stale = @(Get-NetRoute -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue |
     Where-Object { $prefixes -contains $_.DestinationPrefix })
 foreach ($route in $stale) {
     Remove-NetRoute -InputObject $route -Confirm:$false -ErrorAction Stop
 }
-# Xray may also have left DNS servers assigned to the TUN interface after an
-# abrupt termination. Reset ONLY the ByMeVPN adapter, never Wi-Fi/Ethernet.
-Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -ErrorAction Stop
+# A clean disconnect already removes these settings. Don't demand elevated
+# permissions to do a needless DNS reset when the TUN has no DNS configured.
+$dns = @(Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.ServerAddresses } | Where-Object { $_ })
+if ($dns.Count -gt 0) {
+    Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -ErrorAction Stop
+}
 "#;
     let output = std::process::Command::new("powershell.exe")
         .args([

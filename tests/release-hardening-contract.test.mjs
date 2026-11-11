@@ -29,7 +29,8 @@ test('VPN session is revoked on all post-creation start failures', () => {
 
 test('VPN watchdog tears down server session on crash or proven leak', () => {
   assert.match(native, /let mut revoke_session = false;/);
-  assert.match(native, /TunnelProof::RoutingBypass/);
+  assert.match(native, /if !active\.egress_verified \{/);
+  assert.match(native, /cleanup_bymevpn_routes_after_exit\(\)\.await/);
   assert.match(native, /revoke_session = true;/);
   assert.match(native, /if revoke_session \{/);
   assert.match(main, /vpn_status\(\s*watchdog\.clone\(\),\s*watchdog\.state/);

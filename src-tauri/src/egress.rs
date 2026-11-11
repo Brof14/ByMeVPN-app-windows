@@ -76,7 +76,7 @@ impl TunnelProof {
 
     pub fn status(self) -> &'static str {
         match self {
-            Self::Verified(_) => "verified",
+            Self::Verified(_) => "paths_match",
             Self::RoutingBypass => "routing_bypass",
             Self::ProxyUnreachable => "server_unreachable",
             Self::TunUnreachable => "tun_no_traffic",

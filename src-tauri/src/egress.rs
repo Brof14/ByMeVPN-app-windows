@@ -286,6 +286,15 @@ mod tests {
     }
 
     #[test]
+    fn matching_proxy_and_tun_exits_are_not_a_full_health_confirmation() {
+        let ip: IpAddr = "198.51.100.2".parse().unwrap();
+        // The caller must also check the active TUN route, DNS and Xray
+        // process. This intermediate result must never claim "verified VPN".
+        assert_eq!(TunnelProof::Verified(ip).status(), "paths_match");
+        assert_ne!(TunnelProof::Verified(ip).status(), "verified");
+    }
+
+    #[test]
     fn changed_direct_ip_cannot_be_verified_without_a_matching_proxy_ip() {
         let original: IpAddr = "192.0.2.10".parse().unwrap();
         let direct: IpAddr = "198.51.100.9".parse().unwrap();

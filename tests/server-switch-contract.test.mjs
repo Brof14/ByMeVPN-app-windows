@@ -81,11 +81,14 @@ test('switching a live Windows connection stops first, persists the new node, th
 
 test('failed native stop preserves the existing tunnel and blocks misleading server changes', async () => {
   const client = makeClient({
-    vpn_stop: async () => { throw new Error('Stop failed'); }
+    vpn_stop: async () => { throw new Error('Stop failed'); },
+    // A failed stop is reconciled with native state before deciding whether
+    // a server switch is safe. Keep the old tunnel active in this scenario.
+    vpn_status: async () => ({ connected: true, verified: true, connected_seconds: 5 })
   });
   connected(client);
   await client.eval('selectServer(state.servers[1])');
-  assert.deepEqual(client.calls.map(c => c.name), ['vpn_stop']);
+  assert.deepEqual(client.calls.map(c => c.name), ['vpn_stop', 'vpn_status']);
   assert.equal(client.eval('state.selectedServer.code'), 'de');
   assert.equal(client.eval('state.vpnConnected'), true);
   assert.equal(client.eval('state.serverSwitchBusy'), false);

@@ -1,6 +1,6 @@
 use crate::api_transport::{send_to_bases, API_BASES};
-use crate::egress::{verify_egress, EgressCheck};
-use crate::tun_config::{build_tun_config_ext, supports_windows_session};
+use crate::egress::{verify_tunnel_path, TunnelProof};
+use crate::tun_config::{add_attestation_http_inbound, build_tun_config_ext, supports_windows_session};
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
@@ -50,6 +50,9 @@ pub struct ActiveTunnel {
     pub cached_ping_ms: u32,
     pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
+    pub probe_port: u16,
+    pub probe_password: String,
+    pub last_tunnel_proof: TunnelProof,
 }
 
 #[derive(Default)]
@@ -70,6 +73,9 @@ pub struct TunnelMetrics {
     pub connected: bool,
     #[serde(default)]
     pub verified: bool,
+    /// Runtime process and a verified VPN path are separate states.
+    #[serde(default)]
+    pub proof: String,
     pub connected_seconds: u64,
     pub download_mbps: f64,
     pub upload_mbps: f64,
@@ -1606,7 +1612,25 @@ pub async fn vpn_start(
             .unwrap_or("")
             .to_string();
         // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
-        let xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
+        let mut xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
+        // The port is bound only on localhost, and its secret is unique for
+        // each connection. No listener is exposed on a physical/LAN adapter.
+        let reservation = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .map_err(|_| "Не удалось подготовить локальную проверку VPN.")?;
+        let probe_port = reservation
+            .local_addr()
+            .map_err(|_| "Не удалось определить локальный порт проверки VPN.")?
+            .port();
+        let probe_password = Uuid::new_v4().simple().to_string();
+        add_attestation_http_inbound(
+            &mut xray_config,
+            probe_port,
+            "bymevpn",
+            &probe_password,
+        )?;
+        // Xray owns this port after startup. There remains a small bind race;
+        // it is detected via a failed native verification, never green status.
+        drop(reservation);
 
         let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
         fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
@@ -1698,66 +1722,38 @@ pub async fn vpn_start(
             }
         };
 
-        let mut verified_ip = None;
-        let mut fatal_error: Option<&str> = None;
-        let mut unchanged_egress_checks = 0;
-        // Give Windows routes time to propagate before classifying unchanged
-        // egress as a leak. Without a baseline, an observation cannot verify
-        // the tunnel and must never be treated as success.
-        let startup_checks = if baseline_ip.is_some() { 3 } else { 1 };
-        for _ in 0..startup_checks {
-            tokio::time::sleep(Duration::from_millis(550)).await;
-            match child.try_wait() {
-                Ok(Some(_)) => {
-                    fatal_error = Some("Xray завершился до установления туннеля.");
-                    break;
-                }
-                Err(_) => {
-                    fatal_error = Some("Не удалось проверить процесс Xray.");
-                    break;
-                }
-                Ok(None) => {}
-            }
-            match verify_egress(baseline_ip).await {
-                EgressCheck::Verified(ip) => {
-                    verified_ip = Some(ip);
-                    break;
-                }
-                EgressCheck::Unchanged => {
-                    unchanged_egress_checks += 1;
-                    if unchanged_egress_checks == startup_checks {
-                        fatal_error = Some("Внешний IP не изменился: возможна утечка трафика.");
-                        break;
-                    }
-                }
-                EgressCheck::Unavailable | EgressCheck::Unverified(_) => {
-                    // Unknown is not evidence of a leak or a healthy tunnel.
-                    // Keep the process alive, but never claim protection.
-                    break;
-                }
-            }
+        // Verify the actual configured proxy before trusting public IP changes.
+        // An unrelated change of network/WAN IP is not evidence of VPN traffic.
+        tokio::time::sleep(Duration::from_millis(750)).await;
+        if !matches!(child.try_wait(), Ok(None)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = fs::remove_file(&config_path);
+            return Err("Xray завершился до установления VPN. Проверьте диагностику.".into());
+        }
+        let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
+        let verified_ip = proof.verified_ip();
+        if proof == TunnelProof::RoutingBypass {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = fs::remove_file(&config_path);
+            return Err(
+                "Обнаружен обход VPN: Windows использует другой выход, чем сервер Xray.".into()
+            );
         }
         // An Xray process may remain alive even though Windows never installed
         // a usable Wintun route. Treat a *definitely* absent route as startup
         // failure; an unavailable OS inspection remains UNKNOWN, not success.
-        if fatal_error.is_none() {
-            let mut routes = crate::tun_health::inspect().await;
+        let mut routes = crate::tun_health::inspect().await;
+        if routes.definitely_missing() {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            routes = crate::tun_health::inspect().await;
             if routes.definitely_missing() {
-                tokio::time::sleep(Duration::from_millis(400)).await;
-                routes = crate::tun_health::inspect().await;
-                if routes.definitely_missing() {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = fs::remove_file(&config_path);
-                    return Err("Xray запущен, но Windows не создала рабочий TUN-маршрут. Проверьте сетевой адаптер ByMeVPN, системные права и журнал Xray.".into());
-                }
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&config_path);
+                return Err("Xray запущен, но Windows не создала рабочий TUN-маршрут. Проверьте сетевой адаптер ByMeVPN и журнал Xray.".into());
             }
-        }
-        if let Some(cause) = fatal_error {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = fs::remove_file(&config_path);
-            return Err(format!("VPN не подтверждён: {cause}"));
         }
 
         let server_port = session
@@ -1788,11 +1784,15 @@ pub async fn vpn_start(
             cached_ping_ms: ping,
             baseline_ip,
             egress_verified: verified_ip.is_some(),
+            probe_port,
+            probe_password,
+            last_tunnel_proof: proof,
         });
 
         Ok(TunnelMetrics {
             connected: true,
             verified: verified_ip.is_some(),
+            proof: proof.status().into(),
             connected_seconds: 0,
             download_mbps: 0.0,
             upload_mbps: 0.0,

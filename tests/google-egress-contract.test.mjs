@@ -20,7 +20,7 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
   assert.match(rust, /verify_tunnel_path\(/);
-  assert.match(rust, /active\.egress_verified = result\.verified_ip\(\)\.is_some\(\)/);
+  assert.match(rust, /active\.egress_verified = path_ready && result\.verified_ip\(\)\.is_some\(\)/);
   assert.match(rust, /TunnelProof::RoutingBypass/);
   assert.match(rust, /let _ = active\.child\.kill\(\)/);
 });

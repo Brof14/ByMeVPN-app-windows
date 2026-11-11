@@ -7,6 +7,9 @@ pub struct RouteReport {
     pub adapter: String,
     pub ipv4_default: Option<bool>,
     pub ipv6_default: Option<bool>,
+    /// Does the Windows routing policy actually choose the TUN interface?
+    /// A route merely existing in Get-NetRoute does not prove selection.
+    pub effective_ipv4: Option<bool>,
 }
 
 impl Default for RouteReport {
@@ -15,13 +18,16 @@ impl Default for RouteReport {
             adapter: "unknown".to_string(),
             ipv4_default: None,
             ipv6_default: None,
+            effective_ipv4: None,
         }
     }
 }
 
 impl RouteReport {
     pub fn definitely_missing(&self) -> bool {
-        matches!(self.adapter.as_str(), "missing" | "down") || self.ipv4_default == Some(false)
+        matches!(self.adapter.as_str(), "missing" | "down")
+            || self.ipv4_default == Some(false)
+            || self.effective_ipv4 == Some(false)
     }
 }
 
@@ -36,6 +42,7 @@ pub fn health_proves_connection(
     process_running
         && routes.adapter == "up"
         && routes.ipv4_default == Some(true)
+        && routes.effective_ipv4 == Some(true)
         && dns_ok == Some(true)
         && egress_changed
 }
@@ -52,6 +59,7 @@ fn parse_report(text: &str) -> RouteReport {
             }
             "ipv4" => report.ipv4_default = parse_bool(value),
             "ipv6" => report.ipv6_default = parse_bool(value),
+            "effective_ipv4" => report.effective_ipv4 = parse_bool(value),
             _ => {}
         }
     }
@@ -86,6 +94,15 @@ $v6 = ($r -contains '::/0') -or (
     ($r -contains '::/1') -and ($r -contains '8000::/1'))
 Write-Output ('ipv4=' + [int]$v4)
 Write-Output ('ipv6=' + [int]$v6)
+# Get-NetRoute alone only proves that a route was installed. Find-NetRoute
+# tests the actual route Windows picks for a public destination without
+# transmitting a packet or changing any OS configuration.
+$best = @(Find-NetRoute -RemoteIPAddress '9.9.9.9' -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSObject.Properties.Name -contains 'DestinationPrefix' } |
+    Select-Object -First 1)
+if ($best.Count -gt 0) {
+    Write-Output ('effective_ipv4=' + [int]($best[0].InterfaceIndex -eq $a.ifIndex))
+} else { Write-Output 'effective_ipv4=unknown' }
 "#;
     std::process::Command::new("powershell.exe")
         .args([

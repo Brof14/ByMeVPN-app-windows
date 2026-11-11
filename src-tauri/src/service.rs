@@ -2073,8 +2073,13 @@ pub async fn vpn_status(
     // A crashed tunnel or an observed routing leak must release its server
     // session as well as its local process and config. Never await HTTP while
     // holding the tunnel Mutex.
+    let mut recovery_failed = false;
     if revoke_session {
-        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
+        // Never leave the UI falsely connected if Windows refuses our route
+        // cleanup: report a disconnected process and a specific repair status.
+        recovery_failed = crate::tun_health::cleanup_bymevpn_routes_after_exit()
+            .await
+            .is_err();
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
     if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {
@@ -2094,7 +2099,11 @@ pub async fn vpn_status(
     Ok(TunnelMetrics {
         connected: false,
         verified: false,
-        proof: "disconnected".into(),
+        proof: if recovery_failed {
+            "network_recovery_required".into()
+        } else {
+            "disconnected".into()
+        },
         connected_seconds: 0,
         download_mbps: 0.0,
         upload_mbps: 0.0,

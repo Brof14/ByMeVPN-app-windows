@@ -1953,6 +1953,9 @@ pub async fn vpn_status(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<TunnelMetrics, String> {
+    // An old watchdog must never remove routes after a new VPN has begun
+    // connecting. Lock in the same order as start/stop.
+    let _connection_guard = state.connection_gate.lock().await;
     let _probe_guard = state.status_probe_gate.lock().await;
     let mut revoke_session = false;
     // This is evidence of an actual Xray server path AND the normal Windows

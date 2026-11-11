@@ -1705,6 +1705,61 @@ pub async fn vpn_start(
             });
         }
 
+        // Preflight the REAL selected VPN outbound while Windows networking
+        // is untouched. A broken VLESS/Reality/Hysteria server must never be
+        // allowed to install a default route that blackholes all PC traffic.
+        let preflight_config = preflight_attestation_config(&xray_config)?;
+        let preflight_path = app_dir.join(format!("preflight-{}.json", Uuid::new_v4()));
+        fs::write(
+            &preflight_path,
+            serde_json::to_vec(&preflight_config).map_err(|e| e.to_string())?,
+        )
+        .map_err(|_| "Не удалось создать локальный тест сервера VPN.")?;
+        let _temporary_config = TemporaryConfig(preflight_path.clone());
+
+        // Preserve preflight failures for local diagnostics, overwriting the
+        // log only when the real TUN stage starts. Never upload raw Xray logs.
+        let startup_log = app_dir.join("xray_startup.log");
+        let preflight_log = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&startup_log)
+            .map_err(|_| "Не удалось открыть журнал проверки VPN.")?;
+        let preflight_stdout = preflight_log
+            .try_clone()
+            .map_err(|_| "Не удалось подготовить журнал проверки VPN.")?;
+        let mut preflight_child = std::process::Command::new(runtime_dir.join("xray.exe"))
+            .current_dir(&runtime_dir)
+            .env("XRAY_LOCATION_ASSET", &runtime_dir)
+            .args(["run", "-config"])
+            .arg(&preflight_path)
+            .stdout(std::process::Stdio::from(preflight_stdout))
+            .stderr(std::process::Stdio::from(preflight_log))
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|_| "Не удалось запустить проверку VPN-сервера.")?;
+        #[cfg(windows)]
+        let preflight_job = match crate::windows_job::ChildJob::attach(&preflight_child) {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = preflight_child.kill();
+                let _ = preflight_child.wait();
+                return Err(error);
+            }
+        };
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let preflight_ok = matches!(preflight_child.try_wait(), Ok(None))
+            && preflight_xray_server(probe_port, &probe_password).await;
+        // Shut down the process with NO TUN before enabling the system route.
+        let _ = preflight_child.kill();
+        let _ = preflight_child.wait();
+        #[cfg(windows)]
+        drop(preflight_job);
+        if !preflight_ok {
+            return Err("VPN-сервер не прошёл безопасную проверку. Системные маршруты Windows не изменены. Проверьте сервер и параметры подключения.".into());
+        }
+
         // Preserve bounded, local diagnostics for failures that happen only
         // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
         // This log is private to the current Windows profile and is reset on

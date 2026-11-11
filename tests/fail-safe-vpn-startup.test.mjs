@@ -26,6 +26,7 @@ test('unverified full tunnel is immediately aborted, never left blocking the int
   const start = service.slice(service.indexOf('pub async fn vpn_start('), service.indexOf('pub async fn vpn_stop('));
   assert.match(start, /if verified_ip\.is_none\(\) \{/);
   assert.match(start, /stop_failed_tun\(&mut child, &config_path\)\.await/);
+  assert.match(start, /tokio::time::timeout\(Duration::from_secs\(9\)/);
   assert.match(start, /return Err\(/);
   assert.ok(start.indexOf('if verified_ip.is_none()') < start.indexOf('*lock = Some(ActiveTunnel {'));
   assert.match(service, /cleanup_bymevpn_routes_after_exit/);

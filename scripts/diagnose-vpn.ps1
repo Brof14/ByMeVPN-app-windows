@@ -77,6 +77,11 @@ foreach ($adapter in $activeTun) {
     $ipv4SplitOther = @($routes | Where-Object { $_.DestinationPrefix -eq '128.0.0.0/1' })
     $ipv4Covered = $ipv4Default.Count -gt 0 -or ($ipv4Split.Count -gt 0 -and $ipv4SplitOther.Count -gt 0)
     Write-Check 'IPv4 TUN routes' $(if ($ipv4Covered) { 'PASS' } else { 'FAIL' }) $(if ($ipv4Covered) { "default or split-default route through $($adapter.Name)" } else { "missing default route through $($adapter.Name); traffic may bypass the VPN" })
+    $actual = @(Find-NetRoute -RemoteIPAddress '9.9.9.9' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSObject.Properties.Name -contains 'DestinationPrefix' } |
+        Select-Object -First 1)
+    $selectedTun = $actual.Count -gt 0 -and $actual[0].InterfaceIndex -eq $adapter.ifIndex
+    Write-Check 'Windows actual IPv4 route' $(if (!$actual.Count) { 'WARN' } elseif ($selectedTun) { 'PASS' } else { 'FAIL' }) $(if (!$actual.Count) { 'route selection could not be determined' } elseif ($selectedTun) { "Windows selects $($adapter.Name) for public IPv4" } else { "Windows selects another adapter, not $($adapter.Name); VPN routes are present but not effective" })
 
     $ipv6Default = @($routes | Where-Object { $_.DestinationPrefix -eq '::/0' })
     $ipv6SplitA = @($routes | Where-Object { $_.DestinationPrefix -eq '::/1' })

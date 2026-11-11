@@ -1431,8 +1431,8 @@ async function refreshVpnHealth() {
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
     };
     const freshEgress = {
-      verified: uiText('Выход через Xray совпадает с выходом через Windows TUN (не проверка всех утечек)',
-        'Xray and Windows TUN exits match (not a complete leak test)'),
+      paths_match: uiText('Выход Xray совпадает с Windows TUN. Остальные сетевые проверки выполняются отдельно.',
+        'Xray and Windows TUN exits match. Other network checks are evaluated separately.'),
       routing_bypass: uiText('Windows обходит VPN: выходы Xray и TUN различаются',
         'Windows bypasses VPN: Xray and TUN exits differ'),
       server_unreachable: uiText('Не прошёл защищённый тест через Xray (причина не установлена)',

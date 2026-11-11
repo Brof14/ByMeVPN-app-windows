@@ -1520,6 +1520,15 @@ async function toggleVpn(allowServerSwitch = false) {
       showToast('VPN отключён');
     } catch (err) {
       state.connectionError = typeof err === 'string' ? err : 'Ошибка отключения';
+      // An OS route cleanup warning does not mean Xray is still running.
+      // Recheck the native process rather than leaving a false green UI.
+      try {
+        const status = await invoke('vpn_status');
+        if (status?.connected === false) {
+          state.vpnConnected = false;
+          state.vpnVerified = false;
+        }
+      } catch (_) { /* Keep the last known state if native status is unavailable. */ }
       showToast(state.connectionError, true);
     }
   } else {
@@ -1598,6 +1607,12 @@ async function checkVpnStatus() {
     } else {
       state.vpnVerified = false;
       state.vpnConnected = false;
+      if (status?.proof === 'network_recovery_required') {
+        state.connectionError = uiText(
+          'Xray остановлен, но Windows не разрешила восстановить маршруты. Перезагрузите компьютер.',
+          'Xray stopped, but Windows could not restore its routes. Restart the computer.');
+        showToast(state.connectionError, true);
+      }
       if (state.timerInterval) {
         clearInterval(state.timerInterval);
         state.timerInterval = null;
@@ -1641,8 +1656,11 @@ function startStatusPolling() {
             clearInterval(interval);
             state.timerInterval = null;
             if (state.pollInterval === interval) state.pollInterval = null;
-            state.connectionError = uiText('Соединение VPN прервано. Проверьте сеть и повторите попытку.',
-              'VPN connection interrupted. Check your network and retry.');
+            state.connectionError = status?.proof === 'network_recovery_required'
+              ? uiText('Windows не восстановила маршруты ByMeVPN. Перезагрузите компьютер.',
+                'Windows could not restore ByMeVPN routes. Restart the computer.')
+              : uiText('Соединение VPN прервано. Сетевые маршруты восстановлены.',
+                'VPN interrupted. Network routes restored.');
             showToast(state.connectionError, true);
           }
           updateVpnUi();

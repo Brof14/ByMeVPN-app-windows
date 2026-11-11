@@ -1940,9 +1940,13 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     };
     if let Some(active) = maybe_active {
         let _ = fs::remove_file(&active.config_path);
+        // Clean residual default routes before awaiting backend network I/O.
+        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    } else {
+        // Also repair a stale ByMeVPN route from an earlier crashed build.
+        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
     }
-    // Idempotent even if the tunnel was already stopped or crashed.
     Ok(())
 }
 
@@ -1996,7 +2000,10 @@ pub async fn vpn_status(
                 } else {
                     String::new()
                 };
-                if result == TunnelProof::RoutingBypass {
+                if !active.egress_verified {
+                    // If a previously verified VPN stops transferring real
+                    // traffic, immediately unblock Windows rather than leave
+                    // the default route pointed at a stalled Xray process.
                     let _ = active.child.kill();
                     let _ = active.child.wait();
                     if let Some(active) = lock.take() {
@@ -2066,6 +2073,7 @@ pub async fn vpn_status(
     // session as well as its local process and config. Never await HTTP while
     // holding the tunnel Mutex.
     if revoke_session {
+        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
     if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {

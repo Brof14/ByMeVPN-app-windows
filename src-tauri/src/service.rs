@@ -1758,6 +1758,20 @@ pub async fn vpn_start(
             }
         }
 
+        // Even a successful proxy/HTTPS comparison is not enough for a
+        // green VPN indicator if the Windows TUN adapter or resolver is not
+        // usable. Reuse one conservative health predicate throughout.
+        let verified_ip = if crate::tun_health::health_proves_connection(
+            &routes,
+            crate::tun_health::dns_resolution_check().await,
+            matches!(child.try_wait(), Ok(None)),
+            verified_ip.is_some(),
+        ) {
+            verified_ip
+        } else {
+            None
+        };
+
         let server_port = session
             .get("port")
             .and_then(Value::as_u64)
@@ -1872,16 +1886,28 @@ pub async fn vpn_status(
     };
     if let Some((started_at, baseline_ip, port, password)) = probe {
         let result = verify_tunnel_path(baseline_ip, port, &password).await;
+        let path_ready = if result.verified_ip().is_some() {
+            let routes = crate::tun_health::inspect().await;
+            crate::tun_health::health_proves_connection(
+                &routes,
+                crate::tun_health::dns_resolution_check().await,
+                true,
+                true,
+            )
+        } else {
+            false
+        };
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
                 active.last_egress_probe = std::time::Instant::now();
                 active.last_tunnel_proof = result;
-                active.egress_verified = result.verified_ip().is_some();
-                active.server_ip = result
-                    .verified_ip()
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_default();
+                active.egress_verified = path_ready && result.verified_ip().is_some();
+                active.server_ip = if active.egress_verified {
+                    result.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
+                } else {
+                    String::new()
+                };
                 if result == TunnelProof::RoutingBypass {
                     let _ = active.child.kill();
                     let _ = active.child.wait();

@@ -762,11 +762,19 @@ mod tests {
         assert_eq!(inbounds[0]["listen"], "127.0.0.1");
         assert_eq!(inbounds[0]["tag"], "bymevpn-attestation");
         assert_eq!(preflight["routing"]["rules"][0]["outboundTag"], "proxy");
-        assert!(preflight["outbounds"].as_array().unwrap().iter().any(|outbound| {
-            outbound["tag"] == "proxy"
-        }));
-        assert!(preflight.to_string().find("autoSystemRoutingTable").is_none());
-        assert!(preflight.to_string().find("autoSystemWfpBlockLeak").is_none());
+        assert!(preflight["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|outbound| { outbound["tag"] == "proxy" }));
+        assert!(preflight
+            .to_string()
+            .find("autoSystemRoutingTable")
+            .is_none());
+        assert!(preflight
+            .to_string()
+            .find("autoSystemWfpBlockLeak")
+            .is_none());
         assert_eq!(config["inbounds"][0]["protocol"], "tun");
     }
 

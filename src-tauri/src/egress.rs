@@ -171,7 +171,9 @@ pub async fn verify_tunnel_path(
             TunnelProof::ProxyUnreachable
         }
     };
-    tokio::time::timeout(Duration::from_secs(16), pair)
+    // Bound the time Windows can be in the switched TUN state before the
+    // caller either confirms real traffic or performs automatic rollback.
+    tokio::time::timeout(Duration::from_secs(6), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)
 }

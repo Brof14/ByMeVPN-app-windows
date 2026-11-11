@@ -388,6 +388,53 @@ pub fn build_tun_config_ext(
     }))
 }
 
+/// A one-session, authenticated HTTP CONNECT listener proves whether the
+/// selected Xray outbound can reach the internet independently of Windows
+/// TUN routing. It never listens on a LAN address or becomes a default system
+/// proxy. Caller supplies a fresh loopback port and per-session credentials.
+pub fn add_attestation_http_inbound(
+    config: &mut Value,
+    port: u16,
+    user: &str,
+    password: &str,
+) -> Result<(), String> {
+    if port == 0
+        || user.is_empty()
+        || password.is_empty()
+        || config["inbounds"].as_array().is_none()
+        || config["routing"]["rules"].as_array().is_none()
+    {
+        return Err("Невозможно создать защищённый локальный тест VPN.".into());
+    }
+    let inbounds = config["inbounds"].as_array_mut().unwrap();
+    if inbounds.iter().any(|inbound| {
+        inbound["tag"] == "bymevpn-attestation" || inbound["port"].as_u64() == Some(u64::from(port))
+    }) {
+        return Err("Локальный тест VPN уже добавлен.".into());
+    }
+    inbounds.push(json!({
+        "tag": "bymevpn-attestation",
+        "listen": "127.0.0.1",
+        "port": port,
+        "protocol": "http",
+        "settings": {
+            "users": [{"user": user, "pass": password}],
+            "allowTransparent": false
+        }
+    }));
+    // Exact tag match, ahead of RU bypass, DNS and any user routing rule:
+    // this test cannot accidentally escape via a 'direct' outbound.
+    config["routing"]["rules"].as_array_mut().unwrap().insert(
+        0,
+        json!({
+            "type": "field",
+            "inboundTag": ["bymevpn-attestation"],
+            "outboundTag": "proxy"
+        }),
+    );
+    Ok(())
+}
+
 pub fn supports_windows_session(session: &Value) -> bool {
     build_tun_config_ext(session, false, "none", "cloudflare").is_ok()
 }
@@ -634,6 +681,52 @@ mod tests {
         let config = build_tun_config_ext(&session(), true, "none", "adguard").unwrap();
         assert_eq!(config["inbounds"][0]["settings"]["dns"][0], "94.140.14.14");
         assert!(build_tun_config_ext(&session(), true, "none", "untrusted").is_err());
+    }
+
+    #[test]
+    fn authenticated_local_probe_is_forced_through_the_selected_vpn_outbound() {
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "byme", "random-secret").unwrap();
+        assert_eq!(config["inbounds"][1]["protocol"], "http");
+        assert_eq!(config["inbounds"][1]["listen"], "127.0.0.1");
+        assert_eq!(config["inbounds"][1]["port"], 38271);
+        assert_eq!(
+            config["inbounds"][1]["settings"]["users"][0]["user"],
+            "byme"
+        );
+        assert_eq!(
+            config["inbounds"][1]["settings"]["users"][0]["pass"],
+            "random-secret"
+        );
+        assert_eq!(
+            config["routing"]["rules"][0]["inboundTag"][0],
+            "bymevpn-attestation"
+        );
+        assert_eq!(config["routing"]["rules"][0]["outboundTag"], "proxy");
+        assert_eq!(config["outbounds"][0]["tag"], "proxy");
+        assert!(add_attestation_http_inbound(&mut config, 38271, "byme", "secret").is_err());
+    }
+
+    #[test]
+    fn xray_accepts_attested_tun_config_with_local_http_proxy() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "byme", "random-secret").unwrap();
+        let path =
+            std::env::temp_dir().join(format!("bymevpn-attestation-{}.json", Uuid::new_v4()));
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let result = std::process::Command::new(&root)
+            .args(["run", "-test", "-config"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert!(
+            result.status.success(),
+            "Attestation config failed Xray -test: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
 
     #[test]

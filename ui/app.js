@@ -1431,15 +1431,21 @@ async function refreshVpnHealth() {
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
     };
     const freshEgress = {
-      changed: uiText('IPv4 отличается от исходного (не проверка утечек)',
-        'IPv4 differs from baseline (not a leak test)'),
-      unchanged: uiText('IPv4 совпадает с исходным — возможен обход VPN',
-        'IPv4 matches baseline — possible VPN bypass'),
-      baseline_missing: uiText('IP получен, но исходный IP неизвестен',
-        'IP received, but baseline IP was unavailable'),
-      unavailable: uiText('HTTPS-проверка выхода недоступна',
-        'HTTPS exit probe unavailable'),
-      not_running: uiText('проверка не проводилась', 'not checked')
+      paths_match: uiText('Выход Xray совпадает с Windows TUN. Остальные сетевые проверки выполняются отдельно.',
+        'Xray and Windows TUN exits match. Other network checks are evaluated separately.'),
+      routing_bypass: uiText('Windows обходит VPN: выходы Xray и TUN различаются',
+        'Windows bypasses VPN: Xray and TUN exits differ'),
+      server_unreachable: uiText('Не прошёл защищённый тест через Xray (причина не установлена)',
+        'Protected request through Xray failed (cause not confirmed)'),
+      tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
+        'Xray server responds, but Windows TUN cannot pass the HTTPS probe'),
+      baseline_unknown: uiText('Маршруты совпадают, но исходный IPv4 неизвестен',
+        'Routes match, but the baseline IPv4 is unavailable'),
+      exit_unchanged: uiText('Внешний IPv4 не изменился — защита не подтверждена',
+        'External IPv4 unchanged — protection unverified'),
+      probe_unavailable: uiText('Проверка реального VPN-пути временно недоступна',
+        'End-to-end VPN verification temporarily unavailable'),
+      not_running: uiText('Проверка не проводилась', 'Not checked')
     };
     const lines = [
       uiText('Процесс Xray: ', 'Xray process: ') +
@@ -1449,6 +1455,9 @@ async function refreshVpnHealth() {
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
       uiText('Маршрут IPv6: ', 'IPv6 route: ') +
         checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Выбранный Windows маршрут IPv4: ', 'Windows-selected IPv4 route: ') +
+        checked(report?.effective_ipv4, uiText('через ByMeVPN TUN', 'via ByMeVPN TUN'),
+          uiText('мимо TUN — соединение не защищено', 'bypasses TUN — unprotected')),
       uiText('Системный DNS: ', 'System DNS: ') +
         checked(report?.dns_resolution, uiText('тестовый домен разрешён', 'test hostname resolved'),
           uiText('тестовый запрос не прошёл', 'test lookup unsuccessful')),
@@ -1808,15 +1817,23 @@ function updateVpnUi() {
       verificationMark.classList.toggle('verification-pending', !state.vpnVerified);
     }
     const heading = document.querySelector('#home-state-connected .status-title-text');
+    const proof = state.metrics?.proof || 'probe_unavailable';
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…')
-      : uiText('VPN запущен', 'VPN started');
+      : state.vpnVerified ? uiText('VPN подключён', 'VPN connected')
+      : proof === 'server_unreachable' ? uiText('Не прошёл тест через VPN-сервер', 'VPN server test failed')
+      : proof === 'tun_no_traffic' ? uiText('Нет трафика через Windows TUN', 'Windows TUN has no traffic')
+      : uiText('Соединение не подтверждено', 'Connection unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Завершаем соединение…', 'Closing the connection…')
       : state.vpnVerified
         ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
-        : uiText('Проверка IP недоступна. Защита не подтверждена.', 'IP check unavailable. Protection unverified.');
+        : proof === 'server_unreachable' ?
+          uiText('Проверьте диагностику подключения.', 'Review connection diagnostics.')
+          : proof === 'tun_no_traffic' ?
+            uiText('Xray отвечает, но системный трафик Windows не проходит.', 'Xray responds, but Windows system traffic does not pass.')
+            : uiText('Реальный VPN-трафик пока не подтверждён.', 'Real VPN traffic is not yet verified.');
   } else if (accessUnknown) {
     // An offline/unknown entitlement is NOT an expired or active plan.
     // Keep the power control inert; the primary action retries the backend.

@@ -19,9 +19,9 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
-  assert.match(rust, /EgressCheck::Unavailable/);
-  assert.match(rust, /active\.egress_verified = false/);
-  assert.match(rust, /EgressCheck::Unchanged => \{/);
+  assert.match(rust, /verify_tunnel_path\(/);
+  assert.match(rust, /active\.egress_verified = path_ready && result\.verified_ip\(\)\.is_some\(\)/);
+  assert.match(rust, /TunnelProof::RoutingBypass/);
   assert.match(rust, /let _ = active\.child\.kill\(\)/);
 });
 
@@ -30,7 +30,8 @@ test('VPN UI only claims protection when native egress verification passed', () 
   assert.match(ui, /state\.vpnVerified = metrics\?\.verified === true/);
   assert.match(ui, /state\.vpnVerified = status\.verified === true/);
   assert.match(ui, /status\?\.connected === true && status\?\.verified === true/);
-  assert.match(ui, /uiText\('VPN запущен', 'VPN started'\)/);
+  assert.match(ui, /uiText\('VPN подключён', 'VPN connected'\)/);
+  assert.match(ui, /state\.vpnVerified \? uiText\('VPN подключён'/);
   assert.match(ui, /verificationMark\.textContent = state\.vpnVerified \? '✓' : '·'/);
   assert.match(ui, /home-verification-notice/);
   assert.match(ui, /Защита не подтверждена/);
@@ -66,7 +67,8 @@ test('native Google token failures report OAuth codes without echoing upstream d
 });
 
 test('VPN startup is bounded, logs native TUN failures, and avoids an eager extra ping', () => {
-  assert.match(rust, /let startup_checks = if baseline_ip\.is_some\(\) \{ 3 \} else \{ 1 \};/);
+  assert.match(rust, /add_attestation_http_inbound\(/);
+  assert.match(rust, /verify_tunnel_path\(baseline_ip, probe_port, &probe_password\)/);
   assert.match(rust, /xray_startup\.log/);
   assert.match(rust, /cached_ping_ms/);
   assert.match(rust, /last_ping_probe\.elapsed\(\) >= Duration::from_secs\(45\)/);

@@ -1,7 +1,8 @@
 use crate::api_transport::{send_to_bases, API_BASES};
-use crate::egress::{verify_tunnel_path, TunnelProof};
+use crate::egress::{preflight_xray_server, verify_tunnel_path, TunnelProof};
 use crate::tun_config::{
-    add_attestation_http_inbound, build_tun_config_ext, supports_windows_session,
+    add_attestation_http_inbound, build_tun_config_ext, preflight_attestation_config,
+    supports_windows_session,
 };
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
@@ -55,6 +56,29 @@ pub struct ActiveTunnel {
     pub probe_port: u16,
     pub probe_password: String,
     pub last_tunnel_proof: TunnelProof,
+}
+
+/// Removes the temporary, credential-containing preflight configuration on
+/// every path, including a cancelled future or failed endpoint check.
+struct TemporaryConfig(PathBuf);
+
+impl Drop for TemporaryConfig {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+async fn stop_failed_tun(
+    child: &mut std::process::Child,
+    config_path: &std::path::Path,
+) -> Result<(), String> {
+    // Terminating Xray closes its dynamic WFP session. An abrupt termination
+    // may not run the Go cleanup that removes routes and TUN DNS settings,
+    // so remove stale routes on the ByMeVPN adapter, never Wi-Fi/Ethernet.
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_file(config_path);
+    crate::tun_health::cleanup_bymevpn_routes_after_exit().await
 }
 
 #[derive(Default)]
@@ -1681,6 +1705,61 @@ pub async fn vpn_start(
             });
         }
 
+        // Preflight the REAL selected VPN outbound while Windows networking
+        // is untouched. A broken VLESS/Reality/Hysteria server must never be
+        // allowed to install a default route that blackholes all PC traffic.
+        let preflight_config = preflight_attestation_config(&xray_config)?;
+        let preflight_path = app_dir.join(format!("preflight-{}.json", Uuid::new_v4()));
+        fs::write(
+            &preflight_path,
+            serde_json::to_vec(&preflight_config).map_err(|e| e.to_string())?,
+        )
+        .map_err(|_| "Не удалось создать локальный тест сервера VPN.")?;
+        let _temporary_config = TemporaryConfig(preflight_path.clone());
+
+        // Preserve preflight failures for local diagnostics, overwriting the
+        // log only when the real TUN stage starts. Never upload raw Xray logs.
+        let startup_log = app_dir.join("xray_startup.log");
+        let preflight_log = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&startup_log)
+            .map_err(|_| "Не удалось открыть журнал проверки VPN.")?;
+        let preflight_stdout = preflight_log
+            .try_clone()
+            .map_err(|_| "Не удалось подготовить журнал проверки VPN.")?;
+        let mut preflight_child = std::process::Command::new(runtime_dir.join("xray.exe"))
+            .current_dir(&runtime_dir)
+            .env("XRAY_LOCATION_ASSET", &runtime_dir)
+            .args(["run", "-config"])
+            .arg(&preflight_path)
+            .stdout(std::process::Stdio::from(preflight_stdout))
+            .stderr(std::process::Stdio::from(preflight_log))
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|_| "Не удалось запустить проверку VPN-сервера.")?;
+        #[cfg(windows)]
+        let preflight_job = match crate::windows_job::ChildJob::attach(&preflight_child) {
+            Ok(job) => job,
+            Err(error) => {
+                let _ = preflight_child.kill();
+                let _ = preflight_child.wait();
+                return Err(error);
+            }
+        };
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let preflight_ok = matches!(preflight_child.try_wait(), Ok(None))
+            && preflight_xray_server(probe_port, &probe_password).await;
+        // Shut down the process with NO TUN before enabling the system route.
+        let _ = preflight_child.kill();
+        let _ = preflight_child.wait();
+        #[cfg(windows)]
+        drop(preflight_job);
+        if !preflight_ok {
+            return Err("VPN-сервер не прошёл безопасную проверку. Системные маршруты Windows не изменены. Проверьте сервер и параметры подключения.".into());
+        }
+
         // Preserve bounded, local diagnostics for failures that happen only
         // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
         // This log is private to the current Windows profile and is reset on
@@ -1718,59 +1797,57 @@ pub async fn vpn_start(
         let child_job = match crate::windows_job::ChildJob::attach(&child) {
             Ok(job) => job,
             Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                stop_failed_tun(&mut child, &config_path).await?;
                 return Err(error);
             }
         };
 
-        // Verify the actual configured proxy before trusting public IP changes.
-        // An unrelated change of network/WAN IP is not evidence of VPN traffic.
-        tokio::time::sleep(Duration::from_millis(750)).await;
-        if !matches!(child.try_wait(), Ok(None)) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = fs::remove_file(&config_path);
-            return Err("Xray завершился до установления VPN. Проверьте диагностику.".into());
-        }
-        let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
-        let verified_ip = proof.verified_ip();
-        if proof == TunnelProof::RoutingBypass {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = fs::remove_file(&config_path);
-            return Err(
-                "Обнаружен обход VPN: Windows использует другой выход, чем сервер Xray.".into()
-            );
-        }
-        // An Xray process may remain alive even though Windows never installed
-        // a usable Wintun route. Treat a *definitely* absent route as startup
-        // failure; an unavailable OS inspection remains UNKNOWN, not success.
-        let mut routes = crate::tun_health::inspect().await;
-        if routes.definitely_missing() {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            routes = crate::tun_health::inspect().await;
-            if routes.definitely_missing() {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = fs::remove_file(&config_path);
-                return Err("Xray запущен, но Windows не создала рабочий TUN-маршрут. Проверьте сетевой адаптер ByMeVPN и журнал Xray.".into());
+        // Bound the ENTIRE period that Windows routes through an unverified
+        // TUN. Includes route inspection and DNS, not just the HTTPS probe.
+        let handoff = tokio::time::timeout(Duration::from_secs(9), async {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
+            if proof.verified_ip().is_none() {
+                return (proof, false);
             }
-        }
+            let (mut routes, dns) = tokio::join!(
+                crate::tun_health::inspect(),
+                crate::tun_health::dns_resolution_check(),
+            );
+            if routes.definitely_missing() {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                routes = crate::tun_health::inspect().await;
+            }
+            let healthy = crate::tun_health::health_proves_connection(
+                &routes,
+                dns,
+                true,
+                true,
+            );
+            (proof, healthy)
+        })
+        .await;
 
-        // Even a successful proxy/HTTPS comparison is not enough for a
-        // green VPN indicator if the Windows TUN adapter or resolver is not
-        // usable. Reuse one conservative health predicate throughout.
-        let verified_ip = if crate::tun_health::health_proves_connection(
-            &routes,
-            crate::tun_health::dns_resolution_check().await,
-            matches!(child.try_wait(), Ok(None)),
-            verified_ip.is_some(),
-        ) {
-            verified_ip
+        let (proof, route_and_dns_ok) = match handoff {
+            Ok(result) => result,
+            Err(_) => {
+                stop_failed_tun(&mut child, &config_path).await?;
+                return Err("Проверка VPN превысила безопасный лимит. Системный интернет восстановлен.".into());
+            }
+        };
+        let verified_ip = if route_and_dns_ok && matches!(child.try_wait(), Ok(None)) {
+            proof.verified_ip()
         } else {
             None
         };
+        if verified_ip.is_none() {
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err(if proof.verified_ip().is_none() {
+                format!("VPN не передаёт трафик ({}). Сетевые настройки Windows восстановлены.", proof.status())
+            } else {
+                "VPN-сервер отвечает, но Windows TUN или DNS не работает. Подключение отменено, обычный интернет восстановлен.".into()
+            });
+        }
 
         let server_port = session
             .get("port")
@@ -1855,9 +1932,14 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     };
     if let Some(active) = maybe_active {
         let _ = fs::remove_file(&active.config_path);
+        // Revoke device session even if Windows refuses route cleanup.
+        let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+        cleanup?;
+    } else {
+        // Also repair a stale ByMeVPN route from an earlier crashed build.
+        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
     }
-    // Idempotent even if the tunnel was already stopped or crashed.
     Ok(())
 }
 
@@ -1866,6 +1948,9 @@ pub async fn vpn_status(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<TunnelMetrics, String> {
+    // An old watchdog must never remove routes after a new VPN has begun
+    // connecting. Lock in the same order as start/stop.
+    let _connection_guard = state.connection_gate.lock().await;
     let _probe_guard = state.status_probe_gate.lock().await;
     let mut revoke_session = false;
     // This is evidence of an actual Xray server path AND the normal Windows
@@ -1911,7 +1996,10 @@ pub async fn vpn_status(
                 } else {
                     String::new()
                 };
-                if result == TunnelProof::RoutingBypass {
+                if !active.egress_verified {
+                    // If a previously verified VPN stops transferring real
+                    // traffic, immediately unblock Windows rather than leave
+                    // the default route pointed at a stalled Xray process.
                     let _ = active.child.kill();
                     let _ = active.child.wait();
                     if let Some(active) = lock.take() {
@@ -1980,7 +2068,13 @@ pub async fn vpn_status(
     // A crashed tunnel or an observed routing leak must release its server
     // session as well as its local process and config. Never await HTTP while
     // holding the tunnel Mutex.
+    let mut recovery_failed = false;
     if revoke_session {
+        // Never leave the UI falsely connected if Windows refuses our route
+        // cleanup: report a disconnected process and a specific repair status.
+        recovery_failed = crate::tun_health::cleanup_bymevpn_routes_after_exit()
+            .await
+            .is_err();
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
     if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {
@@ -2000,7 +2094,11 @@ pub async fn vpn_status(
     Ok(TunnelMetrics {
         connected: false,
         verified: false,
-        proof: "disconnected".into(),
+        proof: if recovery_failed {
+            "network_recovery_required".into()
+        } else {
+            "disconnected".into()
+        },
         connected_seconds: 0,
         download_mbps: 0.0,
         upload_mbps: 0.0,

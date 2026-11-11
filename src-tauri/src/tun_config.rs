@@ -435,6 +435,49 @@ pub fn add_attestation_http_inbound(
     Ok(())
 }
 
+/// Pre-connection server test: reuse the *actual* selected outbound and the
+/// authenticated loopback HTTP listener, but DO NOT install a TUN, DNS rules,
+/// WFP filters or any system routes. This must run before full VPN startup.
+pub fn preflight_attestation_config(config: &Value) -> Result<Value, String> {
+    let probe = config["inbounds"]
+        .as_array()
+        .and_then(|inbounds| {
+            inbounds.iter().find(|inbound| {
+                inbound["tag"] == "bymevpn-attestation"
+                    && inbound["protocol"] == "http"
+                    && inbound["listen"] == "127.0.0.1"
+                    && inbound["settings"]["users"]
+                        .as_array()
+                        .is_some_and(|users| !users.is_empty())
+            })
+        })
+        .ok_or("Отсутствует безопасный локальный тест VPN.")?;
+    let outbounds = config["outbounds"]
+        .as_array()
+        .filter(|outbounds| outbounds.iter().any(|outbound| outbound["tag"] == "proxy"))
+        .ok_or("Отсутствует исходящий VPN-протокол.")?;
+
+    // Avoid copying rules that belong to TUN interception. A single rule
+    // routes this local test straight through the selected proxy outbound.
+    let mut preflight = json!({
+        "log": {"loglevel": "warning"},
+        "inbounds": [probe],
+        "outbounds": outbounds,
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [{
+                "type": "field",
+                "inboundTag": ["bymevpn-attestation"],
+                "outboundTag": "proxy"
+            }]
+        }
+    });
+    if let Some(dns) = config.get("dns") {
+        preflight["dns"] = dns.clone();
+    }
+    Ok(preflight)
+}
+
 pub fn supports_windows_session(session: &Value) -> bool {
     build_tun_config_ext(session, false, "none", "cloudflare").is_ok()
 }
@@ -705,6 +748,62 @@ mod tests {
         assert_eq!(config["routing"]["rules"][0]["outboundTag"], "proxy");
         assert_eq!(config["outbounds"][0]["tag"], "proxy");
         assert!(add_attestation_http_inbound(&mut config, 38271, "byme", "secret").is_err());
+    }
+
+    #[test]
+    fn preflight_does_not_create_tun_routes_or_wfp_filters() {
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "bymevpn", "unique-password").unwrap();
+        let preflight = preflight_attestation_config(&config).unwrap();
+
+        let inbounds = preflight["inbounds"].as_array().unwrap();
+        assert_eq!(inbounds.len(), 1);
+        assert_eq!(inbounds[0]["protocol"], "http");
+        assert_eq!(inbounds[0]["listen"], "127.0.0.1");
+        assert_eq!(inbounds[0]["tag"], "bymevpn-attestation");
+        assert_eq!(preflight["routing"]["rules"][0]["outboundTag"], "proxy");
+        assert!(preflight["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|outbound| { outbound["tag"] == "proxy" }));
+        assert!(preflight
+            .to_string()
+            .find("autoSystemRoutingTable")
+            .is_none());
+        assert!(preflight
+            .to_string()
+            .find("autoSystemWfpBlockLeak")
+            .is_none());
+        assert_eq!(config["inbounds"][0]["protocol"], "tun");
+    }
+
+    #[test]
+    fn preflight_only_config_is_accepted_by_bundled_windows_xray() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "bymevpn", "unique-password").unwrap();
+        let preflight = preflight_attestation_config(&config).unwrap();
+        let path = std::env::temp_dir().join(format!("byme-preflight-{}.json", Uuid::new_v4()));
+        std::fs::write(&path, serde_json::to_vec(&preflight).unwrap()).unwrap();
+        let result = std::process::Command::new(&root)
+            .args(["run", "-test", "-config"])
+            .arg(&path)
+            .output();
+        let _ = std::fs::remove_file(path);
+        let output = result.expect("Bundled Windows Xray must be runnable");
+        assert!(
+            output.status.success(),
+            "Xray rejected safe proxy-only preflight config: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn preflight_rejects_missing_authenticated_probe_without_modifying_system() {
+        let base = build_tun_config(&session()).unwrap();
+        assert!(preflight_attestation_config(&base).is_err());
     }
 
     #[test]

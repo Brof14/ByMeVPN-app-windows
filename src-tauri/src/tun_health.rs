@@ -131,6 +131,54 @@ pub async fn inspect() -> RouteReport {
         .unwrap_or_default()
 }
 
+/// Best-effort recovery *after our Xray process has exited*. Xray removes
+/// WFP filters when its handles close, but process termination can interrupt
+/// its Go-side route/DNS cleanup. Remove only stale default routes and DNS on
+/// the adapter owned by ByMeVPN; never change the physical network adapter.
+/// If Windows denies the operation, report it rather than claiming recovery.
+#[cfg(windows)]
+fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$a = Get-NetAdapter -Name 'ByMeVPN' -ErrorAction SilentlyContinue
+if ($null -eq $a) { exit 0 }
+$prefixes = @('0.0.0.0/0', '0.0.0.0/1', '128.0.0.0/1', '::/0', '::/1', '8000::/1')
+$stale = @(Get-NetRoute -InterfaceIndex $a.ifIndex -ErrorAction Stop |
+    Where-Object { $prefixes -contains $_.DestinationPrefix })
+foreach ($route in $stale) {
+    Remove-NetRoute -InputObject $route -Confirm:$false -ErrorAction Stop
+}
+# Xray may also have left DNS servers assigned to the TUN interface after an
+# abrupt termination. Reset ONLY the ByMeVPN adapter, never Wi-Fi/Ethernet.
+Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -ErrorAction Stop
+"#;
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoLogo", "-NoProfile", "-NonInteractive",
+            "-Command", SCRIPT,
+        ])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|_| "Не удалось проверить восстановление сети Windows.".to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("Windows не разрешила удалить оставшиеся маршруты ByMeVPN. Перезапустите компьютер, если интернет не восстановился.".into())
+    }
+}
+
+#[cfg(not(windows))]
+fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
+    Ok(())
+}
+
+pub async fn cleanup_bymevpn_routes_after_exit() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(cleanup_bymevpn_routes_after_exit_sync)
+        .await
+        .map_err(|_| "Не удалось завершить восстановление сети Windows.".to_string())?
+}
+
 // Xray writes continuously while the tunnel is active; a diagnostics request
 // must never load an unbounded file or return its sensitive raw content.
 pub fn startup_log_hint(path: &std::path::Path) -> &'static str {

@@ -1814,13 +1814,14 @@ pub async fn vpn_start(
         }
         let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
         let verified_ip = proof.verified_ip();
-        if proof == TunnelProof::RoutingBypass {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = fs::remove_file(&config_path);
-            return Err(
-                "Обнаружен обход VPN: Windows использует другой выход, чем сервер Xray.".into()
-            );
+        if verified_ip.is_none() {
+            // Never keep a system-wide TUN route installed after Xray has
+            // failed a real traffic check. The previous app hung the PC here.
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err(format!(
+                "VPN не подключён ({}). Изменения сети Windows отменены.",
+                proof.status()
+            ));
         }
         // An Xray process may remain alive even though Windows never installed
         // a usable Wintun route. Treat a *definitely* absent route as startup
@@ -1830,10 +1831,8 @@ pub async fn vpn_start(
             tokio::time::sleep(Duration::from_millis(400)).await;
             routes = crate::tun_health::inspect().await;
             if routes.definitely_missing() {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = fs::remove_file(&config_path);
-                return Err("Xray запущен, но Windows не создала рабочий TUN-маршрут. Проверьте сетевой адаптер ByMeVPN и журнал Xray.".into());
+                stop_failed_tun(&mut child, &config_path).await?;
+                return Err("Windows не создала рабочий VPN-маршрут. Подключение отменено для восстановления интернета.".into());
             }
         }
 
@@ -1850,6 +1849,13 @@ pub async fn vpn_start(
         } else {
             None
         };
+
+        if verified_ip.is_none() {
+            // DNS, adapter or the effective Windows route remains unhealthy.
+            // An Xray process alone is NOT a connection.
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err("Трафик через Windows TUN не подтверждён. Подключение отменено для восстановления интернета.".into());
+        }
 
         let server_port = session
             .get("port")

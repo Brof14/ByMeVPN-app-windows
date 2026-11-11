@@ -1,6 +1,8 @@
 use crate::api_transport::{send_to_bases, API_BASES};
 use crate::egress::{verify_tunnel_path, TunnelProof};
-use crate::tun_config::{add_attestation_http_inbound, build_tun_config_ext, supports_windows_session};
+use crate::tun_config::{
+    add_attestation_http_inbound, build_tun_config_ext, supports_windows_session,
+};
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
@@ -2011,36 +2013,35 @@ pub async fn vpn_health_report(
     // The manual diagnostic cannot claim a tunnel from a changing WAN IP:
     // it must reach the configured Xray outbound via a credentialed loopback
     // proxy, then observe the same exit through Windows' ordinary TUN route.
-    let (egress_probe, ip_verified, runtime_healthy) =
-        if let Some((port, password)) = probe_auth {
-            let _probe_guard = state.status_probe_gate.lock().await;
-            let proof = verify_tunnel_path(baseline_ip, port, &password).await;
-            let route_dns_ok = crate::tun_health::health_proves_connection(
-                &routes,
-                dns_resolution,
-                true,
-                proof.verified_ip().is_some(),
-            );
-            let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-            let mut verified = false;
-            if let Some(tunnel) = lock
-                .as_mut()
-                .filter(|active| Some(active.started_at) == tunnel_started_at)
-            {
-                verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
-                tunnel.last_tunnel_proof = proof;
-                tunnel.last_egress_probe = std::time::Instant::now();
-                tunnel.egress_verified = verified;
-                tunnel.server_ip = if verified {
-                    proof.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
-                } else {
-                    String::new()
-                };
-            }
-            (proof.status(), verified, verified)
-        } else {
-            ("not_running", false, false)
-        };
+    let (egress_probe, ip_verified, runtime_healthy) = if let Some((port, password)) = probe_auth {
+        let _probe_guard = state.status_probe_gate.lock().await;
+        let proof = verify_tunnel_path(baseline_ip, port, &password).await;
+        let route_dns_ok = crate::tun_health::health_proves_connection(
+            &routes,
+            dns_resolution,
+            true,
+            proof.verified_ip().is_some(),
+        );
+        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
+        let mut verified = false;
+        if let Some(tunnel) = lock
+            .as_mut()
+            .filter(|active| Some(active.started_at) == tunnel_started_at)
+        {
+            verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
+            tunnel.last_tunnel_proof = proof;
+            tunnel.last_egress_probe = std::time::Instant::now();
+            tunnel.egress_verified = verified;
+            tunnel.server_ip = if verified {
+                proof.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
+            } else {
+                String::new()
+            };
+        }
+        (proof.status(), verified, verified)
+    } else {
+        ("not_running", false, false)
+    };
     let hint = if process_tracked {
         app.path()
             .app_data_dir()

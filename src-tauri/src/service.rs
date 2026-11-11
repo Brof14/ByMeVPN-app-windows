@@ -1,7 +1,8 @@
 use crate::api_transport::{send_to_bases, API_BASES};
-use crate::egress::{verify_tunnel_path, TunnelProof};
+use crate::egress::{preflight_xray_server, verify_tunnel_path, TunnelProof};
 use crate::tun_config::{
-    add_attestation_http_inbound, build_tun_config_ext, supports_windows_session,
+    add_attestation_http_inbound, build_tun_config_ext, preflight_attestation_config,
+    supports_windows_session,
 };
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
@@ -55,6 +56,29 @@ pub struct ActiveTunnel {
     pub probe_port: u16,
     pub probe_password: String,
     pub last_tunnel_proof: TunnelProof,
+}
+
+/// Removes the temporary, credential-containing preflight configuration on
+/// every path, including a cancelled future or failed endpoint check.
+struct TemporaryConfig(PathBuf);
+
+impl Drop for TemporaryConfig {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+async fn stop_failed_tun(
+    child: &mut std::process::Child,
+    config_path: &std::path::Path,
+) -> Result<(), String> {
+    // Terminating Xray closes its dynamic WFP session. An abrupt termination
+    // may not run the Go cleanup that removes routes and TUN DNS settings,
+    // so remove stale routes on the ByMeVPN adapter, never Wi-Fi/Ethernet.
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_file(config_path);
+    crate::tun_health::cleanup_bymevpn_routes_after_exit().await
 }
 
 #[derive(Default)]

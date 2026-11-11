@@ -2087,6 +2087,7 @@ pub async fn vpn_health_report(
         "adapter": routes.adapter,
         "ipv4_default": routes.ipv4_default,
         "ipv6_default": routes.ipv6_default,
+        "effective_ipv4": routes.effective_ipv4,
         "dns_resolution": dns_resolution,
         "egress_probe": egress_probe,
         "runtime_healthy": runtime_healthy,

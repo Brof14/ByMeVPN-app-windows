@@ -1455,6 +1455,9 @@ async function refreshVpnHealth() {
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
       uiText('Маршрут IPv6: ', 'IPv6 route: ') +
         checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Выбранный Windows маршрут IPv4: ', 'Windows-selected IPv4 route: ') +
+        checked(report?.effective_ipv4, uiText('через ByMeVPN TUN', 'via ByMeVPN TUN'),
+          uiText('мимо TUN — соединение не защищено', 'bypasses TUN — unprotected')),
       uiText('Системный DNS: ', 'System DNS: ') +
         checked(report?.dns_resolution, uiText('тестовый домен разрешён', 'test hostname resolved'),
           uiText('тестовый запрос не прошёл', 'test lookup unsuccessful')),

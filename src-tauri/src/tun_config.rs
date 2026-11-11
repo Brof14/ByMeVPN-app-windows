@@ -408,8 +408,7 @@ pub fn add_attestation_http_inbound(
     }
     let inbounds = config["inbounds"].as_array_mut().unwrap();
     if inbounds.iter().any(|inbound| {
-        inbound["tag"] == "bymevpn-attestation"
-            || inbound["port"].as_u64() == Some(u64::from(port))
+        inbound["tag"] == "bymevpn-attestation" || inbound["port"].as_u64() == Some(u64::from(port))
     }) {
         return Err("Локальный тест VPN уже добавлен.".into());
     }
@@ -425,14 +424,14 @@ pub fn add_attestation_http_inbound(
     }));
     // Exact tag match, ahead of RU bypass, DNS and any user routing rule:
     // this test cannot accidentally escape via a 'direct' outbound.
-    config["routing"]["rules"]
-        .as_array_mut()
-        .unwrap()
-        .insert(0, json!({
+    config["routing"]["rules"].as_array_mut().unwrap().insert(
+        0,
+        json!({
             "type": "field",
             "inboundTag": ["bymevpn-attestation"],
             "outboundTag": "proxy"
-        }));
+        }),
+    );
     Ok(())
 }
 
@@ -691,7 +690,10 @@ mod tests {
         assert_eq!(config["inbounds"][1]["protocol"], "http");
         assert_eq!(config["inbounds"][1]["listen"], "127.0.0.1");
         assert_eq!(config["inbounds"][1]["port"], 38271);
-        assert_eq!(config["inbounds"][1]["settings"]["users"][0]["user"], "byme");
+        assert_eq!(
+            config["inbounds"][1]["settings"]["users"][0]["user"],
+            "byme"
+        );
         assert_eq!(
             config["inbounds"][1]["settings"]["users"][0]["pass"],
             "random-secret"
@@ -711,9 +713,8 @@ mod tests {
             .join("../vendor/runtime/windows-x64/xray.exe");
         let mut config = build_tun_config(&session()).unwrap();
         add_attestation_http_inbound(&mut config, 38271, "byme", "random-secret").unwrap();
-        let path = std::env::temp_dir().join(format!(
-            "bymevpn-attestation-{}.json", Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("bymevpn-attestation-{}.json", Uuid::new_v4()));
         std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
         let result = std::process::Command::new(&root)
             .args(["run", "-test", "-config"])

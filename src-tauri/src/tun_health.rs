@@ -155,8 +155,11 @@ Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -Err
 "#;
     let output = std::process::Command::new("powershell.exe")
         .args([
-            "-NoLogo", "-NoProfile", "-NonInteractive",
-            "-Command", SCRIPT,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            SCRIPT,
         ])
         .creation_flags(0x0800_0000)
         .output()

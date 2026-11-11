@@ -771,6 +771,28 @@ mod tests {
     }
 
     #[test]
+    fn preflight_only_config_is_accepted_by_bundled_windows_xray() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "bymevpn", "unique-password").unwrap();
+        let preflight = preflight_attestation_config(&config).unwrap();
+        let path = std::env::temp_dir().join(format!("byme-preflight-{}.json", Uuid::new_v4()));
+        std::fs::write(&path, serde_json::to_vec(&preflight).unwrap()).unwrap();
+        let result = std::process::Command::new(&root)
+            .args(["run", "-test", "-config"])
+            .arg(&path)
+            .output();
+        let _ = std::fs::remove_file(path);
+        let output = result.expect("Bundled Windows Xray must be runnable");
+        assert!(
+            output.status.success(),
+            "Xray rejected safe proxy-only preflight config: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn preflight_rejects_missing_authenticated_probe_without_modifying_system() {
         let base = build_tun_config(&session()).unwrap();
         assert!(preflight_attestation_config(&base).is_err());

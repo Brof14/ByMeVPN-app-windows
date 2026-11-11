@@ -1904,7 +1904,10 @@ pub async fn vpn_status(
                 active.last_tunnel_proof = result;
                 active.egress_verified = path_ready && result.verified_ip().is_some();
                 active.server_ip = if active.egress_verified {
-                    result.verified_ip().map(|ip| ip.to_string()).unwrap_or_default()
+                    result
+                        .verified_ip()
+                        .map(|ip| ip.to_string())
+                        .unwrap_or_default()
                 } else {
                     String::new()
                 };

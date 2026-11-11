@@ -708,6 +708,32 @@ mod tests {
     }
 
     #[test]
+    fn preflight_does_not_create_tun_routes_or_wfp_filters() {
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "bymevpn", "unique-password").unwrap();
+        let preflight = preflight_attestation_config(&config).unwrap();
+
+        let inbounds = preflight["inbounds"].as_array().unwrap();
+        assert_eq!(inbounds.len(), 1);
+        assert_eq!(inbounds[0]["protocol"], "http");
+        assert_eq!(inbounds[0]["listen"], "127.0.0.1");
+        assert_eq!(inbounds[0]["tag"], "bymevpn-attestation");
+        assert_eq!(preflight["routing"]["rules"][0]["outboundTag"], "proxy");
+        assert!(preflight["outbounds"].as_array().unwrap().iter().any(|outbound| {
+            outbound["tag"] == "proxy"
+        }));
+        assert!(preflight.to_string().find("autoSystemRoutingTable").is_none());
+        assert!(preflight.to_string().find("autoSystemWfpBlockLeak").is_none());
+        assert_eq!(config["inbounds"][0]["protocol"], "tun");
+    }
+
+    #[test]
+    fn preflight_rejects_missing_authenticated_probe_without_modifying_system() {
+        let base = build_tun_config(&session()).unwrap();
+        assert!(preflight_attestation_config(&base).is_err());
+    }
+
+    #[test]
     fn xray_accepts_attested_tun_config_with_local_http_proxy() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../vendor/runtime/windows-x64/xray.exe");

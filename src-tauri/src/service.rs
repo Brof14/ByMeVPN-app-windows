@@ -1797,8 +1797,7 @@ pub async fn vpn_start(
         let child_job = match crate::windows_job::ChildJob::attach(&child) {
             Ok(job) => job,
             Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                stop_failed_tun(&mut child, &config_path).await?;
                 return Err(error);
             }
         };
@@ -1807,10 +1806,8 @@ pub async fn vpn_start(
         // An unrelated change of network/WAN IP is not evidence of VPN traffic.
         tokio::time::sleep(Duration::from_millis(750)).await;
         if !matches!(child.try_wait(), Ok(None)) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = fs::remove_file(&config_path);
-            return Err("Xray завершился до установления VPN. Проверьте диагностику.".into());
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err("Xray завершился до установления VPN. Сетевые настройки восстановлены.".into());
         }
         let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
         let verified_ip = proof.verified_ip();
@@ -1940,9 +1937,10 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     };
     if let Some(active) = maybe_active {
         let _ = fs::remove_file(&active.config_path);
-        // Clean residual default routes before awaiting backend network I/O.
-        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
+        // Revoke device session even if Windows refuses route cleanup.
+        let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+        cleanup?;
     } else {
         // Also repair a stale ByMeVPN route from an earlier crashed build.
         crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;

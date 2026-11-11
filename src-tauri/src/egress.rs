@@ -176,6 +176,37 @@ mod tests {
     }
 
     #[test]
+    fn changed_direct_ip_cannot_be_verified_without_a_matching_proxy_ip() {
+        let original: IpAddr = "192.0.2.10".parse().unwrap();
+        let direct: IpAddr = "198.51.100.9".parse().unwrap();
+        let via_xray: IpAddr = "203.0.113.45".parse().unwrap();
+        assert_eq!(
+            classify_tunnel_path(Some(original), Some(via_xray), Some(direct)),
+            TunnelProof::RoutingBypass
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(original), None, Some(direct)),
+            TunnelProof::ProxyUnreachable
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(original), Some(via_xray), None),
+            TunnelProof::TunUnreachable
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(original), Some(direct), Some(direct)),
+            TunnelProof::Verified(direct)
+        );
+        assert_eq!(
+            classify_tunnel_path(None, Some(direct), Some(direct)),
+            TunnelProof::BaselineUnavailable
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(direct), Some(direct), Some(direct)),
+            TunnelProof::BaselineUnchanged
+        );
+    }
+
+    #[test]
     fn missing_baseline_does_not_prevent_start_but_never_claims_verification() {
         let observed = "198.51.100.9".parse::<IpAddr>().unwrap();
         assert_eq!(

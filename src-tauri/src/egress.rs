@@ -108,6 +108,33 @@ pub fn classify_tunnel_path(
     }
 }
 
+fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Client, String> {
+    let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))
+        .map_err(|_| "Некорректный локальный адрес проверки VPN.".to_string())?
+        .basic_auth("bymevpn", password);
+    reqwest::Client::builder()
+        .proxy(proxy)
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_millis(2000))
+        .timeout(Duration::from_millis(3500))
+        .build()
+        .map_err(|_| "Не удалось подготовить защищённый тест VPN.".to_string())
+}
+
+/// Server-only preflight: does the configured Xray proxy itself pass a real
+/// HTTPS request? Until this is true, Windows TUN routes must not be changed.
+pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
+    let Ok(client) = authenticated_proxy_client(port, password) else {
+        return false;
+    };
+    tokio::time::timeout(Duration::from_secs(7), probe_egress(client))
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
+
 /// End-to-end evidence using Xray's authenticated loopback HTTP inbound. The
 /// two measurements use the *same* provider, unlike the old random-provider
 /// IP comparison. Tests never contain real subscription credentials.
@@ -116,18 +143,7 @@ pub async fn verify_tunnel_path(
     port: u16,
     password: &str,
 ) -> TunnelProof {
-    let proxy = match reqwest::Proxy::all(format!("http://127.0.0.1:{port}")) {
-        Ok(proxy) => proxy.basic_auth("bymevpn", password),
-        Err(_) => return TunnelProof::ProbeUnavailable,
-    };
-    let via_xray = match reqwest::Client::builder()
-        .proxy(proxy)
-        .https_only(true)
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_millis(2500))
-        .timeout(Duration::from_millis(4500))
-        .build()
-    {
+    let via_xray = match authenticated_proxy_client(port, password) {
         Ok(client) => client,
         Err(_) => return TunnelProof::ProbeUnavailable,
     };

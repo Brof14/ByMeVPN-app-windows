@@ -637,6 +637,50 @@ mod tests {
     }
 
     #[test]
+    fn authenticated_local_probe_is_forced_through_the_selected_vpn_outbound() {
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "byme", "random-secret").unwrap();
+        assert_eq!(config["inbounds"][1]["protocol"], "http");
+        assert_eq!(config["inbounds"][1]["listen"], "127.0.0.1");
+        assert_eq!(config["inbounds"][1]["port"], 38271);
+        assert_eq!(config["inbounds"][1]["settings"]["users"][0]["user"], "byme");
+        assert_eq!(
+            config["inbounds"][1]["settings"]["users"][0]["pass"],
+            "random-secret"
+        );
+        assert_eq!(
+            config["routing"]["rules"][0]["inboundTag"][0],
+            "bymevpn-attestation"
+        );
+        assert_eq!(config["routing"]["rules"][0]["outboundTag"], "proxy");
+        assert_eq!(config["outbounds"][0]["tag"], "proxy");
+        assert!(add_attestation_http_inbound(&mut config, 38271, "byme", "secret").is_err());
+    }
+
+    #[test]
+    fn xray_accepts_attested_tun_config_with_local_http_proxy() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        let mut config = build_tun_config(&session()).unwrap();
+        add_attestation_http_inbound(&mut config, 38271, "byme", "random-secret").unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "bymevpn-attestation-{}.json", Uuid::new_v4()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let result = std::process::Command::new(&root)
+            .args(["run", "-test", "-config"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert!(
+            result.status.success(),
+            "Attestation config failed Xray -test: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    #[test]
     fn xray_accepts_generated_synthetic_configuration() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../vendor/runtime/windows-x64/xray.exe");

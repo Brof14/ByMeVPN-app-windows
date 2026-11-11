@@ -435,6 +435,49 @@ pub fn add_attestation_http_inbound(
     Ok(())
 }
 
+/// Pre-connection server test: reuse the *actual* selected outbound and the
+/// authenticated loopback HTTP listener, but DO NOT install a TUN, DNS rules,
+/// WFP filters or any system routes. This must run before full VPN startup.
+pub fn preflight_attestation_config(config: &Value) -> Result<Value, String> {
+    let probe = config["inbounds"]
+        .as_array()
+        .and_then(|inbounds| {
+            inbounds.iter().find(|inbound| {
+                inbound["tag"] == "bymevpn-attestation"
+                    && inbound["protocol"] == "http"
+                    && inbound["listen"] == "127.0.0.1"
+                    && inbound["settings"]["users"]
+                        .as_array()
+                        .is_some_and(|users| !users.is_empty())
+            })
+        })
+        .ok_or("Отсутствует безопасный локальный тест VPN.")?;
+    let outbounds = config["outbounds"]
+        .as_array()
+        .filter(|outbounds| outbounds.iter().any(|outbound| outbound["tag"] == "proxy"))
+        .ok_or("Отсутствует исходящий VPN-протокол.")?;
+
+    // Avoid copying rules that belong to TUN interception. A single rule
+    // routes this local test straight through the selected proxy outbound.
+    let mut preflight = json!({
+        "log": {"loglevel": "warning"},
+        "inbounds": [probe],
+        "outbounds": outbounds,
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [{
+                "type": "field",
+                "inboundTag": ["bymevpn-attestation"],
+                "outboundTag": "proxy"
+            }]
+        }
+    });
+    if let Some(dns) = config.get("dns") {
+        preflight["dns"] = dns.clone();
+    }
+    Ok(preflight)
+}
+
 pub fn supports_windows_session(session: &Value) -> bool {
     build_tun_config_ext(session, false, "none", "cloudflare").is_ok()
 }

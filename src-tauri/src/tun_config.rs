@@ -388,6 +388,54 @@ pub fn build_tun_config_ext(
     }))
 }
 
+/// A one-session, authenticated HTTP CONNECT listener proves whether the
+/// selected Xray outbound can reach the internet independently of Windows
+/// TUN routing. It never listens on a LAN address or becomes a default system
+/// proxy. Caller supplies a fresh loopback port and per-session credentials.
+pub fn add_attestation_http_inbound(
+    config: &mut Value,
+    port: u16,
+    user: &str,
+    password: &str,
+) -> Result<(), String> {
+    if port == 0
+        || user.is_empty()
+        || password.is_empty()
+        || config["inbounds"].as_array().is_none()
+        || config["routing"]["rules"].as_array().is_none()
+    {
+        return Err("Невозможно создать защищённый локальный тест VPN.".into());
+    }
+    let inbounds = config["inbounds"].as_array_mut().unwrap();
+    if inbounds.iter().any(|inbound| {
+        inbound["tag"] == "bymevpn-attestation"
+            || inbound["port"].as_u64() == Some(u64::from(port))
+    }) {
+        return Err("Локальный тест VPN уже добавлен.".into());
+    }
+    inbounds.push(json!({
+        "tag": "bymevpn-attestation",
+        "listen": "127.0.0.1",
+        "port": port,
+        "protocol": "http",
+        "settings": {
+            "users": [{"user": user, "pass": password}],
+            "allowTransparent": false
+        }
+    }));
+    // Exact tag match, ahead of RU bypass, DNS and any user routing rule:
+    // this test cannot accidentally escape via a 'direct' outbound.
+    config["routing"]["rules"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, json!({
+            "type": "field",
+            "inboundTag": ["bymevpn-attestation"],
+            "outboundTag": "proxy"
+        }));
+    Ok(())
+}
+
 pub fn supports_windows_session(session: &Value) -> bool {
     build_tun_config_ext(session, false, "none", "cloudflare").is_ok()
 }

@@ -1816,12 +1816,14 @@ function updateVpnUi() {
   // Android hides free-trial activation once the API says it was consumed.
   const trialButton = document.getElementById('btn-no-plan-trial');
   if (trialButton) {
-    const available = sub == null || (!hasPlan && sub.trial_available === true);
+    const available = !accessUnknown && !hasPlan && sub.trial_available === true;
     trialButton.disabled = !available || state.trialBusy;
     const label = trialButton.querySelector?.('[data-i18n="no_plan_trial_button"]');
-    if (label) label.textContent = available
-      ? uiText('Активировать бесплатно', 'Activate free trial')
-      : uiText('Пробный период недоступен', 'Free trial unavailable');
+    if (label) label.textContent = accessUnknown
+      ? uiText('Проверяем доступ…', 'Checking eligibility…')
+      : available
+        ? uiText('Активировать бесплатно', 'Activate free trial')
+        : uiText('Пробный период недоступен', 'Free trial unavailable');
   }
 
   if (isConn) {
@@ -2429,6 +2431,29 @@ async function handleActivateTrial() {
   setTrialPending(true);
   showToast(uiText('Проверяем пробный доступ...', 'Checking your free trial...'));
   try {
+    // Eligibility can change after login or another device's activation.
+    // Match Android: refresh the account first and fail closed on unknown state.
+    const snapshot = await invoke('account_snapshot');
+    if (!sameAccount()) return;
+    if (!snapshot?.subscription) {
+      throw new Error(uiText(
+        'Не удалось проверить право на пробный период.',
+        'Could not verify free-trial eligibility.'
+      ));
+    }
+    state.subscription = snapshot.subscription;
+    updateSubscriptionUi();
+    updateVpnUi();
+    const freshSub = state.subscription;
+    const hasActiveAccess = ['active', 'trial', 'grace'].includes(freshSub.status);
+    if (freshSub.status === 'unknown' || hasActiveAccess || freshSub.trial_available !== true) {
+      showToast(freshSub.status === 'unknown'
+        ? uiText('Не удалось проверить пробный доступ. Повторите позже.',
+          'Could not verify free-trial eligibility. Try again later.')
+        : uiText('Пробный период сейчас недоступен для аккаунта.',
+          'A free trial is not currently available for this account.'), true);
+      return;
+    }
     const res = await invoke('activate_trial');
     // A successful backend response for a previous signed-in identity must
     // never overwrite a newly signed-in account after an async race.

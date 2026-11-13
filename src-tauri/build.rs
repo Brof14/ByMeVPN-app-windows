@@ -1,6 +1,8 @@
 use sha2::{Digest, Sha256};
 use std::{fs::File, io::Read, path::PathBuf};
 
+mod runtime_integrity;
+
 fn verified_build_runtime_hash() -> String {
     let path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("Manifest dir"))
         .join("../vendor/runtime/windows-x64/xray.exe");
@@ -19,11 +21,17 @@ fn verified_build_runtime_hash() -> String {
         }
         digest.update(&buffer[..bytes]);
     }
-    format!("{:x}", digest.finalize())
+    let actual = format!("{:x}", digest.finalize());
+    assert!(
+        runtime_integrity::is_official_xray_hash(&actual),
+        "Xray runtime does not match the pinned official executable; run scripts/setup-runtime.ps1"
+    );
+    actual
 }
 
 fn main() {
     println!("cargo:rerun-if-env-changed=BYMEVPN_NO_ADMIN_MANIFEST");
+    println!("cargo:rerun-if-changed=runtime_integrity.rs");
     println!("cargo:rerun-if-changed=../vendor/runtime/windows-x64/xray.exe");
     println!(
         "cargo:rustc-env=BYMEVPN_XRAY_SHA256={}",

@@ -373,7 +373,7 @@ async fn request(
     } else {
         None
     };
-    let device_id = if path == "/servers" {
+    let device_id = if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
         Some(install_id(app)?)
     } else {
         None

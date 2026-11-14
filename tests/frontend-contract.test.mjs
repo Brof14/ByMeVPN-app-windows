@@ -186,7 +186,7 @@ test('desktop defaults match Android V2: direct RU traffic, no unimplemented pro
     verified: state.vpnVerified
   })`));
   assert.deepEqual(snapshot, {
-    bypassRu: true, background: false, killSwitch: false,
+    bypassRu: true, background: true, killSwitch: false,
     adBlock: 'none', authBusy: false, verified: false
   });
 });

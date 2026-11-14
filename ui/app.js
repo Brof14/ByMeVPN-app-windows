@@ -61,7 +61,7 @@ const state = {
     autoStart: false,
     autoConnect: false,
     autoReconnect: true,
-    stayConnectedInBackground: false,
+    stayConnectedInBackground: true,
     bypassRu: true,
     adBlock: 'none',
     dnsMode: 'cloudflare',
@@ -102,6 +102,7 @@ const I18N = {
     window_minimize: "Свернуть",
     window_maximize: "Развернуть",
     window_close: "Закрыть",
+    window_hide_tray: "Свернуть в область уведомлений",
     help_tooltip: "Помощь",
     vpn_toggle_label: "Переключить VPN",
     routing_settings_tooltip: "Настройки маршрутизации",
@@ -111,7 +112,7 @@ const I18N = {
     trial_try_three: "Попробуйте 3 дня бесплатно",
     trial_all_locations: "Полный доступ ко всем локациям для новых пользователей",
     trial_no_cancel: "Все серверы сразу • Без оплаты и карты",
-    background_unavailable_tip: "Фоновый режим требует Windows Service",
+    background_unavailable_tip: "Открыть ByMeVPN можно из области уведомлений Windows",
     killswitch_unavailable_tip: "Полная аварийная защита пока не реализована",
     renewal_disclaimer: "Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.",
     renewal_select_plan: "Выбрать или продлить тариф",
@@ -330,7 +331,7 @@ const I18N = {
     autostart_title: 'Запускать вместе с системой',
     autostart_desc: 'ByMeVPN будет включаться автоматически при запуске компьютера',
     background_title: 'Оставаться подключённым в фоне',
-    background_desc: 'Фоновая работа пока в разработке. Закрытие окна отключает VPN.',
+    background_desc: 'Закрытие окна скроет приложение в область уведомлений и оставит VPN включённым.',
     bypass_title: 'Умный обход российских сервисов',
     bypass_desc: 'Российские сайты и сервисы будут открываться без VPN',
     set_security_title: 'Комфорт и защита',
@@ -385,6 +386,7 @@ const I18N = {
     window_minimize: "Minimize",
     window_maximize: "Maximize",
     window_close: "Close",
+    window_hide_tray: "Hide to notification area",
     help_tooltip: "Help",
     vpn_toggle_label: "Toggle VPN",
     routing_settings_tooltip: "Routing settings",
@@ -394,7 +396,7 @@ const I18N = {
     trial_try_three: "Try 3 days free",
     trial_all_locations: "Access all available locations for new users",
     trial_no_cancel: "All servers • No payment or card",
-    background_unavailable_tip: "Background mode requires Windows Service",
+    background_unavailable_tip: "Open ByMeVPN from the Windows notification area",
     killswitch_unavailable_tip: "A full kill switch is not implemented yet",
     renewal_disclaimer: "Renewal terms depend on your checkout. Contact support if in-app management is unavailable.",
     renewal_select_plan: "Choose or renew a plan",
@@ -613,7 +615,7 @@ const I18N = {
     autostart_title: 'Launch on Windows startup',
     autostart_desc: 'ByMeVPN starts automatically with your system',
     background_title: 'Stay connected in background',
-    background_desc: 'Background VPN mode is not available yet. Closing the app disconnects.',
+    background_desc: 'Closing the window hides the app in the system tray and keeps VPN connected.',
     bypass_title: 'Smart local services bypass',
     bypass_desc: 'Direct routes for local government, banking and local domain services',
     set_security_title: 'Comfort & Protection',
@@ -2724,7 +2726,7 @@ function applySettingsToUi() {
   if (setAuto) setAuto.checked = !!s.autoStart;
   if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
   if (setAutoReconnect) setAutoReconnect.checked = s.autoReconnect !== false;
-  if (setBg) setBg.checked = false;
+  if (setBg) setBg.checked = !!s.stayConnectedInBackground;
   if (setBypass) setBypass.checked = !!s.bypassRu;
   if (setDnsMode) setDnsMode.value = s.dnsMode || 'cloudflare';
   if (setKill) setKill.checked = false;

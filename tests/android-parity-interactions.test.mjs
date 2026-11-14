@@ -149,15 +149,15 @@ test('the in-app FAQ does not promise unsupported automatic cancellation or anon
 });
 
 test('version text follows the chosen language without changing the real build number', () => {
-  const version = { dataset: { appVersion: '1.2.8' }, textContent: '' };
+  const version = { dataset: { appVersion: '1.2.9' }, textContent: '' };
   const app = harness(undefined, { version });
   app.eval("state.settings.language = 'en'");
   app.eval("applyLanguage('en')");
-  assert.equal(version.textContent, 'Version 1.2.8');
+  assert.equal(version.textContent, 'Version 1.2.9');
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
-  assert.equal(version.textContent, 'Версия 1.2.8');
-  assert.match(html, /data-app-version="1\.2\.8"/);
+  assert.equal(version.textContent, 'Версия 1.2.9');
+  assert.match(html, /data-app-version="1\.2\.9"/);
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {
@@ -216,6 +216,8 @@ test('Android primary settings contains only everyday connection toggles and lan
   assert.match(html, /class="lang-segmented-control"/);
   assert.match(primary, /id="row-open-advanced-settings"/);
   assert.match(css, /\.android-settings-essential \.setting-item-row/);
+  assert.doesNotMatch(html.match(/id="set-background"[^>]*>/)?.[0] || '', /disabled/);
+  assert.match(source, /set-background.*handleSettingChange\('stayConnectedInBackground'/);
 });
 
 test('Windows never allocates a VPN session before checking the original egress route', () => {

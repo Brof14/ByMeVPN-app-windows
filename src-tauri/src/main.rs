@@ -11,7 +11,11 @@ mod window_layout;
 #[cfg(windows)]
 mod windows_job;
 
-use tauri::{Manager, RunEvent};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, RunEvent, WindowEvent,
+};
 #[cfg(all(debug_assertions, windows))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -22,6 +26,30 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 window_layout::fit_to_monitor(&window)?;
             }
+            let open = MenuItem::with_id(app, "open", "Открыть ByMeVPN", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
+            TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("ByMeVPN")
+                .icon(app.default_window_icon().expect("application icon").clone())
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
             if let Ok(dir) = app.path().app_data_dir() {
                 let stale_config = dir.join("active_tunnel.json");
                 if stale_config.exists() {
@@ -90,6 +118,22 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("ByMeVPN failed to start")
         .run(|app_handle, event| {
+            if let RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } = &event
+            {
+                if label == "main"
+                    && service::load_settings(app_handle)["stayConnectedInBackground"]
+                        == serde_json::Value::Bool(true)
+                {
+                    api.prevent_close();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            }
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(state) = app_handle.try_state::<service::AppState>() {
                     if let Ok(mut lock) = state.tunnel.lock() {
@@ -102,4 +146,12 @@ fn main() {
                 }
             }
         });
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
 }

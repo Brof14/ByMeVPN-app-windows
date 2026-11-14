@@ -1529,7 +1529,7 @@ fn default_settings() -> Value {
         "autoStart": false,
         "autoConnect": false,
         "autoReconnect": true,
-        "stayConnectedInBackground": false,
+        "stayConnectedInBackground": true,
         "bypassRu": true,
         "adBlock": "none",
         "dnsMode": "cloudflare",
@@ -1546,7 +1546,12 @@ fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
                 return Err("Эта настройка должна иметь значение вкл./выкл.".into());
             }
         }
-        "stayConnectedInBackground" | "killSwitch" => {
+        "stayConnectedInBackground" => {
+            if !value.is_boolean() {
+                return Err("Эта настройка должна иметь значение вкл./выкл.".into());
+            }
+        }
+        "killSwitch" => {
             if value != &Value::Bool(false) {
                 return Err("Функция будет доступна после проверки безопасности Windows.".into());
             }
@@ -2390,8 +2395,12 @@ pub fn window_toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+pub fn window_close(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if load_settings(&app)["stayConnectedInBackground"] == Value::Bool(true) {
+        window.hide().map_err(|e| e.to_string())
+    } else {
+        window.close().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -2577,15 +2586,16 @@ mod tests {
     }
 
     #[test]
-    fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {
+    fn settings_are_type_safe_and_unsupported_features_stay_disabled() {
         assert!(validate_setting("bypassRu", &json!(true)).is_ok());
         assert!(validate_setting("bypassRu", &json!("true")).is_err());
         assert!(validate_setting("autoReconnect", &json!(true)).is_ok());
         assert!(validate_setting("autoReconnect", &json!("yes")).is_err());
+        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_ok());
+        assert!(validate_setting("stayConnectedInBackground", &json!("yes")).is_err());
         assert!(validate_setting("selectedServerCode", &json!("node_de-1")).is_ok());
         assert!(validate_setting("selectedServerCode", &json!("../settings")).is_err());
         assert!(validate_setting("killSwitch", &json!(true)).is_err());
-        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
         assert!(validate_setting("adBlock", &json!("unknown")).is_err());
         assert!(validate_setting("language", &json!("fr")).is_err());
         assert!(validate_setting("language", &json!("system")).is_ok());
@@ -2594,6 +2604,7 @@ mod tests {
         assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);
         assert_eq!(default_settings()["autoReconnect"], true);
+        assert_eq!(default_settings()["stayConnectedInBackground"], true);
         assert_eq!(default_settings()["adBlock"], "none");
     }
 

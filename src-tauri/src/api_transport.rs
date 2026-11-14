@@ -25,7 +25,12 @@ pub async fn send_to_bases(
         let mut request = client
             .request(method.clone(), format!("{base}{path}"))
             .header("Accept", "application/json");
-        if matches!(path, "/servers" | "/vpn/session") {
+        if path == "/vpn/session" {
+            // The backend uses this only to filter nodes to Windows-compatible
+            // protocols. Android's server-catalog request carries no device
+            // fingerprint, so don't pass a desktop HWID to the subscription
+            // provider while loading /servers.
+            request = request.header("X-Device-OS", "Windows");
             request = request.header("X-VPN-Capabilities", VPN_CAPABILITIES);
         }
         if let Some(body) = body {
@@ -104,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn vpn_capabilities_are_advertised_only_to_vpn_endpoints() {
+    fn device_and_protocol_headers_are_scoped_to_vpn_session_selection() {
         fn received_headers(path: &str) -> String {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
@@ -132,13 +137,18 @@ mod tests {
             worker.join().unwrap()
         }
 
-        for path in ["/servers", "/vpn/session"] {
-            let headers = received_headers(path);
-            assert!(
-                headers.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
-                "Missing desktop capabilities for {path}"
-            );
-        }
+        let servers = received_headers("/servers");
+        assert!(!servers.contains("x-hwid:"));
+        assert!(!servers.contains("x-device-os:"));
+        assert!(!servers.contains("x-vpn-capabilities:"));
+
+        let session = received_headers("/vpn/session");
+        assert!(session.contains("x-device-os: windows"));
+        assert!(
+            session.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
+            "Missing desktop capabilities for session selection"
+        );
+        assert!(!session.contains("x-hwid:"));
         assert!(!received_headers("/plans").contains("x-vpn-capabilities:"));
     }
 

@@ -381,6 +381,32 @@ test('trial errors use Android-aligned, language-specific recovery copy', () => 
   assert.match(app.eval("trialActivationMessage('NETWORK_ERROR')"), /internet connection/);
 });
 
+test('server catalog retries a transient API failure once', async () => {
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => {
+      calls += 1;
+      if (calls === 1) throw 'API temporarily unavailable (HTTP 503)';
+      return [{ code: 'node-nl', supported: true }];
+    }
+  });
+  const result = await app.eval('fetchServerCatalog(state.sessionEpoch)');
+  assert.equal(calls, 2);
+  assert.equal(result[0].code, 'node-nl');
+});
+
+test('server catalog does not retry authorization errors and explains recovery', async () => {
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => { calls += 1; throw 'Invalid token (HTTP 401)'; }
+  });
+  await assert.rejects(app.eval('fetchServerCatalog(state.sessionEpoch)'), /HTTP 401/);
+  assert.equal(calls, 1);
+  assert.match(app.eval("serverCatalogErrorMessage('Invalid token (HTTP 401)')"), /сеанс|войдите/i);
+  app.eval("state.settings.language = 'en'");
+  assert.match(app.eval("serverCatalogErrorMessage('API temporarily unavailable (HTTP 503)')"), /temporarily unavailable/i);
+});
+
 test('account deletion remains a support request, not a destructive native IPC', () => {
   const backend = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');
   assert.doesNotMatch(backend, /service::delete_account,/);

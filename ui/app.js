@@ -707,7 +707,7 @@ async function loadInitialData() {
 async function loadAvailableServers() {
   const epoch = state.sessionEpoch;
   try {
-    const servers = await invoke('get_servers');
+    const servers = await fetchServerCatalog(epoch);
     if (epoch !== state.sessionEpoch) return;
     state.servers = Array.isArray(servers) ? servers : [];
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
@@ -727,8 +727,45 @@ async function loadAvailableServers() {
     if (epoch !== state.sessionEpoch) return;
     state.servers = [];
     renderServersList();
-    showToast('Не удалось загрузить реальные серверы. Проверьте соединение.', true);
+    showToast(serverCatalogErrorMessage(err), true);
   }
+}
+
+async function fetchServerCatalog(epoch) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await invoke('get_servers');
+    } catch (error) {
+      const raw = String(typeof error === 'string' ? error : error?.message || '');
+      const retryable = /HTTP (?:429|5\d\d)|timeout|истекло время ожидания|не удалось установить защищённое TLS-соединение|ошибка сетевого обмена|не удалось связаться с ByMeVPN API/i.test(raw);
+      if (attempt !== 0 || !retryable) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (epoch !== state.sessionEpoch) return null;
+    }
+  }
+  return null;
+}
+
+function serverCatalogErrorMessage(error) {
+  const raw = String(typeof error === 'string' ? error : error?.message || '');
+  if (/HTTP 401|UNAUTHORIZED|сначала войдите|сеанс истёк/i.test(raw)) {
+    return uiText('Сеанс API истёк. Обновите аккаунт или войдите снова.',
+      'The API session expired. Refresh your account or sign in again.');
+  }
+  if (/HTTP 403|SUBSCRIPTION_REQUIRED|DEVICE_LIMIT/i.test(raw)) {
+    return uiText('Серверы недоступны для текущего статуса подписки. Обновите аккаунт.',
+      'Servers are unavailable for the current subscription. Refresh your account.');
+  }
+  if (/HTTP 404|не вернул список доступных локаций/i.test(raw)) {
+    return uiText('API не вернул список серверов. Обновите приложение или повторите позже.',
+      'The API did not return a server list. Update the app or try again later.');
+  }
+  if (/HTTP (?:429|5\d\d)|timeout|истекло время ожидания/i.test(raw)) {
+    return uiText('Сервис серверов временно недоступен. Список будет загружен при повторной попытке.',
+      'The server service is temporarily unavailable. Retry to load the list.');
+  }
+  return uiText('Не удалось связаться с API серверов. Проверьте интернет и нажмите «Обновить».',
+    'Could not reach the server API. Check your internet and press “Refresh”.');
 }
 
 // Android V2 offers exact device-scoped SKUs; prices are never extrapolated.

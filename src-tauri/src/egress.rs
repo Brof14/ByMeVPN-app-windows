@@ -116,8 +116,8 @@ fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Clie
         .proxy(proxy)
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_millis(2000))
-        .timeout(Duration::from_millis(3500))
+        .connect_timeout(Duration::from_millis(2500))
+        .timeout(Duration::from_millis(4500))
         .build()
         .map_err(|_| "Не удалось подготовить защищённый тест VPN.".to_string())
 }
@@ -151,18 +151,32 @@ pub async fn verify_tunnel_path(
         Ok(client) => client,
         Err(_) => return TunnelProof::ProbeUnavailable,
     };
+    // Test independent providers concurrently, and measure both routes to the
+    // same provider at the same time. Serial probing used to spend the entire
+    // startup window waiting on one blocked HTTPS/DNS provider before trying
+    // a working fallback.
     let pair = async {
-        let mut proxy_reachable = false;
+        let mut probes = JoinSet::new();
         for endpoint in PROBES {
-            // Xray must first successfully tunnel the HTTPS connection.
-            // Bypassing TCP through a direct socket cannot satisfy this step
-            // because this local inbound has a forced proxy routing rule.
-            let Some(remote_ip) = query_probe(via_xray.clone(), endpoint).await else {
-                continue;
-            };
-            proxy_reachable = true;
-            if let Some(system_ip) = query_probe(system.clone(), endpoint).await {
-                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+            let proxy = via_xray.clone();
+            let direct = system.clone();
+            probes.spawn(async move {
+                // This local inbound has a forced proxy routing rule, so a
+                // successful response proves the selected server path.
+                let (remote, system) =
+                    tokio::join!(query_probe(proxy, endpoint), query_probe(direct, endpoint));
+                (remote, system)
+            });
+        }
+        let mut proxy_reachable = false;
+        while let Some(result) = probes.join_next().await {
+            match result {
+                Ok((Some(remote_ip), Some(system_ip))) => {
+                    probes.abort_all();
+                    return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+                }
+                Ok((Some(_), _)) => proxy_reachable = true,
+                _ => {}
             }
         }
         if proxy_reachable {
@@ -171,8 +185,8 @@ pub async fn verify_tunnel_path(
             TunnelProof::ProxyUnreachable
         }
     };
-    // Bound the time Windows can be in the switched TUN state before the
-    // caller either confirms real traffic or performs automatic rollback.
+    // Each provider pair now runs concurrently; leave a short bounded window
+    // for DNS/TLS setup while preserving fail-safe rollback.
     tokio::time::timeout(Duration::from_secs(6), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)

@@ -62,16 +62,18 @@ pub fn build_tun_config_ext(
     let protocol = text(session, &["protocol"])
         .unwrap_or("vless")
         .to_ascii_lowercase();
+    let is_hysteria = matches!(protocol.as_str(), "hysteria2" | "hy2");
     let security = text(session, &["security"])
-        .unwrap_or("reality")
+        .unwrap_or(if is_hysteria { "tls" } else { "reality" })
         .to_ascii_lowercase();
     let network = text(session, &["network"])
-        .unwrap_or("tcp")
+        .unwrap_or(if is_hysteria { "udp" } else { "tcp" })
         .to_ascii_lowercase();
-    let host = text(session, &["server", "endpoint"])
+    let host = text(session, &["server", "endpoint", "address"])
         .filter(|s| valid_host(s))
         .ok_or("Сервер вернул некорректный адрес VPN.")?;
-    let sni = text(session, &["server_name", "sni"]);
+    let sni = text(session, &["server_name", "serverName", "sni"])
+        .or_else(|| is_hysteria.then_some(host));
     if sni.is_some_and(|name| !valid_host(name)) || (security == "reality" && sni.is_none()) {
         return Err("Сервер не вернул корректное имя TLS.".into());
     }
@@ -228,10 +230,13 @@ pub fn build_tun_config_ext(
             if security != "tls" || !matches!(network.as_str(), "udp" | "hysteria") {
                 return Err("Некорректные параметры Hysteria 2.".into());
             }
-            let auth =
-                text(session, &["uuid", "id"]).ok_or("Сервер не вернул пароль Hysteria 2.")?;
-            let obfuscation = text(session, &["encryption"]).unwrap_or("");
-            let obfuscation_password = text(session, &["flow"]).unwrap_or("");
+            let auth = text(session, &["uuid", "id", "password", "auth"])
+                .ok_or("Сервер не вернул пароль Hysteria 2.")?;
+            let obfuscation = text(session, &["encryption", "obfs"])
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let obfuscation_password =
+                text(session, &["flow", "obfs_password", "obfs-password"]).unwrap_or("");
             if !obfuscation.is_empty() && obfuscation != "salamander" {
                 return Err("Сервер использует неизвестную обфускацию Hysteria 2.".into());
             }
@@ -590,6 +595,35 @@ mod tests {
     }
 
     #[test]
+    fn accepts_android_hysteria_session_aliases_and_protocol_defaults() {
+        let mut session = session();
+        session["protocol"] = json!("hy2");
+        session["address"] = session["server"].clone();
+        session.as_object_mut().unwrap().remove("server");
+        session["serverName"] = json!("hy2.example.com");
+        session.as_object_mut().unwrap().remove("server_name");
+        session["password"] = json!("subscription-auth");
+        session.as_object_mut().unwrap().remove("uuid");
+        session["obfs"] = json!("SALAMANDER");
+        session["obfs-password"] = json!("obfuscation-password");
+        session.as_object_mut().unwrap().remove("encryption");
+        session.as_object_mut().unwrap().remove("flow");
+        session.as_object_mut().unwrap().remove("network");
+        session.as_object_mut().unwrap().remove("security");
+
+        let config = build_tun_config(&session).unwrap();
+        let stream = &config["outbounds"][0]["streamSettings"];
+        assert_eq!(stream["network"], "hysteria");
+        assert_eq!(stream["security"], "tls");
+        assert_eq!(stream["hysteriaSettings"]["auth"], "subscription-auth");
+        assert_eq!(stream["tlsSettings"]["serverName"], "hy2.example.com");
+        assert_eq!(
+            stream["finalmask"]["udp"][0]["settings"]["password"],
+            "obfuscation-password"
+        );
+    }
+
+    #[test]
     fn supports_android_vless_xhttp_with_tls() {
         let mut session = session();
         session["security"] = json!("tls");
@@ -678,6 +712,10 @@ mod tests {
         assert_eq!(
             config["outbounds"][0]["streamSettings"]["tlsSettings"]["alpn"],
             json!(["h3", "custom-protocol"])
+        );
+        assert_eq!(
+            config["outbounds"][0]["streamSettings"]["tlsSettings"]["serverName"],
+            session()["server"]
         );
         hy2.as_object_mut().unwrap().remove("alpn");
         let config = build_tun_config(&hy2).unwrap();

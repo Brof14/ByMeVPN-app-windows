@@ -1678,23 +1678,27 @@ pub async fn vpn_start(
     let reconnect_node = chosen_node.clone();
     let id = install_id(&app)?;
 
-    // Egress providers may be blocked independently of the VPN endpoint. Their
-    // outage must not prevent connecting, but protection stays unverified.
-    let baseline_ip = crate::egress::public_egress_ip().await.ok();
-
-    let session_val = request(
-        &app,
-        Method::POST,
-        "/vpn/session",
-        Some(json!({
-            "node_code": chosen_node,
-            "install_id": id
-        })),
-        true,
-        false,
-    )
-    .await
-    .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
+    // Capture the pre-VPN egress while opening the server session. Both happen
+    // before Windows routes change, so serializing them only adds startup time.
+    let (baseline_result, session_result) = tokio::join!(
+        crate::egress::public_egress_ip(),
+        request(
+            &app,
+            Method::POST,
+            "/vpn/session",
+            Some(json!({
+                "node_code": chosen_node,
+                "install_id": id
+            })),
+            true,
+            false,
+        )
+    );
+    // External egress services may be blocked independently of the VPN. That
+    // must not prevent a safe attempt, but without a baseline we cannot report
+    // the tunnel as verified.
+    let baseline_ip = baseline_result.ok();
+    let session_val = session_result.map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
     // Every failure after creating a server session must revoke the session.
     // This prevents exhausted device slots after invalid configs, missing

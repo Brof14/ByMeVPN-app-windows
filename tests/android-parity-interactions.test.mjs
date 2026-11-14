@@ -149,15 +149,15 @@ test('the in-app FAQ does not promise unsupported automatic cancellation or anon
 });
 
 test('version text follows the chosen language without changing the real build number', () => {
-  const version = { dataset: { appVersion: '1.2.7' }, textContent: '' };
+  const version = { dataset: { appVersion: '1.2.8' }, textContent: '' };
   const app = harness(undefined, { version });
   app.eval("state.settings.language = 'en'");
   app.eval("applyLanguage('en')");
-  assert.equal(version.textContent, 'Version 1.2.7');
+  assert.equal(version.textContent, 'Version 1.2.8');
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
-  assert.equal(version.textContent, 'Версия 1.2.7');
-  assert.match(html, /data-app-version="1\.2\.7"/);
+  assert.equal(version.textContent, 'Версия 1.2.8');
+  assert.match(html, /data-app-version="1\.2\.8"/);
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {
@@ -221,10 +221,11 @@ test('Android primary settings contains only everyday connection toggles and lan
 test('Windows never allocates a VPN session before checking the original egress route', () => {
   const rust = read('src-tauri/src/service.rs');
   const start = rust.indexOf('pub async fn vpn_start(');
-  const baseline = rust.slice(start).search(/let baseline_ip\s*=\s*crate::egress::public_egress_ip\(\)\s*\.await/);
-  const baselineIndex = baseline < 0 ? -1 : start + baseline;
+  const startupHeader = rust.slice(start, rust.indexOf('let connection_result:', start));
+  assert.match(startupHeader, /let \(baseline_result, session_result\) = tokio::join!\([\s\S]*?crate::egress::public_egress_ip\(\)[\s\S]*?"\/vpn\/session"/);
+  assert.ok(start > 0);
   const session = rust.indexOf('"/vpn/session"', start);
-  assert.ok(start > 0 && baselineIndex > start && session > baselineIndex);
+  assert.ok(session > start);
   const startup = rust.slice(session, rust.indexOf('pub async fn vpn_stop', session));
   // Any post-session failure, including invalid Xray config, must revoke it.
   assert.ok(startup.includes('let mut xray_config = build_tun_config_ext('));

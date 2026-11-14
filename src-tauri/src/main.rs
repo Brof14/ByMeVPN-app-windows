@@ -40,11 +40,16 @@ fn main() {
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;
-                    let _ = service::vpn_status(
+                    let status = service::vpn_status(
                         watchdog.clone(),
                         watchdog.state::<service::AppState>(),
                     )
                     .await;
+                    if status.is_ok_and(|metrics| {
+                        !metrics.connected && metrics.proof != "network_recovery_required"
+                    }) {
+                        service::auto_reconnect_if_due(watchdog.clone()).await;
+                    }
                 }
             });
             Ok(())

@@ -83,6 +83,52 @@ test('Windows autostart registry state is rolled back if settings persistence fa
   assert.equal(app.eval('state.settings.autoStart'), false);
 });
 
+test('auto reconnect remains visible in the UI after a drop and recognizes recovery', async () => {
+  const callbacks = [];
+  const replies = [
+    { connected: false, proof: 'disconnected' },
+    { connected: true, verified: true, connected_seconds: 1 }
+  ];
+  const app = harness(async command => command === 'vpn_status' ? replies.shift() : null, {
+    setInterval: callback => { callbacks.push(callback); return callbacks.length; },
+    clearInterval() {}
+  });
+  app.eval("state.user = { id: 'user' }; state.settings.autoReconnect = true; state.vpnConnected = true; startStatusPolling()");
+  await callbacks[0]();
+  assert.equal(app.eval('state.vpnConnected'), false);
+  assert.equal(app.eval('state.reconnectPending'), true);
+  assert.equal(app.eval('state.vpnPhase'), 'reconnecting');
+  assert.notEqual(app.eval('state.pollInterval'), null);
+  await callbacks[0]();
+  assert.equal(app.eval('state.vpnConnected'), true);
+  assert.equal(app.eval('state.reconnectPending'), false);
+  assert.equal(app.eval('state.vpnPhase'), 'connected');
+  assert.equal(app.eval('state.vpnVerified'), true);
+  assert.equal(app.eval('state.connectionError'), null);
+});
+
+test('auto reconnect does not show a false recovery state before any connection', async () => {
+  const callbacks = [];
+  const app = harness(async () => ({ connected: false, proof: 'disconnected' }), {
+    setInterval: callback => { callbacks.push(callback); return callbacks.length; },
+    clearInterval() {}
+  });
+  app.eval("state.user = { id: 'user' }; state.settings.autoReconnect = true; startStatusPolling()");
+  await callbacks[0]();
+  assert.equal(app.calls.filter(call => call.command === 'vpn_status').length, 0);
+  assert.equal(app.eval('state.reconnectPending'), false);
+  assert.equal(app.eval('state.vpnPhase'), 'idle');
+});
+
+test('the power control cancels pending automatic retries on manual disconnect', async () => {
+  const app = harness(async () => null);
+  app.eval("state.user = { id: 'user' }; state.subscription = { status: 'active' }; state.reconnectPending = true; state.vpnPhase = 'reconnecting'");
+  await app.eval('toggleVpn()');
+  assert.deepEqual(app.calls.map(call => call.command), ['vpn_stop']);
+  assert.equal(app.eval('state.reconnectPending'), false);
+  assert.equal(app.eval('state.vpnConnected'), false);
+});
+
 test('browser failure keeps the Telegram auth session actionable', async () => {
   const app = harness(async command => {
     if (command === 'telegram_create_session') {
@@ -103,15 +149,15 @@ test('the in-app FAQ does not promise unsupported automatic cancellation or anon
 });
 
 test('version text follows the chosen language without changing the real build number', () => {
-  const version = { dataset: { appVersion: '1.2.6' }, textContent: '' };
+  const version = { dataset: { appVersion: '1.2.7' }, textContent: '' };
   const app = harness(undefined, { version });
   app.eval("state.settings.language = 'en'");
   app.eval("applyLanguage('en')");
-  assert.equal(version.textContent, 'Version 1.2.6');
+  assert.equal(version.textContent, 'Version 1.2.7');
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
-  assert.equal(version.textContent, 'Версия 1.2.6');
-  assert.match(html, /data-app-version="1\.2\.6"/);
+  assert.equal(version.textContent, 'Версия 1.2.7');
+  assert.match(html, /data-app-version="1\.2\.7"/);
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {

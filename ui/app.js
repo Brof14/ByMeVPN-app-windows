@@ -47,6 +47,7 @@ const state = {
   sessionEpoch: 0,
   vpnVerified: false,
   vpnPhase: "idle",
+  reconnectPending: false,
   pollBusy: false,
   pollFailures: 0,
   catalogReady: false,
@@ -59,6 +60,7 @@ const state = {
   settings: {
     autoStart: false,
     autoConnect: false,
+    autoReconnect: true,
     stayConnectedInBackground: false,
     bypassRu: true,
     adBlock: 'none',
@@ -90,6 +92,8 @@ const I18N = {
     settings_headline: "Приложение работает за вас.",
     settings_intro: "Основные настройки уже подобраны. При желании их можно изменить.",
     settings_connection_label: "Подключение",
+    auto_reconnect_title: "Восстанавливать VPN при обрыве",
+    auto_reconnect_desc: "Повторять подключение с увеличением паузы между попытками",
     settings_language_section: "Язык приложения",
     settings_default_tip: "Не уверены, что выбрать? Оставьте настройки по умолчанию.",
     settings_more_title: "Дополнительные настройки",
@@ -371,6 +375,8 @@ const I18N = {
     settings_headline: "The app works for you.",
     settings_intro: "The defaults are ready to use. You can change them here.",
     settings_connection_label: "Connection",
+    auto_reconnect_title: "Reconnect after interruption",
+    auto_reconnect_desc: "Retry with a longer pause between attempts",
     settings_language_section: "App language",
     settings_default_tip: "Not sure? Keep the default settings.",
     settings_more_title: "Advanced settings",
@@ -1161,6 +1167,7 @@ function setupEventListeners() {
   // Settings switches
   document.getElementById('set-autostart')?.addEventListener('change', (e) => handleSettingChange('autoStart', e.target.checked));
   document.getElementById('set-autoconnect')?.addEventListener('change', e => handleSettingChange('autoConnect', e.target.checked));
+  document.getElementById('set-autoreconnect')?.addEventListener('change', e => handleSettingChange('autoReconnect', e.target.checked));
   document.getElementById('set-background')?.addEventListener('change', (e) => handleSettingChange('stayConnectedInBackground', e.target.checked));
   document.getElementById('set-bypass')?.addEventListener('change', (e) => handleSettingChange('bypassRu', e.target.checked));
   document.getElementById('set-dns-mode')?.addEventListener('change', e => handleSettingChange('dnsMode', e.target.value));
@@ -1412,6 +1419,7 @@ async function handleLogout() {
       state.vpnConnected = false;
       state.vpnVerified = false;
       state.vpnPhase = 'idle';
+      state.reconnectPending = false;
       state.connectionError = null;
       state.vpnSequence += 1;
       state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
@@ -1529,22 +1537,24 @@ async function refreshVpnHealth() {
 // VPN Lifecycle & Real-time Metrics
 async function toggleVpn(allowServerSwitch = false) {
   if (state.connectionBusy || (state.serverSwitchBusy && allowServerSwitch !== true)) return;
-  if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
+  const disconnectRequested = state.vpnConnected || state.reconnectPending;
+  if (!disconnectRequested && (!state.subscription || state.subscription.status === 'unknown')) {
     showToast(uiText('Сначала проверьте подписку.', 'Verify your subscription first.'), true);
     return;
   }
   state.connectionBusy = true;
   state.vpnSequence += 1;
   state.connectionError = null;
-  state.vpnPhase = state.vpnConnected ? 'disconnecting' : 'connecting';
+  state.vpnPhase = disconnectRequested ? 'disconnecting' : 'connecting';
   updateVpnUi();
   try {
-  if (state.vpnConnected) {
+  if (disconnectRequested) {
     showToast('Отключение VPN...');
     try {
       await invoke('vpn_stop');
       state.vpnConnected = false;
       state.vpnVerified = false;
+      state.reconnectPending = false;
       if (state.timerInterval) {
         clearInterval(state.timerInterval);
         state.timerInterval = null;
@@ -1637,6 +1647,8 @@ async function checkVpnStatus() {
     if (status && status.connected) {
       state.vpnVerified = status.verified === true;
       state.vpnConnected = true;
+      state.vpnPhase = 'connected';
+      state.reconnectPending = false;
       state.connectedSeconds = status.connected_seconds || 0;
       state.metrics = status;
       startLiveTimer();
@@ -1674,7 +1686,9 @@ function startStatusPolling() {
       if (state.pollInterval === interval) state.pollInterval = null;
       return;
     }
-    if (state.vpnConnected && !state.connectionBusy && !document.hidden && !state.pollBusy) {
+    const shouldWatchReconnect = !!state.user && state.settings.autoReconnect &&
+      (state.reconnectPending || state.vpnConnected);
+    if ((state.vpnConnected || shouldWatchReconnect) && !state.connectionBusy && !document.hidden && !state.pollBusy) {
       const sequence = state.vpnSequence;
       state.pollBusy = true;
       try {
@@ -1686,19 +1700,32 @@ function startStatusPolling() {
         if (status) {
           const wasConnected = state.vpnConnected;
           state.vpnConnected = status.connected === true;
+          if (state.vpnConnected) state.reconnectPending = false;
+          else if (wasConnected && shouldWatchReconnect) state.reconnectPending = true;
+          state.vpnPhase = state.vpnConnected ? 'connected' :
+            (state.reconnectPending && shouldWatchReconnect ? 'reconnecting' : 'idle');
           state.metrics = status;
           state.connectedSeconds = status.connected_seconds || 0;
+          if (!wasConnected && state.vpnConnected) {
+            state.connectionError = null;
+            startLiveTimer();
+            showToast(uiText('VPN-соединение восстановлено.', 'VPN connection restored.'));
+          }
           if (wasConnected && !state.vpnConnected) {
             clearInterval(state.timerInterval);
-            clearInterval(interval);
             state.timerInterval = null;
-            if (state.pollInterval === interval) state.pollInterval = null;
-            state.connectionError = status?.proof === 'network_recovery_required'
+            state.connectionError = shouldWatchReconnect
+              ? uiText('Связь прервалась. Восстанавливаем VPN…', 'Connection interrupted. Reconnecting VPN…')
+              : status?.proof === 'network_recovery_required'
               ? uiText('Windows не восстановила маршруты ByMeVPN. Перезагрузите компьютер.',
                 'Windows could not restore ByMeVPN routes. Restart the computer.')
               : uiText('Соединение VPN прервано. Сетевые маршруты восстановлены.',
                 'VPN interrupted. Network routes restored.');
             showToast(state.connectionError, true);
+            if (!shouldWatchReconnect) {
+              clearInterval(interval);
+              if (state.pollInterval === interval) state.pollInterval = null;
+            }
           }
           updateVpnUi();
         }
@@ -1727,7 +1754,7 @@ document.addEventListener('visibilitychange', () => {
       state.pollInterval = null;
     }
   } else {
-    if (state.vpnConnected && !state.pollInterval) startStatusPolling();
+    if ((state.vpnConnected || state.reconnectPending) && !state.pollInterval) startStatusPolling();
     if (state.user) void refreshAccountSnapshot();
   }
 });
@@ -1914,7 +1941,11 @@ function updateVpnUi() {
   } else {
     // Has active plan, disconnected
     const heading = document.querySelector('#home-state-disconnected .status-title-text');
-    if (heading) heading.textContent = uiText('VPN выключен', 'VPN off');
+    if (heading) heading.textContent = state.vpnPhase === 'reconnecting'
+      ? uiText('Восстанавливаем VPN', 'Reconnecting VPN')
+      : state.vpnPhase === 'disconnecting'
+        ? uiText('Отключаем VPN', 'Disconnecting VPN')
+      : uiText('VPN выключен', 'VPN off');
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.add('hidden');
     disconnectedBox?.classList.remove('hidden');
@@ -1925,11 +1956,18 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (desc) desc.textContent = state.vpnPhase === 'connecting' ?
-      uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
-      uiText('Нажмите, чтобы подключиться', 'Click to connect');
-    if (btn) btn.textContent = state.vpnPhase === 'connecting' ?
-      uiText('Подключаемся...', 'Connecting...') : uiText('Подключиться', 'Connect');
+    if (desc) desc.textContent = state.vpnPhase === 'reconnecting' ?
+      uiText('Пытаемся восстановить соединение…', 'Trying to restore the connection…') :
+      state.vpnPhase === 'disconnecting' ?
+        uiText('Останавливаем соединение и повторные попытки…', 'Stopping the connection and retry attempts…') :
+      state.vpnPhase === 'connecting' ?
+        uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
+        uiText('Нажмите, чтобы подключиться', 'Click to connect');
+    if (btn) btn.textContent = state.vpnPhase === 'reconnecting' ?
+      uiText('Восстанавливаем...', 'Reconnecting...') : state.vpnPhase === 'connecting' ?
+        uiText('Подключаемся...', 'Connecting...') : state.vpnPhase === 'disconnecting' ?
+          uiText('Отключаем...', 'Disconnecting...') : uiText('Подключиться', 'Connect');
+    ringOff?.classList.toggle('is-reconnecting', state.vpnPhase === 'reconnecting');
     ringOff?.classList.remove('ring-off');
     ringOff?.classList.add('ring-ready');
     promoBox?.classList.add('hidden');
@@ -1947,6 +1985,8 @@ function updateVpnUi() {
     const showError = !isConn && hasPlan && !accessUnknown && !!state.connectionError;
     connectionError.textContent = showError ? state.connectionError : '';
     connectionError.classList.toggle('hidden', !showError);
+    connectionError.classList.toggle('reconnecting', showError && state.vpnPhase === 'reconnecting');
+    connectionError.setAttribute('role', state.vpnPhase === 'reconnecting' ? 'status' : 'alert');
   }
 
   // Update Server info in card
@@ -2367,10 +2407,12 @@ async function selectServer(server) {
   }
   const previous = state.selectedServer;
   const wasConnected = state.vpnConnected;
+  const wasReconnecting = state.reconnectPending;
+  const shouldRestoreConnection = wasConnected || wasReconnecting;
   const epoch = state.sessionEpoch;
   state.serverSwitchBusy = true;
   try {
-    if (wasConnected) {
+    if (shouldRestoreConnection) {
       await toggleVpn(true);
       if (state.vpnConnected) return; // Native stop failed; keep the old endpoint.
     }
@@ -2384,14 +2426,14 @@ async function selectServer(server) {
     renderServersList();
     updateVpnUi();
     switchTab('tab-home');
-    if (wasConnected && epoch === state.sessionEpoch) await toggleVpn(true);
-    if (state.vpnConnected || !wasConnected) {
+    if (shouldRestoreConnection && epoch === state.sessionEpoch) await toggleVpn(true);
+    if (state.vpnConnected || !shouldRestoreConnection) {
       showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(server));
     }
   } catch (error) {
     showToast(uiText('Не удалось сменить сервер. Настройка не сохранена.',
       'Could not switch servers. Selection was not saved.'), true);
-    if (epoch === state.sessionEpoch && wasConnected && !state.vpnConnected &&
+    if (epoch === state.sessionEpoch && shouldRestoreConnection && !state.vpnConnected &&
         state.selectedServer === previous) {
       await toggleVpn(true); // Restore the previous active endpoint when possible.
     }
@@ -2639,6 +2681,19 @@ async function handleSettingChange(key, value) {
     await invoke('save_setting', { key, value });
     state.settings[key] = value;
     if (key === 'language') applyLanguage(value);
+    if (key === 'autoReconnect') {
+      if (value && state.user && !state.vpnConnected && !state.pollInterval) startStatusPolling();
+      if (!value && !state.vpnConnected && state.pollInterval) {
+        clearInterval(state.pollInterval);
+        state.pollInterval = null;
+      }
+      if (!value && state.vpnPhase === 'reconnecting') {
+        state.reconnectPending = false;
+        state.vpnPhase = 'idle';
+        state.connectionError = null;
+        updateVpnUi();
+      }
+    }
     showToast(key === 'bypassRu'
       ? uiText('Изменение маршрутизации применится при следующем подключении.',
         'Routing changes take effect on your next connection.')
@@ -2660,6 +2715,7 @@ function applySettingsToUi() {
   const s = state.settings;
   const setAuto = document.getElementById('set-autostart');
   const setAutoConnect = document.getElementById('set-autoconnect');
+  const setAutoReconnect = document.getElementById('set-autoreconnect');
   const setBg = document.getElementById('set-background');
   const setBypass = document.getElementById('set-bypass');
   const setDnsMode = document.getElementById('set-dns-mode');
@@ -2667,6 +2723,7 @@ function applySettingsToUi() {
 
   if (setAuto) setAuto.checked = !!s.autoStart;
   if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
+  if (setAutoReconnect) setAutoReconnect.checked = s.autoReconnect !== false;
   if (setBg) setBg.checked = false;
   if (setBypass) setBypass.checked = !!s.bypassRu;
   if (setDnsMode) setDnsMode.value = s.dnsMode || 'cloudflare';

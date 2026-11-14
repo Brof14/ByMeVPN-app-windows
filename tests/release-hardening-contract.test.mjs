@@ -27,13 +27,17 @@ test('VPN session is revoked on all post-creation start failures', () => {
   assert.match(native, /request\(&app, Method::DELETE, "\/vpn\/session", None, true, false\)\.await/);
 });
 
-test('VPN watchdog tears down server session on crash or proven leak', () => {
+test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and can reconnect', () => {
   assert.match(native, /let mut revoke_session = false;/);
-  assert.match(native, /if !active\.egress_verified \{/);
+  assert.match(native, /should_restart_after_health_probe\(/);
+  assert.match(native, /proof == TunnelProof::RoutingBypass/);
+  assert.match(native, /\*consecutive_failures >= 2/);
+  assert.match(native, /if restart \{/);
   assert.match(native, /cleanup_bymevpn_routes_after_exit\(\)\.await/);
   assert.match(native, /revoke_session = true;/);
   assert.match(native, /if revoke_session \{/);
   assert.match(main, /vpn_status\(\s*watchdog\.clone\(\),\s*watchdog\.state/);
+  assert.match(main, /auto_reconnect_if_due\(watchdog\.clone\(\)\)/);
 });
 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {

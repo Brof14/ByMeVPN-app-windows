@@ -53,6 +53,8 @@ pub struct ActiveTunnel {
     pub cached_ping_ms: u32,
     pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
+    /// Transient public probe failures are tolerated before restarting Xray.
+    pub failed_health_probes: u8,
     pub probe_port: u16,
     pub probe_password: String,
     pub last_tunnel_proof: TunnelProof,
@@ -81,6 +83,28 @@ async fn stop_failed_tun(
     crate::tun_health::cleanup_bymevpn_routes_after_exit().await
 }
 
+fn should_restart_after_health_probe(
+    proof: TunnelProof,
+    path_ready: bool,
+    consecutive_failures: &mut u8,
+) -> bool {
+    if proof == TunnelProof::RoutingBypass {
+        return true;
+    }
+    if proof.verified_ip().is_some() && path_ready {
+        *consecutive_failures = 0;
+    } else if matches!(
+        proof,
+        TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable
+    ) || (proof.verified_ip().is_some() && !path_ready)
+    {
+        *consecutive_failures = consecutive_failures.saturating_add(1);
+    } else {
+        *consecutive_failures = 0;
+    }
+    *consecutive_failures >= 2
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
@@ -92,6 +116,62 @@ pub struct AppState {
     pub google_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
     pub telegram_ticket: Mutex<Option<String>>,
+    /// Keeps the last successfully selected node so transient tunnel failures
+    /// can be retried without treating a failed first connection as recovery.
+    pub reconnect: Mutex<ReconnectState>,
+}
+
+#[derive(Default)]
+pub struct ReconnectState {
+    armed: bool,
+    node_code: Option<String>,
+    attempt: usize,
+    next_attempt: Option<std::time::Instant>,
+}
+
+impl ReconnectState {
+    fn connected(&mut self, node_code: String) {
+        self.armed = true;
+        self.node_code = Some(node_code);
+        self.attempt = 0;
+        self.next_attempt = None;
+    }
+
+    fn manually_stopped(&mut self) {
+        self.armed = false;
+        self.node_code = None;
+        self.attempt = 0;
+        self.next_attempt = None;
+    }
+
+    fn due_node(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
+        const RETRY_DELAYS: [std::time::Duration; 5] = [
+            Duration::from_secs(2),
+            Duration::from_secs(4),
+            Duration::from_secs(8),
+            Duration::from_secs(16),
+            Duration::from_secs(30),
+        ];
+        if !enabled || !self.armed {
+            self.next_attempt = None;
+            return None;
+        }
+        let node_code = self.node_code.clone()?;
+        let due = match self.next_attempt {
+            Some(next) => now >= next,
+            None => {
+                self.next_attempt = Some(now + RETRY_DELAYS[0]);
+                false
+            }
+        };
+        if !due {
+            return None;
+        }
+        self.attempt = self.attempt.saturating_add(1);
+        let delay = RETRY_DELAYS[self.attempt.min(RETRY_DELAYS.len() - 1)];
+        self.next_attempt = Some(now + delay);
+        Some(node_code)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1448,6 +1528,7 @@ fn default_settings() -> Value {
     json!({
         "autoStart": false,
         "autoConnect": false,
+        "autoReconnect": true,
         "stayConnectedInBackground": false,
         "bypassRu": true,
         "adBlock": "none",
@@ -1460,7 +1541,7 @@ fn default_settings() -> Value {
 
 fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
     match key {
-        "autoStart" | "autoConnect" | "bypassRu" => {
+        "autoStart" | "autoConnect" | "autoReconnect" | "bypassRu" => {
             if !value.is_boolean() {
                 return Err("Эта настройка должна иметь значение вкл./выкл.".into());
             }
@@ -1594,6 +1675,7 @@ pub async fn vpn_start(
         .unwrap_or("cloudflare");
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
+    let reconnect_node = chosen_node.clone();
     let id = install_id(&app)?;
 
     // Egress providers may be blocked independently of the VPN endpoint. Their
@@ -1874,6 +1956,7 @@ pub async fn vpn_start(
             cached_ping_ms: ping,
             baseline_ip,
             egress_verified: verified_ip.is_some(),
+            failed_health_probes: 0,
             probe_port,
             probe_password,
             last_tunnel_proof: proof,
@@ -1898,6 +1981,8 @@ pub async fn vpn_start(
             let _ = fs::remove_file(dir.join("active_tunnel.json"));
         }
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    } else if let Ok(mut reconnect) = state.reconnect.lock() {
+        reconnect.connected(reconnect_node);
     }
     connection_result
 }
@@ -1905,6 +1990,9 @@ pub async fn vpn_start(
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
+    if let Ok(mut reconnect) = state.reconnect.lock() {
+        reconnect.manually_stopped();
+    }
     let maybe_active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
@@ -1985,6 +2073,11 @@ pub async fn vpn_status(
                 active.last_egress_probe = std::time::Instant::now();
                 active.last_tunnel_proof = result;
                 active.egress_verified = path_ready && result.verified_ip().is_some();
+                let restart = should_restart_after_health_probe(
+                    result,
+                    path_ready,
+                    &mut active.failed_health_probes,
+                );
                 active.server_ip = if active.egress_verified {
                     result
                         .verified_ip()
@@ -1993,10 +2086,10 @@ pub async fn vpn_status(
                 } else {
                     String::new()
                 };
-                if !active.egress_verified {
-                    // If a previously verified VPN stops transferring real
-                    // traffic, immediately unblock Windows rather than leave
-                    // the default route pointed at a stalled Xray process.
+                if restart {
+                    // A single missed external probe is transient noise. A
+                    // confirmed bypass remains fail-closed; repeated transfer
+                    // failures restart through the watchdog's auto-reconnect.
                     let _ = active.child.kill();
                     let _ = active.child.wait();
                     if let Some(active) = lock.take() {
@@ -2104,6 +2197,26 @@ pub async fn vpn_status(
         country: String::new(),
         ip: String::new(),
     })
+}
+
+/// Called only by the native watchdog after it has confirmed the tunnel is
+/// down. A successful user-initiated connection arms recovery; a manual stop
+/// disarms it. Failed initial connects therefore never trigger background
+/// retries.
+pub async fn auto_reconnect_if_due(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let enabled = load_settings(&app)
+        .get("autoReconnect")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let node_code = state
+        .reconnect
+        .lock()
+        .ok()
+        .and_then(|mut reconnect| reconnect.due_node(enabled, std::time::Instant::now()));
+    if let Some(node_code) = node_code {
+        let _ = vpn_start(app.clone(), app.state::<AppState>(), Some(node_code)).await;
+    }
 }
 
 /// Read-only local checks for a user-initiated diagnostics dialog. Never
@@ -2320,6 +2433,96 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tunnel_recovery_ignores_one_probe_miss_but_keeps_routing_leaks_fail_closed() {
+        let mut failures = 0;
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProxyUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 1);
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProbeUnavailable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 0);
+
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProxyUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert!(should_restart_after_health_probe(
+            TunnelProof::TunUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 2);
+
+        let ip = "198.51.100.8".parse().unwrap();
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::Verified(ip),
+            true,
+            &mut failures,
+        ));
+        assert_eq!(failures, 0);
+        assert!(should_restart_after_health_probe(
+            TunnelProof::RoutingBypass,
+            false,
+            &mut failures,
+        ));
+    }
+
+    #[test]
+    fn reconnect_uses_bounded_backoff_only_after_a_successful_connection() {
+        let now = std::time::Instant::now();
+        let mut reconnect = ReconnectState::default();
+        assert_eq!(reconnect.due_node(true, now), None);
+
+        reconnect.connected("node-de".into());
+        assert_eq!(reconnect.due_node(true, now), None);
+        assert_eq!(reconnect.due_node(true, now + Duration::from_secs(1)), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(2)),
+            Some("node-de".into())
+        );
+        assert_eq!(reconnect.due_node(true, now + Duration::from_secs(5)), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(6)),
+            Some("node-de".into())
+        );
+        for (before, due) in [(13, 14), (29, 30), (59, 60), (89, 90)] {
+            assert_eq!(
+                reconnect.due_node(true, now + Duration::from_secs(before)),
+                None
+            );
+            assert_eq!(
+                reconnect.due_node(true, now + Duration::from_secs(due)),
+                Some("node-de".into())
+            );
+        }
+    }
+
+    #[test]
+    fn reconnect_stops_when_disabled_or_manually_disconnected() {
+        let now = std::time::Instant::now();
+        let mut reconnect = ReconnectState::default();
+        reconnect.connected("auto".into());
+        assert_eq!(reconnect.due_node(false, now), None);
+        assert_eq!(reconnect.due_node(true, now), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(2)),
+            Some("auto".into())
+        );
+        reconnect.manually_stopped();
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(60)),
+            None
+        );
+    }
+
+    #[test]
     fn server_catalog_accepts_android_and_backend_response_envelopes() {
         assert_eq!(
             server_array(&json!({"servers":[{"node_code":"nl"}]}))
@@ -2373,6 +2576,8 @@ mod tests {
     fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {
         assert!(validate_setting("bypassRu", &json!(true)).is_ok());
         assert!(validate_setting("bypassRu", &json!("true")).is_err());
+        assert!(validate_setting("autoReconnect", &json!(true)).is_ok());
+        assert!(validate_setting("autoReconnect", &json!("yes")).is_err());
         assert!(validate_setting("selectedServerCode", &json!("node_de-1")).is_ok());
         assert!(validate_setting("selectedServerCode", &json!("../settings")).is_err());
         assert!(validate_setting("killSwitch", &json!(true)).is_err());
@@ -2384,6 +2589,7 @@ mod tests {
         assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
         assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);
+        assert_eq!(default_settings()["autoReconnect"], true);
         assert_eq!(default_settings()["adBlock"], "none");
     }
 

@@ -103,6 +103,21 @@ test('disconnected selection saves without launching VPN', async () => {
   assert.equal(client.eval('state.selectedServer.code'), 'nl');
 });
 
+test('changing servers during recovery cancels the old retry and reconnects to the new node', async () => {
+  const client = makeClient({
+    vpn_stop: async () => null,
+    save_setting: async () => null,
+    vpn_start: async () => ({connected: true, verified: true, connected_seconds: 0})
+  });
+  connected(client);
+  client.eval('state.vpnConnected = false; state.reconnectPending = true; state.vpnPhase = "reconnecting"');
+  await client.eval('selectServer(state.servers[1])');
+  assert.deepEqual(client.calls.map(c => c.name), ['vpn_stop', 'save_setting', 'vpn_start']);
+  assert.deepEqual(JSON.parse(JSON.stringify(client.calls[2].args)), {nodeCode: 'nl'});
+  assert.equal(client.eval('state.reconnectPending'), false);
+  assert.equal(client.eval('state.vpnConnected'), true);
+});
+
 test('server list refresh cannot relabel an existing tunnel', async () => {
   const client = makeClient({
     get_servers: async () => [{code: 'nl', name: 'Netherlands', supported: true}]

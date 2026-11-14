@@ -3240,6 +3240,22 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   text-align: center;
   overflow-wrap: anywhere;
 }
+#home-connection-error.connection-error.reconnecting {
+  border-color: rgba(105, 211, 188, .42);
+  background: rgba(31, 60, 58, .62);
+  color: #a9e7d6;
+}
+#vpn-power-ring-off.is-reconnecting {
+  border-color: rgba(105, 211, 188, .8);
+  box-shadow: 0 0 26px rgba(105, 211, 188, .2);
+  animation: vpnReconnectPulse 1.8s ease-in-out infinite;
+}
+@keyframes vpnReconnectPulse {
+  50% { box-shadow: 0 0 36px rgba(105, 211, 188, .34); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #vpn-power-ring-off.is-reconnecting { animation: none; }
+}
 #btn-toggle-bypass-quick {
   cursor: pointer;
   transition: border-color .18s ease, background-color .18s ease;

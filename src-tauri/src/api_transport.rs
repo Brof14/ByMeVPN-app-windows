@@ -20,13 +20,26 @@ pub async fn send_to_bases(
     path: &str,
     body: Option<&Value>,
     token: Option<&str>,
+    device_id: Option<&str>,
 ) -> Result<Response, reqwest::Error> {
     for (index, base) in bases.iter().enumerate() {
         let mut request = client
             .request(method.clone(), format!("{base}{path}"))
             .header("Accept", "application/json");
-        if matches!(path, "/servers" | "/vpn/session") {
+        if path == "/vpn/session" {
+            // The backend uses this only to filter nodes to Windows-compatible
+            // protocols. The stable installation ID is scoped separately to
+            // /servers, where the provider needs it for subscription access.
+            request = request.header("X-Device-OS", "Windows");
             request = request.header("X-VPN-Capabilities", VPN_CAPABILITIES);
+        }
+        if path == "/servers" {
+            // The backend forwards this stable per-install ID to 3x-ui, whose
+            // subscription feed uses it for device access checks. Android does
+            // the same on every authenticated server-catalog request.
+            if let Some(device_id) = device_id {
+                request = request.header("X-HWID", device_id);
+            }
         }
         if let Some(body) = body {
             request = request.json(body);
@@ -74,6 +87,7 @@ mod tests {
             "/plans",
             None,
             None,
+            None,
         ))
         .unwrap();
         assert_eq!(result.status(), 200);
@@ -97,6 +111,7 @@ mod tests {
             "/payment/create",
             Some(&serde_json::json!({"plan_code":"month"})),
             None,
+            None,
         ))
         .unwrap();
         assert_eq!(response.status(), 500);
@@ -104,8 +119,8 @@ mod tests {
     }
 
     #[test]
-    fn vpn_capabilities_are_advertised_only_to_vpn_endpoints() {
-        fn received_headers(path: &str) -> String {
+    fn device_and_protocol_headers_are_scoped_to_vpn_session_selection() {
+        fn received_headers(path: &str, device_id: Option<&str>) -> String {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             let worker = thread::spawn(move || {
@@ -126,20 +141,28 @@ mod tests {
                 path,
                 None,
                 None,
+                device_id,
             ))
             .unwrap();
             assert_eq!(response.status(), 200);
             worker.join().unwrap()
         }
 
-        for path in ["/servers", "/vpn/session"] {
-            let headers = received_headers(path);
-            assert!(
-                headers.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
-                "Missing desktop capabilities for {path}"
-            );
-        }
-        assert!(!received_headers("/plans").contains("x-vpn-capabilities:"));
+        let servers = received_headers("/servers", Some("stable-install-id"));
+        assert!(servers.contains("x-hwid: stable-install-id"));
+        assert!(!servers.contains("x-device-os:"));
+        assert!(!servers.contains("x-vpn-capabilities:"));
+
+        let session = received_headers("/vpn/session", Some("stable-install-id"));
+        assert!(session.contains("x-device-os: windows"));
+        assert!(
+            session.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
+            "Missing desktop capabilities for session selection"
+        );
+        assert!(!session.contains("x-hwid:"));
+        assert!(
+            !received_headers("/plans", Some("stable-install-id")).contains("x-vpn-capabilities:")
+        );
     }
 
     #[test]

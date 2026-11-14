@@ -707,7 +707,7 @@ async function loadInitialData() {
 async function loadAvailableServers() {
   const epoch = state.sessionEpoch;
   try {
-    const servers = await invoke('get_servers');
+    const servers = await fetchServerCatalog(epoch);
     if (epoch !== state.sessionEpoch) return;
     state.servers = Array.isArray(servers) ? servers : [];
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
@@ -727,8 +727,45 @@ async function loadAvailableServers() {
     if (epoch !== state.sessionEpoch) return;
     state.servers = [];
     renderServersList();
-    showToast('Не удалось загрузить реальные серверы. Проверьте соединение.', true);
+    showToast(serverCatalogErrorMessage(err), true);
   }
+}
+
+async function fetchServerCatalog(epoch) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await invoke('get_servers');
+    } catch (error) {
+      const raw = String(typeof error === 'string' ? error : error?.message || '');
+      const retryable = /HTTP (?:429|5\d\d)|timeout|истекло время ожидания|не удалось установить защищённое TLS-соединение|ошибка сетевого обмена|не удалось связаться с ByMeVPN API/i.test(raw);
+      if (attempt !== 0 || !retryable) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (epoch !== state.sessionEpoch) return null;
+    }
+  }
+  return null;
+}
+
+function serverCatalogErrorMessage(error) {
+  const raw = String(typeof error === 'string' ? error : error?.message || '');
+  if (/HTTP 401|UNAUTHORIZED|сначала войдите|сеанс истёк/i.test(raw)) {
+    return uiText('Сеанс API истёк. Обновите аккаунт или войдите снова.',
+      'The API session expired. Refresh your account or sign in again.');
+  }
+  if (/HTTP 403|SUBSCRIPTION_REQUIRED|DEVICE_LIMIT/i.test(raw)) {
+    return uiText('Серверы недоступны для текущего статуса подписки. Обновите аккаунт.',
+      'Servers are unavailable for the current subscription. Refresh your account.');
+  }
+  if (/HTTP 404|не вернул список доступных локаций/i.test(raw)) {
+    return uiText('API не вернул список серверов. Обновите приложение или повторите позже.',
+      'The API did not return a server list. Update the app or try again later.');
+  }
+  if (/HTTP (?:429|5\d\d)|timeout|истекло время ожидания/i.test(raw)) {
+    return uiText('Сервис серверов временно недоступен. Список будет загружен при повторной попытке.',
+      'The server service is temporarily unavailable. Retry to load the list.');
+  }
+  return uiText('Не удалось связаться с API серверов. Проверьте интернет и нажмите «Обновить».',
+    'Could not reach the server API. Check your internet and press “Refresh”.');
 }
 
 // Android V2 offers exact device-scoped SKUs; prices are never extrapolated.
@@ -1816,12 +1853,14 @@ function updateVpnUi() {
   // Android hides free-trial activation once the API says it was consumed.
   const trialButton = document.getElementById('btn-no-plan-trial');
   if (trialButton) {
-    const available = sub == null || (!hasPlan && sub.trial_available === true);
+    const available = !accessUnknown && !hasPlan && sub.trial_available === true;
     trialButton.disabled = !available || state.trialBusy;
     const label = trialButton.querySelector?.('[data-i18n="no_plan_trial_button"]');
-    if (label) label.textContent = available
-      ? uiText('Активировать бесплатно', 'Activate free trial')
-      : uiText('Пробный период недоступен', 'Free trial unavailable');
+    if (label) label.textContent = accessUnknown
+      ? uiText('Проверяем доступ…', 'Checking eligibility…')
+      : available
+        ? uiText('Активировать бесплатно', 'Activate free trial')
+        : uiText('Пробный период недоступен', 'Free trial unavailable');
   }
 
   if (isConn) {
@@ -2429,6 +2468,29 @@ async function handleActivateTrial() {
   setTrialPending(true);
   showToast(uiText('Проверяем пробный доступ...', 'Checking your free trial...'));
   try {
+    // Eligibility can change after login or another device's activation.
+    // Match Android: refresh the account first and fail closed on unknown state.
+    const snapshot = await invoke('account_snapshot');
+    if (!sameAccount()) return;
+    if (!snapshot?.subscription) {
+      throw new Error(uiText(
+        'Не удалось проверить право на пробный период.',
+        'Could not verify free-trial eligibility.'
+      ));
+    }
+    state.subscription = snapshot.subscription;
+    updateSubscriptionUi();
+    updateVpnUi();
+    const freshSub = state.subscription;
+    const hasActiveAccess = ['active', 'trial', 'grace'].includes(freshSub.status);
+    if (freshSub.status === 'unknown' || hasActiveAccess || freshSub.trial_available !== true) {
+      showToast(freshSub.status === 'unknown'
+        ? uiText('Не удалось проверить пробный доступ. Повторите позже.',
+          'Could not verify free-trial eligibility. Try again later.')
+        : uiText('Пробный период сейчас недоступен для аккаунта.',
+          'A free trial is not currently available for this account.'), true);
+      return;
+    }
     const res = await invoke('activate_trial');
     // A successful backend response for a previous signed-in identity must
     // never overwrite a newly signed-in account after an async race.

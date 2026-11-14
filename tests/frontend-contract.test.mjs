@@ -299,13 +299,17 @@ test('trial activation sends only one request even after rapid repeated clicks',
   let calls = 0;
   let settle;
   const pending = new Promise(resolve => { settle = resolve; });
-  const app = harness(undefined, { activate_trial: async () => {
-    calls += 1;
-    return pending;
-  } });
+  const app = harness(undefined, {
+    account_snapshot: async () => ({ subscription: { status: 'none', trial_available: true } }),
+    activate_trial: async () => {
+      calls += 1;
+      return pending;
+    }
+  });
   app.eval("state.user = { id: 'account-A' }");
   const first = app.eval("handleActivateTrial()");
   const duplicate = app.eval("handleActivateTrial()");
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls, 1);
   assert.equal(app.eval('state.trialBusy'), true);
   settle({ status: 'trial', max_devices: 2 });
@@ -313,10 +317,43 @@ test('trial activation sends only one request even after rapid repeated clicks',
   assert.equal(app.eval('state.trialBusy'), false);
 });
 
+test('trial activation requires a fresh affirmative eligibility response', async () => {
+  let activations = 0;
+  const app = harness(undefined, {
+    account_snapshot: async () => ({ subscription: { status: 'unknown', trial_available: true } }),
+    activate_trial: async () => { activations += 1; return { status: 'trial' }; }
+  });
+  app.eval("state.user = { id: 'account-A' }");
+  await app.eval('handleActivateTrial()');
+  assert.equal(activations, 0);
+  assert.equal(app.eval('state.subscription.status'), 'unknown');
+});
+
+test('trial activation refreshes account eligibility before the backend mutation', async () => {
+  const calls = [];
+  const app = harness(undefined, {
+    account_snapshot: async () => {
+      calls.push('account_snapshot');
+      return { subscription: { status: 'none', trial_available: true } };
+    },
+    activate_trial: async () => {
+      calls.push('activate_trial');
+      return { status: 'trial', trial_available: false };
+    }
+  });
+  app.eval("state.user = { id: 'account-A' }");
+  await app.eval('handleActivateTrial()');
+  assert.deepEqual(calls, ['account_snapshot', 'activate_trial']);
+  assert.equal(app.eval('state.subscription.status'), 'trial');
+});
+
 test('late trial confirmation cannot replace a different signed-in account', async () => {
   let settle;
   const pending = new Promise(resolve => { settle = resolve; });
-  const app = harness(undefined, { activate_trial: async () => pending });
+  const app = harness(undefined, {
+    account_snapshot: async () => ({ subscription: { status: 'none', trial_available: true } }),
+    activate_trial: async () => pending
+  });
   app.eval("state.user = { id: 'account-A' }");
   const first = app.eval("handleActivateTrial()");
   app.eval("state.sessionEpoch += 1; state.user = { id: 'account-B' }; state.subscription = {status:'none'}");
@@ -342,6 +379,32 @@ test('trial errors use Android-aligned, language-specific recovery copy', () => 
   assert.match(app.eval("trialActivationMessage('(HTTP 409)')"), /already used/);
   assert.match(app.eval("trialActivationMessage('(HTTP 401)')"), /session expired/);
   assert.match(app.eval("trialActivationMessage('NETWORK_ERROR')"), /internet connection/);
+});
+
+test('server catalog retries a transient API failure once', async () => {
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => {
+      calls += 1;
+      if (calls === 1) throw 'API temporarily unavailable (HTTP 503)';
+      return [{ code: 'node-nl', supported: true }];
+    }
+  });
+  const result = await app.eval('fetchServerCatalog(state.sessionEpoch)');
+  assert.equal(calls, 2);
+  assert.equal(result[0].code, 'node-nl');
+});
+
+test('server catalog does not retry authorization errors and explains recovery', async () => {
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => { calls += 1; throw 'Invalid token (HTTP 401)'; }
+  });
+  await assert.rejects(app.eval('fetchServerCatalog(state.sessionEpoch)'), /HTTP 401/);
+  assert.equal(calls, 1);
+  assert.match(app.eval("serverCatalogErrorMessage('Invalid token (HTTP 401)')"), /сеанс|войдите/i);
+  app.eval("state.settings.language = 'en'");
+  assert.match(app.eval("serverCatalogErrorMessage('API temporarily unavailable (HTTP 503)')"), /temporarily unavailable/i);
 });
 
 test('account deletion remains a support request, not a destructive native IPC', () => {

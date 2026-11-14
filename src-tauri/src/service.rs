@@ -160,29 +160,11 @@ pub struct AuthResult {
     pub subscription: Option<Subscription>,
 }
 
-fn http(app: &AppHandle) -> Result<Client, String> {
+fn http(_app: &AppHandle) -> Result<Client, String> {
     if let Some(client) = API_CLIENT.get() {
         return Ok(client.clone());
     }
-    // Match the 3x-ui HWID gate used by the mobile app and subscription API.
-    // One random installation ID is stable across sign-ins on this machine.
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "X-HWID",
-        reqwest::header::HeaderValue::from_str(&install_id(app)?)
-            .map_err(|_| "Некорректный идентификатор устройства.")?,
-    );
-    headers.insert(
-        "X-Device-OS",
-        reqwest::header::HeaderValue::from_static("Windows"),
-    );
-    headers.insert("X-Ver-OS", reqwest::header::HeaderValue::from_static("10+"));
-    headers.insert(
-        "X-Device-Model",
-        reqwest::header::HeaderValue::from_static("Windows PC"),
-    );
     Client::builder()
-        .default_headers(headers)
         .user_agent(concat!("ByMeVPN-Windows/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(15))
@@ -330,6 +312,7 @@ async fn refresh(client: &Client) -> Result<(), RefreshError> {
         "/auth/refresh",
         Some(&json!({"refresh": token})),
         None,
+        None,
     )
     .await
     .map_err(|error| {
@@ -390,6 +373,11 @@ async fn request(
     } else {
         None
     };
+    let device_id = if path == "/servers" {
+        Some(install_id(app)?)
+    } else {
+        None
+    };
     let response = send_to_bases(
         &client,
         &API_BASES,
@@ -397,6 +385,7 @@ async fn request(
         path,
         body.as_ref(),
         token.as_deref(),
+        device_id.as_deref(),
     )
     .await
     .map_err(|error| api_transport_error(&error, "Не удалось связаться с ByMeVPN API"))?;
@@ -830,6 +819,17 @@ pub async fn account_snapshot(app: AppHandle) -> Result<Value, String> {
     snapshot(&app).await
 }
 
+fn server_array(data: &Value) -> Option<&Vec<Value>> {
+    data.as_array()
+        .or_else(|| data.get("servers").and_then(Value::as_array))
+        .or_else(|| {
+            data.get("data")
+                .and_then(|nested| nested.get("servers"))?
+                .as_array()
+        })
+        .or_else(|| data.get("raw_array").and_then(Value::as_array))
+}
+
 fn tcp_ping_target(host: &str, port: u16) -> String {
     if host.contains(':') && !host.starts_with('[') {
         format!("[{host}]:{port}")
@@ -864,10 +864,7 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
 #[tauri::command]
 pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
-    let servers = data
-        .get("servers")
-        .and_then(Value::as_array)
-        .ok_or("Сервер не вернул список доступных локаций.")?;
+    let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
     // Avoid spawning an unbounded number of blocking DNS/TCP probes when
     // the server catalog grows. Rendering remains responsive under load.
     let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
@@ -2321,6 +2318,30 @@ pub fn open_external_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_catalog_accepts_android_and_backend_response_envelopes() {
+        assert_eq!(
+            server_array(&json!({"servers":[{"node_code":"nl"}]}))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            server_array(&json!({"data":{"servers":[{"node_code":"nl"}]}}))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            server_array(&json!({"raw_array":[{"node_code":"nl"}]}))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(server_array(&json!([{"node_code":"nl"}])).unwrap().len(), 1);
+        assert!(server_array(&json!({"subscription_url":null})).is_none());
+    }
 
     #[test]
     fn ping_probe_handles_ipv6_and_skips_udp_only_hysteria() {

@@ -125,6 +125,34 @@ fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Clie
         .map_err(|_| "Не удалось подготовить защищённый тест VPN.".to_string())
 }
 
+/// Xray may take longer than a fixed startup delay to create its loopback
+/// inbound, especially while the Windows TUN adapter and routes initialize.
+/// Wait for the local socket before sending remote probes so an early
+/// connection-refused result is not misreported as an unreachable VPN server.
+pub async fn wait_for_attestation_listener(port: u16, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        if tokio::time::timeout(
+            remaining,
+            tokio::net::TcpStream::connect(("127.0.0.1", port)),
+        )
+        .await
+        .is_ok_and(|result| result.is_ok())
+        {
+            return true;
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        tokio::time::sleep(remaining.min(Duration::from_millis(75))).await;
+    }
+}
+
 /// Server-only preflight: does the configured Xray proxy itself pass a real
 /// HTTPS request? Until this is true, Windows TUN routes must not be changed.
 pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
@@ -362,6 +390,24 @@ mod tests {
             classify_tunnel_path(Some(tunneled), Some(tunneled), Some(tunneled)),
             TunnelProof::BaselineUnchanged
         );
+    }
+
+    #[tokio::test]
+    async fn waits_for_the_xray_listener_when_startup_is_delayed() {
+        let reservation = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = reservation.local_addr().unwrap().port();
+        drop(reservation);
+
+        let delayed_listener = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(120)).await;
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+                .await
+                .unwrap();
+            let _ = listener.accept().await;
+        });
+
+        assert!(wait_for_attestation_listener(port, Duration::from_secs(1)).await);
+        delayed_listener.abort();
     }
 
     #[test]

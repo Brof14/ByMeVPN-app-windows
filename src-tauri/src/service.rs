@@ -1836,8 +1836,12 @@ pub async fn vpn_start(
                 return Err(error);
             }
         };
-        tokio::time::sleep(Duration::from_millis(250)).await;
         let preflight_ok = matches!(preflight_child.try_wait(), Ok(None))
+            && crate::egress::wait_for_attestation_listener(
+                probe_port,
+                Duration::from_secs(2),
+            )
+            .await
             && preflight_xray_server(probe_port, &probe_password).await;
         // Shut down the process with NO TUN before enabling the system route.
         let _ = preflight_child.kill();
@@ -1893,7 +1897,14 @@ pub async fn vpn_start(
         // Bound the ENTIRE period that Windows routes through an unverified
         // TUN. Includes route inspection and DNS, not just the HTTPS probe.
         let handoff = tokio::time::timeout(Duration::from_secs(9), async {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            if !crate::egress::wait_for_attestation_listener(
+                probe_port,
+                Duration::from_secs(2),
+            )
+            .await
+            {
+                return (TunnelProof::ProbeUnavailable, false);
+            }
             let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
             if proof.verified_ip().is_none() {
                 return (proof, false);

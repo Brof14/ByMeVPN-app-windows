@@ -103,15 +103,15 @@ test('the in-app FAQ does not promise unsupported automatic cancellation or anon
 });
 
 test('version text follows the chosen language without changing the real build number', () => {
-  const version = { dataset: { appVersion: '1.2.4' }, textContent: '' };
+  const version = { dataset: { appVersion: '1.2.5' }, textContent: '' };
   const app = harness(undefined, { version });
   app.eval("state.settings.language = 'en'");
   app.eval("applyLanguage('en')");
-  assert.equal(version.textContent, 'Version 1.2.4');
+  assert.equal(version.textContent, 'Version 1.2.5');
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
-  assert.equal(version.textContent, 'Версия 1.2.4');
-  assert.match(html, /data-app-version="1\.2\.4"/);
+  assert.equal(version.textContent, 'Версия 1.2.5');
+  assert.match(html, /data-app-version="1\.2\.5"/);
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {

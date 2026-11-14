@@ -312,6 +312,7 @@ async fn refresh(client: &Client) -> Result<(), RefreshError> {
         "/auth/refresh",
         Some(&json!({"refresh": token})),
         None,
+        None,
     )
     .await
     .map_err(|error| {
@@ -372,6 +373,11 @@ async fn request(
     } else {
         None
     };
+    let device_id = if path == "/servers" {
+        Some(install_id(app)?)
+    } else {
+        None
+    };
     let response = send_to_bases(
         &client,
         &API_BASES,
@@ -379,6 +385,7 @@ async fn request(
         path,
         body.as_ref(),
         token.as_deref(),
+        device_id.as_deref(),
     )
     .await
     .map_err(|error| api_transport_error(&error, "Не удалось связаться с ByMeVPN API"))?;

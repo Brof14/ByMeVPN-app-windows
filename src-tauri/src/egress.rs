@@ -53,7 +53,9 @@ pub fn egress_result_code(result: EgressCheck) -> &'static str {
 /// Two independent paths to the *same* HTTPS endpoint are required:
 /// (a) authenticated local Xray HTTP CONNECT -> configured remote VPN,
 /// (b) a normal system request expected to traverse Windows TUN.
-/// A changed system IPv4 by itself was the source of false "VPN connected".
+/// Public VPN egress can vary by connection, so different Xray/TUN IPs alone
+/// are not proof of bypass. Compare the system path to the pre-tunnel baseline;
+/// the caller separately requires a live TUN route and healthy DNS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TunnelProof {
     Verified(IpAddr),
@@ -98,12 +100,13 @@ pub fn classify_tunnel_path(
     let Some(via_system) = system_via_tun else {
         return TunnelProof::TunUnreachable;
     };
-    if via_proxy != via_system {
-        return TunnelProof::RoutingBypass;
-    }
     match baseline {
         None => TunnelProof::BaselineUnavailable,
+        Some(before) if before == via_system && via_proxy != via_system => {
+            TunnelProof::RoutingBypass
+        }
         Some(before) if before == via_system => TunnelProof::BaselineUnchanged,
+        // The caller still checks the active TUN route and DNS before accepting.
         Some(_) => TunnelProof::Verified(via_system),
     }
 }
@@ -327,32 +330,36 @@ mod tests {
     }
 
     #[test]
-    fn changed_direct_ip_cannot_be_verified_without_a_matching_proxy_ip() {
+    fn routing_bypass_requires_the_system_path_to_match_the_physical_baseline() {
         let original: IpAddr = "192.0.2.10".parse().unwrap();
-        let direct: IpAddr = "198.51.100.9".parse().unwrap();
-        let via_xray: IpAddr = "203.0.113.45".parse().unwrap();
+        let tunneled: IpAddr = "198.51.100.9".parse().unwrap();
+        let other_tunneled_exit: IpAddr = "203.0.113.45".parse().unwrap();
         assert_eq!(
-            classify_tunnel_path(Some(original), Some(via_xray), Some(direct)),
+            classify_tunnel_path(Some(original), Some(tunneled), Some(original)),
             TunnelProof::RoutingBypass
         );
         assert_eq!(
-            classify_tunnel_path(Some(original), None, Some(direct)),
-            TunnelProof::ProxyUnreachable
-        );
-        assert_eq!(
-            classify_tunnel_path(Some(original), Some(via_xray), None),
+            classify_tunnel_path(Some(original), Some(tunneled), None),
             TunnelProof::TunUnreachable
         );
         assert_eq!(
-            classify_tunnel_path(Some(original), Some(direct), Some(direct)),
-            TunnelProof::Verified(direct)
+            classify_tunnel_path(Some(original), Some(tunneled), Some(other_tunneled_exit)),
+            TunnelProof::Verified(other_tunneled_exit)
         );
         assert_eq!(
-            classify_tunnel_path(None, Some(direct), Some(direct)),
+            classify_tunnel_path(Some(original), None, Some(tunneled)),
+            TunnelProof::ProxyUnreachable
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(original), Some(tunneled), Some(tunneled)),
+            TunnelProof::Verified(tunneled)
+        );
+        assert_eq!(
+            classify_tunnel_path(None, Some(tunneled), Some(tunneled)),
             TunnelProof::BaselineUnavailable
         );
         assert_eq!(
-            classify_tunnel_path(Some(direct), Some(direct), Some(direct)),
+            classify_tunnel_path(Some(tunneled), Some(tunneled), Some(tunneled)),
             TunnelProof::BaselineUnchanged
         );
     }

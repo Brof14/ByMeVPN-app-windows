@@ -33,10 +33,10 @@ pub async fn send_to_bases(
             request = request.header("X-Device-OS", "Windows");
             request = request.header("X-VPN-Capabilities", VPN_CAPABILITIES);
         }
-        if path == "/servers" {
+        if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
             // The backend forwards this stable per-install ID to 3x-ui, whose
-            // subscription feed uses it for device access checks. Android does
-            // the same on every authenticated server-catalog request.
+            // subscription feed uses it for device access checks. Android
+            // includes it on both catalog and VPN-session requests.
             if let Some(device_id) = device_id {
                 request = request.header("X-HWID", device_id);
             }
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn device_and_protocol_headers_are_scoped_to_vpn_session_selection() {
-        fn received_headers(path: &str, device_id: Option<&str>) -> String {
+        fn received_headers(method: Method, path: &str, device_id: Option<&str>) -> String {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             let worker = thread::spawn(move || {
@@ -137,7 +137,7 @@ mod tests {
             let response = tauri::async_runtime::block_on(send_to_bases(
                 &Client::new(),
                 &[base.as_str()],
-                Method::GET,
+                method,
                 path,
                 None,
                 None,
@@ -148,21 +148,23 @@ mod tests {
             worker.join().unwrap()
         }
 
-        let servers = received_headers("/servers", Some("stable-install-id"));
+        let servers = received_headers(Method::GET, "/servers", Some("stable-install-id"));
         assert!(servers.contains("x-hwid: stable-install-id"));
         assert!(!servers.contains("x-device-os:"));
         assert!(!servers.contains("x-vpn-capabilities:"));
 
-        let session = received_headers("/vpn/session", Some("stable-install-id"));
+        let session = received_headers(Method::POST, "/vpn/session", Some("stable-install-id"));
+        assert!(session.contains("x-hwid: stable-install-id"));
         assert!(session.contains("x-device-os: windows"));
         assert!(
             session.contains("x-vpn-capabilities: hysteria2,vless-xhttp,vless-tls,vless-grpc,vless-ws,vless-httpupgrade,vless-none"),
             "Missing desktop capabilities for session selection"
         );
-        assert!(!session.contains("x-hwid:"));
-        assert!(
-            !received_headers("/plans", Some("stable-install-id")).contains("x-vpn-capabilities:")
-        );
+        let plans = received_headers(Method::GET, "/plans", Some("stable-install-id"));
+        assert!(!plans.contains("x-vpn-capabilities:"));
+        assert!(!plans.contains("x-hwid:"));
+        let stop = received_headers(Method::DELETE, "/vpn/session", Some("stable-install-id"));
+        assert!(!stop.contains("x-hwid:"));
     }
 
     #[test]

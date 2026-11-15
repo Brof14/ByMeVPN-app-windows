@@ -1,8 +1,8 @@
 # ByMeVPN Windows — implementation status
 
-**Updated:** 2026-10-31  
-**Development branch:** `fix/windows-release-hardening-20261031`  
-**Matching API branch:** `Brof14/ByMeVPN_bot:fix/server-security-entitlements-20261031`  
+**Updated:** 2026-11-15
+**Starting app version:** `1.2.11`; this audit patch is `1.2.12` (the supplied audit describes `1.2.8`)
+**Development branch:** `codex/windows-trial-eligibility-runtime-pin`
 **Release classification:** Experimental / NOT production-ready.
 
 ## Verified in source and automated tests
@@ -13,8 +13,12 @@
 - Tariffs come from `/plans`, including 2/5/10-device variants and promotional days. Checkout is disabled without a valid server catalogue.
 - Payment request forwards canonical price/days and the **server PR** rejects mismatched terms. Browser return does not independently confirm a new payment.
 - Xray configuration validation, pinned runtime SHA-256 check, serialization of connection requests and process-exit detection.
-- Egress check before returning `Connected`; failure cleans up Xray/config and returns an error. This only confirms an observed exit address at that moment.
-- Unsupported device management, kill switch and background/tray behavior no longer claim to be operational. Buttons are disabled or state clearly indicates unavailable.
+- Connection startup requires a real HTTPS response, Windows selecting the TUN route, DNS resolution and a live Xray process. An observed exit IP is required before the UI reports verified protection; a working path without that IP evidence stays explicitly unverified.
+- If IP-check providers are unavailable, ordinary HTTPS traffic can be observed through both Xray and Windows TUN; the tunnel remains explicitly unverified unless the IP and route checks pass.
+- Logout, manual disconnect and normal application exit use the same ByMeVPN-adapter-only route/DNS recovery path. This is best-effort process cleanup, not crash-proof service ownership.
+- A failed server-catalog refresh retains a sanitized display-only last-known list; connection still requires a live API session.
+- Automatic server-selection text now describes service assignment without claiming lowest latency.
+- Unsupported device management and Kill Switch no longer claim to be operational. The tray can hide the current process, but no independent Windows service keeps VPN alive after the app exits.
 - Node-based frontend syntax/contract tests and Rust checks are configured in CI.
 
 ## Critical outstanding release blockers
@@ -23,7 +27,7 @@
 2. **Elevated UI architecture**: `build.rs` still uses `requireAdministrator` for the entire app. Production requires unprivileged Tauri UI and a narrowly privileged service/helper with secure IPC.
 3. **Kill Switch / DNS / IPv6**: full leak-proof behavior and a user-controllable WFP policy are not implemented and verified.
 4. **Tray and startup**: a true system background service is not integrated.
-5. **Hysteria2**: not supported by the pinned Windows Xray configuration path; its nodes are intentionally disabled.
+5. **Hysteria2**: configuration conversion exists for the pinned Windows Xray runtime, but real Hysteria2 network acceptance has not been run; support is not yet production-verified.
 6. **Google sign-in**: safely unavailable until server-side OIDC verification and Windows PKCE login exist.
 7. **Account lifecycle**: devices, device revocation, and account erasure are not real API workflows yet. The API PR makes unsupported operations return explicit errors.
 8. **Secure deployment**: API requires a strong persistent `JWT_SECRET` environment variable. Old default-signed tokens must be invalidated. Deployment requires a coordinated rollout of both PRs.

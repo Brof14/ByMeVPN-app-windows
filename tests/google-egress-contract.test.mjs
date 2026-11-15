@@ -19,11 +19,18 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
+  assert.match(probes, /probe_https_reachability\(client\)/);
+  assert.match(probes, /TrafficObservedUnverified/);
+  assert.match(probes, /pub fn traffic_confirmed\(/);
   assert.match(rust, /verify_tunnel_path\(/);
   assert.match(rust, /active\.egress_verified = path_ready && result\.verified_ip\(\)\.is_some\(\)/);
-  assert.match(rust, /if verified_ip\.is_none\(\) \{/);
+  assert.match(rust, /if !proof\.traffic_confirmed\(\) \{/);
+  assert.match(rust, /if !tunnel_ready \{/);
   assert.match(rust, /stop_failed_tun\(&mut child, &config_path\)\.await/);
   assert.match(rust, /let _ = active\.child\.kill\(\)/);
+  assert.match(rust, /async fn stop_tunnel_and_restore_network\(/);
+  assert.match(rust, /\.manually_stopped\(\);/);
+  assert.match(main, /cleanup_bymevpn_routes_after_exit_sync\(\)/);
 });
 
 test('VPN UI only claims protection when native egress verification passed', () => {

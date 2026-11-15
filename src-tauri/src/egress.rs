@@ -15,11 +15,13 @@ const PROBES: [&str; 6] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
 pub enum EgressFailure {
     Unavailable, // External or DNS/TLS services could not be reached.
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
 pub enum EgressCheck {
     Verified(IpAddr),
     Unchanged,
@@ -27,6 +29,7 @@ pub enum EgressCheck {
     Unverified(IpAddr),
 }
 
+#[cfg(test)]
 pub fn classify_egress(
     baseline: Option<IpAddr>,
     observed: Result<IpAddr, EgressFailure>,
@@ -41,6 +44,7 @@ pub fn classify_egress(
 
 /// Status for explicit, user-initiated diagnostics. This never exposes
 /// an address and never equates a reachable service with leak-free routing.
+#[cfg(test)]
 pub fn egress_result_code(result: EgressCheck) -> &'static str {
     match result {
         EgressCheck::Verified(_) => "changed",
@@ -53,10 +57,15 @@ pub fn egress_result_code(result: EgressCheck) -> &'static str {
 /// Two independent paths to the *same* HTTPS endpoint are required:
 /// (a) authenticated local Xray HTTP CONNECT -> configured remote VPN,
 /// (b) a normal system request expected to traverse Windows TUN.
-/// A changed system IPv4 by itself was the source of false "VPN connected".
+/// Public VPN egress can vary by connection, so different Xray/TUN IPs alone
+/// are not proof of bypass. Compare the system path to the pre-tunnel baseline;
+/// the caller separately requires a live TUN route and healthy DNS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TunnelProof {
     Verified(IpAddr),
+    /// Both Xray and Windows carried a real HTTPS request, but an exit-IP
+    /// service was unavailable, so the public route could not be compared.
+    TrafficObservedUnverified,
     RoutingBypass,
     ProxyUnreachable,
     TunUnreachable,
@@ -74,9 +83,19 @@ impl TunnelProof {
         }
     }
 
+    /// Actual HTTPS traffic reached both paths. Callers must still validate
+    /// that Windows selects the TUN route and DNS resolves before accepting.
+    pub fn traffic_confirmed(self) -> bool {
+        matches!(
+            self,
+            Self::Verified(_) | Self::TrafficObservedUnverified | Self::BaselineUnavailable
+        )
+    }
+
     pub fn status(self) -> &'static str {
         match self {
             Self::Verified(_) => "paths_match",
+            Self::TrafficObservedUnverified => "traffic_observed_unverified",
             Self::RoutingBypass => "routing_bypass",
             Self::ProxyUnreachable => "server_unreachable",
             Self::TunUnreachable => "tun_no_traffic",
@@ -98,12 +117,13 @@ pub fn classify_tunnel_path(
     let Some(via_system) = system_via_tun else {
         return TunnelProof::TunUnreachable;
     };
-    if via_proxy != via_system {
-        return TunnelProof::RoutingBypass;
-    }
     match baseline {
         None => TunnelProof::BaselineUnavailable,
+        Some(before) if before == via_system && via_proxy != via_system => {
+            TunnelProof::RoutingBypass
+        }
         Some(before) if before == via_system => TunnelProof::BaselineUnchanged,
+        // The caller still checks the active TUN route and DNS before accepting.
         Some(_) => TunnelProof::Verified(via_system),
     }
 }
@@ -116,10 +136,38 @@ fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Clie
         .proxy(proxy)
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_millis(2000))
-        .timeout(Duration::from_millis(3500))
+        .connect_timeout(Duration::from_millis(2500))
+        .timeout(Duration::from_millis(4500))
         .build()
         .map_err(|_| "Не удалось подготовить защищённый тест VPN.".to_string())
+}
+
+/// Xray may take longer than a fixed startup delay to create its loopback
+/// inbound, especially while the Windows TUN adapter and routes initialize.
+/// Wait for the local socket before sending remote probes so an early
+/// connection-refused result is not misreported as an unreachable VPN server.
+pub async fn wait_for_attestation_listener(port: u16, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        if tokio::time::timeout(
+            remaining,
+            tokio::net::TcpStream::connect(("127.0.0.1", port)),
+        )
+        .await
+        .is_ok_and(|result| result.is_ok())
+        {
+            return true;
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        tokio::time::sleep(remaining.min(Duration::from_millis(75))).await;
+    }
 }
 
 /// Server-only preflight: does the configured Xray proxy itself pass a real
@@ -128,16 +176,15 @@ pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
     let Ok(client) = authenticated_proxy_client(port, password) else {
         return false;
     };
-    tokio::time::timeout(Duration::from_secs(7), probe_egress(client))
+    tokio::time::timeout(Duration::from_secs(7), probe_https_reachability(client))
         .await
-        .ok()
-        .flatten()
-        .is_some()
+        .is_ok_and(|reachable| reachable)
 }
 
-/// End-to-end evidence using Xray's authenticated loopback HTTP inbound. The
-/// two measurements use the *same* provider, unlike the old random-provider
-/// IP comparison. Tests never contain real subscription credentials.
+/// End-to-end evidence using Xray's authenticated loopback HTTP inbound.
+/// IP results are compared from the same provider; if IP services are blocked,
+/// exact HTTPS connectivity-check responses can confirm traffic without
+/// claiming an observed VPN exit address. Tests never contain real secrets.
 pub async fn verify_tunnel_path(
     baseline: Option<IpAddr>,
     port: u16,
@@ -151,31 +198,130 @@ pub async fn verify_tunnel_path(
         Ok(client) => client,
         Err(_) => return TunnelProof::ProbeUnavailable,
     };
+    // Test independent providers concurrently, and measure both routes to the
+    // same provider at the same time. Serial probing used to spend the entire
+    // startup window waiting on one blocked HTTPS/DNS provider before trying
+    // a working fallback.
+    // Run a generic HTTPS check alongside IP checks. If all IP providers are
+    // filtered, ordinary traffic can still be observed without claiming an
+    // IP match or leak-free IPv4/IPv6 behavior.
+    let ip_paths = probe_ip_paths(baseline, via_xray.clone(), system.clone());
+    let generic_paths = probe_https_paths(via_xray, system);
     let pair = async {
-        let mut proxy_reachable = false;
-        for endpoint in PROBES {
-            // Xray must first successfully tunnel the HTTPS connection.
-            // Bypassing TCP through a direct socket cannot satisfy this step
-            // because this local inbound has a forced proxy routing rule.
-            let Some(remote_ip) = query_probe(via_xray.clone(), endpoint).await else {
-                continue;
-            };
-            proxy_reachable = true;
-            if let Some(system_ip) = query_probe(system.clone(), endpoint).await {
-                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+        let (proof, generic_ok) = tokio::join!(ip_paths, generic_paths);
+        match proof {
+            TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable if generic_ok => {
+                TunnelProof::TrafficObservedUnverified
             }
-        }
-        if proxy_reachable {
-            TunnelProof::TunUnreachable
-        } else {
-            TunnelProof::ProxyUnreachable
+            other => other,
         }
     };
-    // Bound the time Windows can be in the switched TUN state before the
-    // caller either confirms real traffic or performs automatic rollback.
+    // Each provider pair now runs concurrently; leave a short bounded window
+    // for DNS/TLS setup while preserving fail-safe rollback.
     tokio::time::timeout(Duration::from_secs(6), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)
+}
+
+async fn probe_ip_paths(
+    baseline: Option<IpAddr>,
+    proxy: reqwest::Client,
+    system: reqwest::Client,
+) -> TunnelProof {
+    let mut probes = JoinSet::new();
+    for endpoint in PROBES {
+        let proxy = proxy.clone();
+        let system = system.clone();
+        probes.spawn(async move {
+            // The Xray inbound forces this request through the selected server.
+            tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
+        });
+    }
+    let mut proxy_reachable = false;
+    let mut system_reachable = false;
+    while let Some(result) = probes.join_next().await {
+        match result {
+            Ok((Some(remote_ip), Some(system_ip))) => {
+                probes.abort_all();
+                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+            }
+            Ok((Some(_), None)) => proxy_reachable = true,
+            Ok((None, Some(_))) => system_reachable = true,
+            _ => {}
+        }
+    }
+    if proxy_reachable {
+        TunnelProof::TunUnreachable
+    } else if system_reachable {
+        TunnelProof::ProxyUnreachable
+    } else {
+        TunnelProof::ProxyUnreachable
+    }
+}
+
+const HTTPS_REACHABILITY_ENDPOINTS: [&str; 2] = [
+    "https://connectivitycheck.gstatic.com/generate_204",
+    "https://www.msftconnecttest.com/connecttest.txt",
+];
+
+async fn probe_https_reachability(client: reqwest::Client) -> bool {
+    let mut probes = JoinSet::new();
+    for endpoint in HTTPS_REACHABILITY_ENDPOINTS {
+        let client = client.clone();
+        probes.spawn(async move { probe_https_endpoint(client, endpoint).await });
+    }
+    while let Some(result) = probes.join_next().await {
+        if result.is_ok_and(|reachable| reachable) {
+            probes.abort_all();
+            return true;
+        }
+    }
+    false
+}
+
+async fn probe_https_paths(proxy: reqwest::Client, system: reqwest::Client) -> bool {
+    let mut probes = JoinSet::new();
+    for endpoint in HTTPS_REACHABILITY_ENDPOINTS {
+        let proxy = proxy.clone();
+        let system = system.clone();
+        probes.spawn(async move {
+            let (via_proxy, via_system) = tokio::join!(
+                probe_https_endpoint(proxy, endpoint),
+                probe_https_endpoint(system, endpoint)
+            );
+            via_proxy && via_system
+        });
+    }
+    while let Some(result) = probes.join_next().await {
+        if result.is_ok_and(|reachable| reachable) {
+            probes.abort_all();
+            return true;
+        }
+    }
+    false
+}
+
+async fn probe_https_endpoint(client: reqwest::Client, endpoint: &'static str) -> bool {
+    let Ok(mut response) = client.get(endpoint).send().await else {
+        return false;
+    };
+    if endpoint.ends_with("/generate_204") {
+        return response.status() == reqwest::StatusCode::NO_CONTENT;
+    }
+    if response.status() != reqwest::StatusCode::OK
+        || response.content_length().is_some_and(|size| size > 64)
+    {
+        return false;
+    }
+    let mut body = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) if body.len() + chunk.len() <= 64 => body.extend_from_slice(&chunk),
+            Ok(None) => break,
+            _ => return false,
+        }
+    }
+    body == b"Microsoft Connect Test"
 }
 
 fn parse_ip(body: &str) -> Result<IpAddr, String> {
@@ -268,15 +414,6 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
     )
 }
 
-/// A missing baseline permits a tunnel attempt but can never verify protection.
-pub async fn verify_egress(baseline: Option<IpAddr>) -> EgressCheck {
-    let observed = match probe_client() {
-        Ok(client) => probe_egress(client).await.ok_or(EgressFailure::Unavailable),
-        Err(_) => Err(EgressFailure::Unavailable),
-    };
-    classify_egress(baseline, observed)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,34 +450,56 @@ mod tests {
     }
 
     #[test]
-    fn changed_direct_ip_cannot_be_verified_without_a_matching_proxy_ip() {
+    fn routing_bypass_requires_the_system_path_to_match_the_physical_baseline() {
         let original: IpAddr = "192.0.2.10".parse().unwrap();
-        let direct: IpAddr = "198.51.100.9".parse().unwrap();
-        let via_xray: IpAddr = "203.0.113.45".parse().unwrap();
+        let tunneled: IpAddr = "198.51.100.9".parse().unwrap();
+        let other_tunneled_exit: IpAddr = "203.0.113.45".parse().unwrap();
         assert_eq!(
-            classify_tunnel_path(Some(original), Some(via_xray), Some(direct)),
+            classify_tunnel_path(Some(original), Some(tunneled), Some(original)),
             TunnelProof::RoutingBypass
         );
         assert_eq!(
-            classify_tunnel_path(Some(original), None, Some(direct)),
-            TunnelProof::ProxyUnreachable
-        );
-        assert_eq!(
-            classify_tunnel_path(Some(original), Some(via_xray), None),
+            classify_tunnel_path(Some(original), Some(tunneled), None),
             TunnelProof::TunUnreachable
         );
         assert_eq!(
-            classify_tunnel_path(Some(original), Some(direct), Some(direct)),
-            TunnelProof::Verified(direct)
+            classify_tunnel_path(Some(original), Some(tunneled), Some(other_tunneled_exit)),
+            TunnelProof::Verified(other_tunneled_exit)
         );
         assert_eq!(
-            classify_tunnel_path(None, Some(direct), Some(direct)),
+            classify_tunnel_path(Some(original), None, Some(tunneled)),
+            TunnelProof::ProxyUnreachable
+        );
+        assert_eq!(
+            classify_tunnel_path(Some(original), Some(tunneled), Some(tunneled)),
+            TunnelProof::Verified(tunneled)
+        );
+        assert_eq!(
+            classify_tunnel_path(None, Some(tunneled), Some(tunneled)),
             TunnelProof::BaselineUnavailable
         );
         assert_eq!(
-            classify_tunnel_path(Some(direct), Some(direct), Some(direct)),
+            classify_tunnel_path(Some(tunneled), Some(tunneled), Some(tunneled)),
             TunnelProof::BaselineUnchanged
         );
+    }
+
+    #[tokio::test]
+    async fn waits_for_the_xray_listener_when_startup_is_delayed() {
+        let reservation = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = reservation.local_addr().unwrap().port();
+        drop(reservation);
+
+        let delayed_listener = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(120)).await;
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+                .await
+                .unwrap();
+            let _ = listener.accept().await;
+        });
+
+        assert!(wait_for_attestation_listener(port, Duration::from_secs(1)).await);
+        delayed_listener.abort();
     }
 
     #[test]
@@ -353,6 +512,15 @@ mod tests {
         assert_eq!(
             classify_egress(None, Err(EgressFailure::Unavailable)),
             EgressCheck::Unavailable
+        );
+        let path = classify_tunnel_path(None, Some(observed), Some(observed));
+        assert_eq!(path, TunnelProof::BaselineUnavailable);
+        assert!(path.traffic_confirmed());
+        assert_eq!(path.verified_ip(), None);
+        assert!(TunnelProof::TrafficObservedUnverified.traffic_confirmed());
+        assert_eq!(
+            TunnelProof::TrafficObservedUnverified.status(),
+            "traffic_observed_unverified"
         );
     }
 

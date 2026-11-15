@@ -53,6 +53,8 @@ pub struct ActiveTunnel {
     pub cached_ping_ms: u32,
     pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
+    /// Transient public probe failures are tolerated before restarting Xray.
+    pub failed_health_probes: u8,
     pub probe_port: u16,
     pub probe_password: String,
     pub last_tunnel_proof: TunnelProof,
@@ -81,6 +83,28 @@ async fn stop_failed_tun(
     crate::tun_health::cleanup_bymevpn_routes_after_exit().await
 }
 
+fn should_restart_after_health_probe(
+    proof: TunnelProof,
+    path_ready: bool,
+    consecutive_failures: &mut u8,
+) -> bool {
+    if proof == TunnelProof::RoutingBypass {
+        return true;
+    }
+    if proof.traffic_confirmed() && path_ready {
+        *consecutive_failures = 0;
+    } else if matches!(
+        proof,
+        TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable
+    ) || (proof.traffic_confirmed() && !path_ready)
+    {
+        *consecutive_failures = consecutive_failures.saturating_add(1);
+    } else {
+        *consecutive_failures = 0;
+    }
+    *consecutive_failures >= 2
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub tunnel: Mutex<Option<ActiveTunnel>>,
@@ -92,6 +116,65 @@ pub struct AppState {
     pub google_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
     pub telegram_ticket: Mutex<Option<String>>,
+    /// Keeps the last successfully selected node so transient tunnel failures
+    /// can be retried without treating a failed first connection as recovery.
+    pub reconnect: Mutex<ReconnectState>,
+    /// A failed startup/exit cleanup must remain visible to status polling
+    /// until a later scoped recovery succeeds.
+    pub network_recovery_required: Mutex<bool>,
+}
+
+#[derive(Default)]
+pub struct ReconnectState {
+    armed: bool,
+    node_code: Option<String>,
+    attempt: usize,
+    next_attempt: Option<std::time::Instant>,
+}
+
+impl ReconnectState {
+    fn connected(&mut self, node_code: String) {
+        self.armed = true;
+        self.node_code = Some(node_code);
+        self.attempt = 0;
+        self.next_attempt = None;
+    }
+
+    fn manually_stopped(&mut self) {
+        self.armed = false;
+        self.node_code = None;
+        self.attempt = 0;
+        self.next_attempt = None;
+    }
+
+    fn due_node(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
+        const RETRY_DELAYS: [std::time::Duration; 5] = [
+            Duration::from_secs(2),
+            Duration::from_secs(4),
+            Duration::from_secs(8),
+            Duration::from_secs(16),
+            Duration::from_secs(30),
+        ];
+        if !enabled || !self.armed {
+            self.next_attempt = None;
+            return None;
+        }
+        let node_code = self.node_code.clone()?;
+        let due = match self.next_attempt {
+            Some(next) => now >= next,
+            None => {
+                self.next_attempt = Some(now + RETRY_DELAYS[0]);
+                false
+            }
+        };
+        if !due {
+            return None;
+        }
+        self.attempt = self.attempt.saturating_add(1);
+        let delay = RETRY_DELAYS[self.attempt.min(RETRY_DELAYS.len() - 1)];
+        self.next_attempt = Some(now + delay);
+        Some(node_code)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -373,7 +456,7 @@ async fn request(
     } else {
         None
     };
-    let device_id = if path == "/servers" {
+    let device_id = if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
         Some(install_id(app)?)
     } else {
         None
@@ -692,35 +775,54 @@ pub async fn auth_register(
     store_auth(value).await
 }
 
-#[tauri::command]
-pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let _connection_guard = state.connection_gate.lock().await;
-    // Logout must not leave the privileged VPN running under a different
-    // account. Refuse logout if the OS cannot terminate the tunnel.
-    {
+/// One local shutdown path for manual disconnect, logout and cleanup retries.
+/// It only removes routes and DNS settings owned by the ByMeVPN adapter.
+async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String> {
+    state
+        .reconnect
+        .lock()
+        .map_err(|e| e.to_string())?
+        .manually_stopped();
+
+    let active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             let already_exited = active
                 .child
                 .try_wait()
-                .map_err(|e| format!("Не удалось проверить VPN перед выходом: {e}"))?
+                .map_err(|e| format!("Не удалось проверить VPN перед отключением: {e}"))?
                 .is_some();
             if !already_exited {
                 active
                     .child
                     .kill()
-                    .map_err(|e| format!("Не удалось остановить VPN перед выходом: {e}"))?;
+                    .map_err(|e| format!("Не удалось остановить VPN: {e}"))?;
                 active
                     .child
                     .wait()
                     .map_err(|e| format!("Не удалось дождаться остановки VPN: {e}"))?;
             }
         }
-        if let Some(active) = lock.take() {
-            let _ = fs::remove_file(active.config_path);
-        }
+        lock.take()
+    };
+    if let Some(active) = active {
+        let _ = fs::remove_file(active.config_path);
     }
+    let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
+    if let Ok(mut required) = state.network_recovery_required.lock() {
+        *required = cleanup.is_err();
+    }
+    cleanup
+}
+
+#[tauri::command]
+pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _connection_guard = state.connection_gate.lock().await;
+    // Even when local cleanup fails, revoke the backend session. Keep local
+    // credentials until cleanup succeeds so the user can retry the operation.
+    let cleanup = stop_tunnel_and_restore_network(&state).await;
     let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    cleanup?;
     let _ = request(
         &app,
         Method::POST,
@@ -1448,7 +1550,8 @@ fn default_settings() -> Value {
     json!({
         "autoStart": false,
         "autoConnect": false,
-        "stayConnectedInBackground": false,
+        "autoReconnect": true,
+        "stayConnectedInBackground": true,
         "bypassRu": true,
         "adBlock": "none",
         "dnsMode": "cloudflare",
@@ -1460,12 +1563,17 @@ fn default_settings() -> Value {
 
 fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
     match key {
-        "autoStart" | "autoConnect" | "bypassRu" => {
+        "autoStart" | "autoConnect" | "autoReconnect" | "bypassRu" => {
             if !value.is_boolean() {
                 return Err("Эта настройка должна иметь значение вкл./выкл.".into());
             }
         }
-        "stayConnectedInBackground" | "killSwitch" => {
+        "stayConnectedInBackground" => {
+            if !value.is_boolean() {
+                return Err("Эта настройка должна иметь значение вкл./выкл.".into());
+            }
+        }
+        "killSwitch" => {
             if value != &Value::Bool(false) {
                 return Err("Функция будет доступна после проверки безопасности Windows.".into());
             }
@@ -1558,6 +1666,19 @@ pub async fn vpn_start(
             return Err("Подключение уже активно.".into());
         }
     }
+    let recovery_required = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
+    if recovery_required {
+        crate::tun_health::cleanup_bymevpn_routes_after_exit()
+            .await
+            .map_err(|error| format!("Сначала восстановите сеть Windows: {error}"))?;
+        if let Ok(mut required) = state.network_recovery_required.lock() {
+            *required = false;
+        }
+    }
 
     // Check that user has an active or trial subscription before launching tunnel
     let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
@@ -1594,25 +1715,30 @@ pub async fn vpn_start(
         .unwrap_or("cloudflare");
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
+    let reconnect_node = chosen_node.clone();
     let id = install_id(&app)?;
 
-    // Egress providers may be blocked independently of the VPN endpoint. Their
-    // outage must not prevent connecting, but protection stays unverified.
-    let baseline_ip = crate::egress::public_egress_ip().await.ok();
-
-    let session_val = request(
-        &app,
-        Method::POST,
-        "/vpn/session",
-        Some(json!({
-            "node_code": chosen_node,
-            "install_id": id
-        })),
-        true,
-        false,
-    )
-    .await
-    .map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
+    // Capture the pre-VPN egress while opening the server session. Both happen
+    // before Windows routes change, so serializing them only adds startup time.
+    let (baseline_result, session_result) = tokio::join!(
+        crate::egress::public_egress_ip(),
+        request(
+            &app,
+            Method::POST,
+            "/vpn/session",
+            Some(json!({
+                "node_code": chosen_node,
+                "install_id": id
+            })),
+            true,
+            false,
+        )
+    );
+    // External egress services may be blocked independently of the VPN. That
+    // must not prevent a safe attempt, but without a baseline we cannot report
+    // the tunnel as verified.
+    let baseline_ip = baseline_result.ok();
+    let session_val = session_result.map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
 
     // Every failure after creating a server session must revoke the session.
     // This prevents exhausted device slots after invalid configs, missing
@@ -1745,8 +1871,12 @@ pub async fn vpn_start(
                 return Err(error);
             }
         };
-        tokio::time::sleep(Duration::from_millis(250)).await;
         let preflight_ok = matches!(preflight_child.try_wait(), Ok(None))
+            && crate::egress::wait_for_attestation_listener(
+                probe_port,
+                Duration::from_secs(2),
+            )
+            .await
             && preflight_xray_server(probe_port, &probe_password).await;
         // Shut down the process with NO TUN before enabling the system route.
         let _ = preflight_child.kill();
@@ -1802,9 +1932,16 @@ pub async fn vpn_start(
         // Bound the ENTIRE period that Windows routes through an unverified
         // TUN. Includes route inspection and DNS, not just the HTTPS probe.
         let handoff = tokio::time::timeout(Duration::from_secs(9), async {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            if !crate::egress::wait_for_attestation_listener(
+                probe_port,
+                Duration::from_secs(2),
+            )
+            .await
+            {
+                return (TunnelProof::ProbeUnavailable, false);
+            }
             let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
-            if proof.verified_ip().is_none() {
+            if !proof.traffic_confirmed() {
                 return (proof, false);
             }
             let (mut routes, dns) = tokio::join!(
@@ -1819,7 +1956,7 @@ pub async fn vpn_start(
                 &routes,
                 dns,
                 true,
-                true,
+                proof.traffic_confirmed(),
             );
             (proof, healthy)
         })
@@ -1832,14 +1969,11 @@ pub async fn vpn_start(
                 return Err("Проверка VPN превысила безопасный лимит. Системный интернет восстановлен.".into());
             }
         };
-        let verified_ip = if route_and_dns_ok && matches!(child.try_wait(), Ok(None)) {
-            proof.verified_ip()
-        } else {
-            None
-        };
-        if verified_ip.is_none() {
+        let tunnel_ready = route_and_dns_ok && matches!(child.try_wait(), Ok(None));
+        let verified_ip = tunnel_ready.then(|| proof.verified_ip()).flatten();
+        if !tunnel_ready {
             stop_failed_tun(&mut child, &config_path).await?;
-            return Err(if proof.verified_ip().is_none() {
+            return Err(if !proof.traffic_confirmed() {
                 format!("VPN не передаёт трафик ({}). Сетевые настройки Windows восстановлены.", proof.status())
             } else {
                 "VPN-сервер отвечает, но Windows TUN или DNS не работает. Подключение отменено, обычный интернет восстановлен.".into()
@@ -1874,6 +2008,7 @@ pub async fn vpn_start(
             cached_ping_ms: ping,
             baseline_ip,
             egress_verified: verified_ip.is_some(),
+            failed_health_probes: 0,
             probe_port,
             probe_password,
             last_tunnel_proof: proof,
@@ -1898,6 +2033,8 @@ pub async fn vpn_start(
             let _ = fs::remove_file(dir.join("active_tunnel.json"));
         }
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    } else if let Ok(mut reconnect) = state.reconnect.lock() {
+        reconnect.connected(reconnect_node);
     }
     connection_result
 }
@@ -1905,39 +2042,10 @@ pub async fn vpn_start(
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
-    let maybe_active = {
-        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        if let Some(active) = lock.as_mut() {
-            let already_stopped = active
-                .child
-                .try_wait()
-                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?
-                .is_some();
-            if !already_stopped {
-                // Do not clear connected state until the OS confirms termination.
-                active
-                    .child
-                    .kill()
-                    .map_err(|e| format!("Не удалось остановить VPN-процесс: {e}"))?;
-                active
-                    .child
-                    .wait()
-                    .map_err(|e| format!("Не удалось дождаться остановки Xray: {e}"))?;
-            }
-        }
-        lock.take()
-    };
-    if let Some(active) = maybe_active {
-        let _ = fs::remove_file(&active.config_path);
-        // Revoke device session even if Windows refuses route cleanup.
-        let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-        cleanup?;
-    } else {
-        // Also repair a stale ByMeVPN route from an earlier crashed build.
-        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
-    }
-    Ok(())
+    let cleanup = stop_tunnel_and_restore_network(&state).await;
+    // Revoke even if route cleanup failed: don't retain an active server slot.
+    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    cleanup
 }
 
 #[tauri::command]
@@ -1968,13 +2076,13 @@ pub async fn vpn_status(
     };
     if let Some((started_at, baseline_ip, port, password)) = probe {
         let result = verify_tunnel_path(baseline_ip, port, &password).await;
-        let path_ready = if result.verified_ip().is_some() {
+        let path_ready = if result.traffic_confirmed() {
             let routes = crate::tun_health::inspect().await;
             crate::tun_health::health_proves_connection(
                 &routes,
                 crate::tun_health::dns_resolution_check().await,
                 true,
-                true,
+                result.traffic_confirmed(),
             )
         } else {
             false
@@ -1985,6 +2093,11 @@ pub async fn vpn_status(
                 active.last_egress_probe = std::time::Instant::now();
                 active.last_tunnel_proof = result;
                 active.egress_verified = path_ready && result.verified_ip().is_some();
+                let restart = should_restart_after_health_probe(
+                    result,
+                    path_ready,
+                    &mut active.failed_health_probes,
+                );
                 active.server_ip = if active.egress_verified {
                     result
                         .verified_ip()
@@ -1993,10 +2106,10 @@ pub async fn vpn_status(
                 } else {
                     String::new()
                 };
-                if !active.egress_verified {
-                    // If a previously verified VPN stops transferring real
-                    // traffic, immediately unblock Windows rather than leave
-                    // the default route pointed at a stalled Xray process.
+                if restart {
+                    // A single missed external probe is transient noise. A
+                    // confirmed bypass remains fail-closed; repeated transfer
+                    // failures restart through the watchdog's auto-reconnect.
                     let _ = active.child.kill();
                     let _ = active.child.wait();
                     if let Some(active) = lock.take() {
@@ -2065,13 +2178,20 @@ pub async fn vpn_status(
     // A crashed tunnel or an observed routing leak must release its server
     // session as well as its local process and config. Never await HTTP while
     // holding the tunnel Mutex.
-    let mut recovery_failed = false;
+    let mut recovery_failed = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
     if revoke_session {
         // Never leave the UI falsely connected if Windows refuses our route
         // cleanup: report a disconnected process and a specific repair status.
         recovery_failed = crate::tun_health::cleanup_bymevpn_routes_after_exit()
             .await
             .is_err();
+        if let Ok(mut required) = state.network_recovery_required.lock() {
+            *required = recovery_failed;
+        }
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
     if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {
@@ -2104,6 +2224,26 @@ pub async fn vpn_status(
         country: String::new(),
         ip: String::new(),
     })
+}
+
+/// Called only by the native watchdog after it has confirmed the tunnel is
+/// down. A successful user-initiated connection arms recovery; a manual stop
+/// disarms it. Failed initial connects therefore never trigger background
+/// retries.
+pub async fn auto_reconnect_if_due(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let enabled = load_settings(&app)
+        .get("autoReconnect")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let node_code = state
+        .reconnect
+        .lock()
+        .ok()
+        .and_then(|mut reconnect| reconnect.due_node(enabled, std::time::Instant::now()));
+    if let Some(node_code) = node_code {
+        let _ = vpn_start(app.clone(), app.state::<AppState>(), Some(node_code)).await;
+    }
 }
 
 /// Read-only local checks for a user-initiated diagnostics dialog. Never
@@ -2144,7 +2284,7 @@ pub async fn vpn_health_report(
             &routes,
             dns_resolution,
             true,
-            proof.verified_ip().is_some(),
+            proof.traffic_confirmed(),
         );
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let mut verified = false;
@@ -2152,7 +2292,9 @@ pub async fn vpn_health_report(
             .as_mut()
             .filter(|active| Some(active.started_at) == tunnel_started_at)
         {
-            verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
+            verified = route_dns_ok
+                && proof.verified_ip().is_some()
+                && matches!(tunnel.child.try_wait(), Ok(None));
             tunnel.last_tunnel_proof = proof;
             tunnel.last_egress_probe = std::time::Instant::now();
             tunnel.egress_verified = verified;
@@ -2178,6 +2320,11 @@ pub async fn vpn_health_report(
     } else {
         "unknown"
     };
+    let network_recovery_required = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
     Ok(json!({
         "process_tracked": process_tracked,
         "ip_verified": ip_verified,
@@ -2189,6 +2336,7 @@ pub async fn vpn_health_report(
         "dns_resolution": dns_resolution,
         "egress_probe": egress_probe,
         "runtime_healthy": runtime_healthy,
+        "network_recovery_required": network_recovery_required,
         "xray_hint": hint
     }))
 }
@@ -2273,8 +2421,12 @@ pub fn window_toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+pub fn window_close(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if load_settings(&app)["stayConnectedInBackground"] == Value::Bool(true) {
+        window.hide().map_err(|e| e.to_string())
+    } else {
+        window.close().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -2318,6 +2470,96 @@ pub fn open_external_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tunnel_recovery_ignores_one_probe_miss_but_keeps_routing_leaks_fail_closed() {
+        let mut failures = 0;
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProxyUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 1);
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProbeUnavailable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 0);
+
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::ProxyUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert!(should_restart_after_health_probe(
+            TunnelProof::TunUnreachable,
+            false,
+            &mut failures,
+        ));
+        assert_eq!(failures, 2);
+
+        let ip = "198.51.100.8".parse().unwrap();
+        assert!(!should_restart_after_health_probe(
+            TunnelProof::Verified(ip),
+            true,
+            &mut failures,
+        ));
+        assert_eq!(failures, 0);
+        assert!(should_restart_after_health_probe(
+            TunnelProof::RoutingBypass,
+            false,
+            &mut failures,
+        ));
+    }
+
+    #[test]
+    fn reconnect_uses_bounded_backoff_only_after_a_successful_connection() {
+        let now = std::time::Instant::now();
+        let mut reconnect = ReconnectState::default();
+        assert_eq!(reconnect.due_node(true, now), None);
+
+        reconnect.connected("node-de".into());
+        assert_eq!(reconnect.due_node(true, now), None);
+        assert_eq!(reconnect.due_node(true, now + Duration::from_secs(1)), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(2)),
+            Some("node-de".into())
+        );
+        assert_eq!(reconnect.due_node(true, now + Duration::from_secs(5)), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(6)),
+            Some("node-de".into())
+        );
+        for (before, due) in [(13, 14), (29, 30), (59, 60), (89, 90)] {
+            assert_eq!(
+                reconnect.due_node(true, now + Duration::from_secs(before)),
+                None
+            );
+            assert_eq!(
+                reconnect.due_node(true, now + Duration::from_secs(due)),
+                Some("node-de".into())
+            );
+        }
+    }
+
+    #[test]
+    fn reconnect_stops_when_disabled_or_manually_disconnected() {
+        let now = std::time::Instant::now();
+        let mut reconnect = ReconnectState::default();
+        reconnect.connected("auto".into());
+        assert_eq!(reconnect.due_node(false, now), None);
+        assert_eq!(reconnect.due_node(true, now), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(2)),
+            Some("auto".into())
+        );
+        reconnect.manually_stopped();
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(60)),
+            None
+        );
+    }
 
     #[test]
     fn server_catalog_accepts_android_and_backend_response_envelopes() {
@@ -2370,13 +2612,16 @@ mod tests {
     }
 
     #[test]
-    fn settings_are_type_safe_and_unsupported_features_cannot_be_enabled() {
+    fn settings_are_type_safe_and_unsupported_features_stay_disabled() {
         assert!(validate_setting("bypassRu", &json!(true)).is_ok());
         assert!(validate_setting("bypassRu", &json!("true")).is_err());
+        assert!(validate_setting("autoReconnect", &json!(true)).is_ok());
+        assert!(validate_setting("autoReconnect", &json!("yes")).is_err());
+        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_ok());
+        assert!(validate_setting("stayConnectedInBackground", &json!("yes")).is_err());
         assert!(validate_setting("selectedServerCode", &json!("node_de-1")).is_ok());
         assert!(validate_setting("selectedServerCode", &json!("../settings")).is_err());
         assert!(validate_setting("killSwitch", &json!(true)).is_err());
-        assert!(validate_setting("stayConnectedInBackground", &json!(true)).is_err());
         assert!(validate_setting("adBlock", &json!("unknown")).is_err());
         assert!(validate_setting("language", &json!("fr")).is_err());
         assert!(validate_setting("language", &json!("system")).is_ok());
@@ -2384,6 +2629,8 @@ mod tests {
         assert!(validate_setting("dnsMode", &json!("adguard")).is_ok());
         assert!(validate_setting("dnsMode", &json!("fake")).is_err());
         assert_eq!(default_settings()["bypassRu"], true);
+        assert_eq!(default_settings()["autoReconnect"], true);
+        assert_eq!(default_settings()["stayConnectedInBackground"], true);
         assert_eq!(default_settings()["adBlock"], "none");
     }
 

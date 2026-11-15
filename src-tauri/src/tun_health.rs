@@ -37,14 +37,14 @@ pub fn health_proves_connection(
     routes: &RouteReport,
     dns_ok: Option<bool>,
     process_running: bool,
-    egress_changed: bool,
+    traffic_observed: bool,
 ) -> bool {
     process_running
         && routes.adapter == "up"
         && routes.ipv4_default == Some(true)
         && routes.effective_ipv4 == Some(true)
         && dns_ok == Some(true)
-        && egress_changed
+        && traffic_observed
 }
 
 fn parse_report(text: &str) -> RouteReport {
@@ -137,7 +137,7 @@ pub async fn inspect() -> RouteReport {
 /// the adapter owned by ByMeVPN; never change the physical network adapter.
 /// If Windows denies the operation, report it rather than claiming recovery.
 #[cfg(windows)]
-fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
+pub fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'Stop'
@@ -176,7 +176,7 @@ if ($dns.Count -gt 0) {
 }
 
 #[cfg(not(windows))]
-fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
+pub fn cleanup_bymevpn_routes_after_exit_sync() -> Result<(), String> {
     Ok(())
 }
 

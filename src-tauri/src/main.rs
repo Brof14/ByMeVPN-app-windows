@@ -11,17 +11,57 @@ mod window_layout;
 #[cfg(windows)]
 mod windows_job;
 
-use tauri::{Manager, RunEvent};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, RunEvent, WindowEvent,
+};
 #[cfg(all(debug_assertions, windows))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
 fn main() {
     tauri::Builder::default()
+        .manage(service::AppState::default())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Recover app-owned TUN state left by an earlier process before
+            // enabling account actions in the new session.
+            let recovery_required =
+                crate::tun_health::cleanup_bymevpn_routes_after_exit_sync().is_err();
+            if let Ok(mut required) = app
+                .state::<service::AppState>()
+                .network_recovery_required
+                .lock()
+            {
+                *required = recovery_required;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 window_layout::fit_to_monitor(&window)?;
             }
+            let open = MenuItem::with_id(app, "open", "Открыть ByMeVPN", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &quit])?;
+            TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("ByMeVPN")
+                .icon(app.default_window_icon().expect("application icon").clone())
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
             if let Ok(dir) = app.path().app_data_dir() {
                 let stale_config = dir.join("active_tunnel.json");
                 if stale_config.exists() {
@@ -40,16 +80,20 @@ fn main() {
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;
-                    let _ = service::vpn_status(
+                    let status = service::vpn_status(
                         watchdog.clone(),
                         watchdog.state::<service::AppState>(),
                     )
                     .await;
+                    if status.is_ok_and(|metrics| {
+                        !metrics.connected && metrics.proof != "network_recovery_required"
+                    }) {
+                        service::auto_reconnect_if_due(watchdog.clone()).await;
+                    }
                 }
             });
             Ok(())
         })
-        .manage(service::AppState::default())
         .invoke_handler(tauri::generate_handler![
             api_transport::api_transport_encrypted,
             service::auth_login,
@@ -85,7 +129,23 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("ByMeVPN failed to start")
         .run(|app_handle, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+            if let RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } = &event
+            {
+                if label == "main"
+                    && service::load_settings(app_handle)["stayConnectedInBackground"]
+                        == serde_json::Value::Bool(true)
+                {
+                    api.prevent_close();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            }
+            if matches!(event, RunEvent::ExitRequested { .. }) {
                 if let Some(state) = app_handle.try_state::<service::AppState>() {
                     if let Ok(mut lock) = state.tunnel.lock() {
                         if let Some(mut active) = lock.take() {
@@ -95,6 +155,23 @@ fn main() {
                         }
                     }
                 }
+                // ExitRequested is the last synchronous opportunity to clean
+                // stale routes/DNS after Xray exits. The helper is scoped to
+                // the ByMeVPN adapter; physical interfaces are untouched.
+                let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit_sync();
+                if let Some(state) = app_handle.try_state::<service::AppState>() {
+                    if let Ok(mut required) = state.network_recovery_required.lock() {
+                        *required = cleanup.is_err();
+                    }
+                }
             }
         });
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
 }

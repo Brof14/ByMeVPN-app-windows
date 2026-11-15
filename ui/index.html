@@ -37,7 +37,7 @@
         <button id="btn-maximize" class="win-btn" aria-label="Развернуть" data-i18n-title="window_maximize">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor"/></svg>
         </button>
-        <button id="btn-close" class="win-btn win-close" aria-label="Закрыть" data-i18n-title="window_close">
+        <button id="btn-close" class="win-btn win-close" aria-label="Свернуть в область уведомлений" data-i18n-title="window_hide_tray">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
         </button>
       </div>
@@ -306,8 +306,8 @@
                 <div class="mobile-status-layout">
                   <p class="mobile-connection-kicker" data-i18n="home_connection_kicker">ВАШЕ ПОДКЛЮЧЕНИЕ</p>
                   <div class="mobile-power-space">
-                    <div id="vpn-power-ring" class="pulse-power-ring ring-connected" role="button" tabindex="0"
-                         aria-label="Выключить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
+                    <button type="button" id="vpn-power-ring" class="pulse-power-ring ring-connected"
+                         aria-label="Выключить VPN" data-i18n-title="vpn_toggle_label" aria-pressed="true" aria-busy="false">
                       <div class="inner-shield-circle" aria-hidden="true"><img class="vpn-shield-image" src="./assets/byme-connect-shield.png" alt="" draggable="false"><svg class="vpn-shield-mark" width="175" height="198" viewBox="0 0 92 104" fill="none">
             <defs>
               <linearGradient id="vpnPowerActiveGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
@@ -319,7 +319,7 @@
             <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vpnPowerActiveGrad)" stroke-width="7" stroke-linejoin="round"/>
             <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vpnPowerActiveGrad)"/>
           </svg></div>
-                    </div>
+                    </button>
                   </div>
                   <div class="mobile-status-summary">
                     <div class="connection-status-headline">
@@ -331,7 +331,7 @@
                     </p>
                     <span id="vpn-live-timer" class="mobile-connection-timer">00:00:00</span>
                     <div id="home-verification-notice" class="mobile-verification-notice hidden" role="status">
-                      <p data-i18n="vpn_unverified_help">Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.</p>
+                      <p data-i18n="vpn_unverified_help">Туннель работает, но проверка защиты не завершена. Пока статус не подтверждён, не считайте соединение защищённым.</p>
                       <button type="button" id="btn-vpn-health-check" class="mobile-health-button"
                               data-i18n="vpn_health_action">Диагностика соединения</button>
                     </div>
@@ -343,8 +343,8 @@
                 <div class="mobile-status-layout">
                   <p class="mobile-connection-kicker" data-i18n="home_connection_kicker">ВАШЕ ПОДКЛЮЧЕНИЕ</p>
                   <div class="mobile-power-space">
-                    <div id="vpn-power-ring-off" class="pulse-power-ring ring-off" role="button" tabindex="0"
-                         aria-label="Включить VPN" data-i18n-title="vpn_toggle_label" aria-busy="false">
+                    <button type="button" id="vpn-power-ring-off" class="pulse-power-ring ring-off"
+                         aria-label="Включить VPN" data-i18n-title="vpn_toggle_label" aria-pressed="false" aria-busy="false">
                       <div class="inner-shield-circle" aria-hidden="true"><img class="vpn-shield-image" src="./assets/byme-connect-shield.png" alt="" draggable="false"><svg class="vpn-shield-mark" width="175" height="198" viewBox="0 0 92 104" fill="none">
             <defs>
               <linearGradient id="vpnPowerInactiveGrad" x1="2" y1="80" x2="94" y2="17" gradientUnits="userSpaceOnUse">
@@ -356,7 +356,7 @@
             <path d="M15 11Q46 -1 77 11Q90 44 72 72Q60 88 46 100Q32 88 20 72Q2 44 15 11Z" stroke="url(#vpnPowerInactiveGrad)" stroke-width="7" stroke-linejoin="round"/>
             <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vpnPowerInactiveGrad)"/>
           </svg></div>
-                    </div>
+                    </button>
                   </div>
                   <div class="mobile-status-summary">
                     <h2 class="status-title-text" data-i18n="vpn_off">VPN выключен</h2>
@@ -518,7 +518,7 @@
                   <div class="rec-icon-badge">✨</div>
                   <div class="rec-server-info">
                     <strong data-i18n="server_auto">Автоматически</strong>
-                    <span data-i18n="server_auto_desc">Выберем лучшее доступное соединение</span>
+                    <span data-i18n="server_auto_desc">Система назначит доступный сервер</span>
                   </div>
                   <div class="radio-selection-dot"></div>
                 </button>
@@ -620,6 +620,18 @@
                     </div>
                     <label class="switch-control">
                       <input type="checkbox" id="set-autoconnect" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <div class="card-divider-line"></div>
+                  <div class="setting-item-row">
+                    <span class="setting-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.7 9a7 7 0 0 1 11.6-2L20 12M4 12l2.7 5a7 7 0 0 0 11.6-2"/></svg></span>
+                    <div class="setting-copy-column">
+                      <strong data-i18n="auto_reconnect_title">Восстанавливать VPN при обрыве</strong>
+                      <span data-i18n="auto_reconnect_desc">Повторять подключение с увеличением паузы между попытками</span>
+                    </div>
+                    <label class="switch-control">
+                      <input type="checkbox" id="set-autoreconnect" checked />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -847,10 +859,10 @@
                     <span class="setting-row-icon">∞</span>
                     <div class="setting-copy-column">
                       <strong data-i18n="background_title">Оставаться подключённым в фоне</strong>
-                      <span data-i18n="background_desc">Фоновая работа в разработке; закрытие окна сейчас отключает VPN</span>
+                      <span data-i18n="background_desc">Закрытие окна скроет приложение в область уведомлений и оставит VPN включённым.</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-background" disabled title="Фоновый режим появится после реализации Windows Service" data-i18n-title="background_unavailable_tip" />
+                      <input type="checkbox" id="set-background" checked />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -947,7 +959,7 @@
                         <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
                       </svg>
                     </div>
-                    <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.5">Версия 1.2.5</span></span>
+                    <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.12">Версия 1.2.12</span></span>
                   </div>
                 </div>
               </section>

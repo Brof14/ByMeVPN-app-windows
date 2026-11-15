@@ -47,9 +47,11 @@ const state = {
   sessionEpoch: 0,
   vpnVerified: false,
   vpnPhase: "idle",
+  reconnectPending: false,
   pollBusy: false,
   pollFailures: 0,
   catalogReady: false,
+  serversStale: false,
   devicesSupported: false,
   availableDeviceCounts: [],
   paymentBusy: false,
@@ -59,7 +61,8 @@ const state = {
   settings: {
     autoStart: false,
     autoConnect: false,
-    stayConnectedInBackground: false,
+    autoReconnect: true,
+    stayConnectedInBackground: true,
     bypassRu: true,
     adBlock: 'none',
     dnsMode: 'cloudflare',
@@ -90,6 +93,8 @@ const I18N = {
     settings_headline: "Приложение работает за вас.",
     settings_intro: "Основные настройки уже подобраны. При желании их можно изменить.",
     settings_connection_label: "Подключение",
+    auto_reconnect_title: "Восстанавливать VPN при обрыве",
+    auto_reconnect_desc: "Повторять подключение с увеличением паузы между попытками",
     settings_language_section: "Язык приложения",
     settings_default_tip: "Не уверены, что выбрать? Оставьте настройки по умолчанию.",
     settings_more_title: "Дополнительные настройки",
@@ -98,6 +103,7 @@ const I18N = {
     window_minimize: "Свернуть",
     window_maximize: "Развернуть",
     window_close: "Закрыть",
+    window_hide_tray: "Свернуть в область уведомлений",
     help_tooltip: "Помощь",
     vpn_toggle_label: "Переключить VPN",
     routing_settings_tooltip: "Настройки маршрутизации",
@@ -107,7 +113,7 @@ const I18N = {
     trial_try_three: "Попробуйте 3 дня бесплатно",
     trial_all_locations: "Полный доступ ко всем локациям для новых пользователей",
     trial_no_cancel: "Все серверы сразу • Без оплаты и карты",
-    background_unavailable_tip: "Фоновый режим требует Windows Service",
+    background_unavailable_tip: "Открыть ByMeVPN можно из области уведомлений Windows",
     killswitch_unavailable_tip: "Полная аварийная защита пока не реализована",
     renewal_disclaimer: "Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.",
     renewal_select_plan: "Выбрать или продлить тариф",
@@ -200,7 +206,7 @@ const I18N = {
     server_sheet_desc: "Выберите страну или доверьтесь автоматике.",
     server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
-    vpn_unverified_help: "Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.",
+    vpn_unverified_help: "Туннель работает, но проверка защиты не завершена. Пока статус не подтверждён, не считайте соединение защищённым.",
     vpn_health_action: "Диагностика соединения",
     vpn_health_title: "Проверка подключения",
     vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
@@ -305,7 +311,7 @@ const I18N = {
     terms_agreement: 'Нажимая «Оплатить», вы соглашаетесь с Условиями использования и Политикой конфиденциальности.',
     back: 'Назад',
     server_auto: 'Автоматически',
-    server_auto_desc: 'Выберем лучшее доступное соединение',
+    server_auto_desc: 'Система назначит доступный сервер',
     available_servers: 'ДОСТУПНЫЕ СЕРВЕРЫ',
     autorenew_on: 'Статус автопродления',
     renew: 'Продлить',
@@ -326,7 +332,7 @@ const I18N = {
     autostart_title: 'Запускать вместе с системой',
     autostart_desc: 'ByMeVPN будет включаться автоматически при запуске компьютера',
     background_title: 'Оставаться подключённым в фоне',
-    background_desc: 'Фоновая работа пока в разработке. Закрытие окна отключает VPN.',
+    background_desc: 'Закрытие окна скроет приложение в область уведомлений и оставит VPN включённым.',
     bypass_title: 'Умный обход российских сервисов',
     bypass_desc: 'Российские сайты и сервисы будут открываться без VPN',
     set_security_title: 'Комфорт и защита',
@@ -371,6 +377,8 @@ const I18N = {
     settings_headline: "The app works for you.",
     settings_intro: "The defaults are ready to use. You can change them here.",
     settings_connection_label: "Connection",
+    auto_reconnect_title: "Reconnect after interruption",
+    auto_reconnect_desc: "Retry with a longer pause between attempts",
     settings_language_section: "App language",
     settings_default_tip: "Not sure? Keep the default settings.",
     settings_more_title: "Advanced settings",
@@ -379,6 +387,7 @@ const I18N = {
     window_minimize: "Minimize",
     window_maximize: "Maximize",
     window_close: "Close",
+    window_hide_tray: "Hide to notification area",
     help_tooltip: "Help",
     vpn_toggle_label: "Toggle VPN",
     routing_settings_tooltip: "Routing settings",
@@ -388,7 +397,7 @@ const I18N = {
     trial_try_three: "Try 3 days free",
     trial_all_locations: "Access all available locations for new users",
     trial_no_cancel: "All servers • No payment or card",
-    background_unavailable_tip: "Background mode requires Windows Service",
+    background_unavailable_tip: "Open ByMeVPN from the Windows notification area",
     killswitch_unavailable_tip: "A full kill switch is not implemented yet",
     renewal_disclaimer: "Renewal terms depend on your checkout. Contact support if in-app management is unavailable.",
     renewal_select_plan: "Choose or renew a plan",
@@ -481,7 +490,7 @@ const I18N = {
     server_sheet_desc: "Choose a country or use automatic selection.",
     server_sheet_footnote: "Only servers in your subscription are shown.",
     home_connection_kicker: "YOUR CONNECTION",
-    vpn_unverified_help: "Xray is running, but routing and the external IP are unverified. Check connectivity before transferring sensitive data.",
+    vpn_unverified_help: "The tunnel is running, but protection checks are incomplete. Do not treat the connection as protected until its status is verified.",
     vpn_health_action: "Connection diagnostics",
     vpn_health_title: "Connection diagnostics",
     vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
@@ -586,7 +595,7 @@ const I18N = {
     terms_agreement: 'By clicking "Pay", you agree to Terms of Service and Privacy Policy.',
     back: 'Back',
     server_auto: 'Automatic',
-    server_auto_desc: 'We will select the lowest latency server',
+    server_auto_desc: 'The service will assign an available server',
     available_servers: 'AVAILABLE SERVERS',
     autorenew_on: 'Auto-renewal status',
     renew: 'Extend',
@@ -607,7 +616,7 @@ const I18N = {
     autostart_title: 'Launch on Windows startup',
     autostart_desc: 'ByMeVPN starts automatically with your system',
     background_title: 'Stay connected in background',
-    background_desc: 'Background VPN mode is not available yet. Closing the app disconnects.',
+    background_desc: 'Closing the window hides the app in the system tray and keeps VPN connected.',
     bypass_title: 'Smart local services bypass',
     bypass_desc: 'Direct routes for local government, banking and local domain services',
     set_security_title: 'Comfort & Protection',
@@ -709,7 +718,10 @@ async function loadAvailableServers() {
   try {
     const servers = await fetchServerCatalog(epoch);
     if (epoch !== state.sessionEpoch) return;
-    state.servers = Array.isArray(servers) ? servers : [];
+    if (!Array.isArray(servers)) throw new Error('Invalid server catalog');
+    state.servers = servers;
+    state.serversStale = false;
+    saveServerCatalogCache(state.servers);
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
     // Never relabel a live tunnel when the server catalog refreshes.
     // The selected endpoint changes only after a successful stop/switch flow.
@@ -725,9 +737,57 @@ async function loadAvailableServers() {
     updateVpnUi();
   } catch (err) {
     if (epoch !== state.sessionEpoch) return;
-    state.servers = [];
+    if (!state.servers.length) state.servers = readServerCatalogCache();
+    state.serversStale = state.servers.length > 0;
+    if (!state.vpnConnected && !state.connectionBusy) {
+      const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
+      state.selectedServer = preferred || {
+        code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0
+      };
+    }
     renderServersList();
-    showToast(serverCatalogErrorMessage(err), true);
+    showToast(state.serversStale
+      ? uiText('Не удалось обновить серверы. Показаны последние сохранённые локации; для подключения нужна сеть.',
+        'Could not refresh servers. Showing the last saved locations; a network connection is required to connect.')
+      : serverCatalogErrorMessage(err), true);
+  }
+}
+
+const SERVER_CATALOG_CACHE_KEY = 'bymevpn.server-catalog.v1';
+const SERVER_CATALOG_FIELDS = [
+  'name', 'name_en', 'country', 'country_en', 'country_code', 'city', 'city_en', 'flag'
+];
+
+function sanitizeCachedServerCatalog(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 200).flatMap(server => {
+    if (!server || typeof server !== 'object' ||
+        typeof server.code !== 'string' || !/^[a-z0-9._-]{1,64}$/i.test(server.code) ||
+        typeof server.supported !== 'boolean') return [];
+    const safe = { code: server.code, supported: server.supported };
+    for (const field of SERVER_CATALOG_FIELDS) {
+      if (typeof server[field] === 'string') safe[field] = server[field].slice(0, 100);
+    }
+    safe.ping = Number.isInteger(server.ping) && server.ping >= 0 && server.ping <= 9999
+      ? server.ping : 0;
+    return [safe];
+  });
+}
+
+function readServerCatalogCache() {
+  try {
+    return sanitizeCachedServerCatalog(JSON.parse(localStorage.getItem(SERVER_CATALOG_CACHE_KEY) || 'null'));
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveServerCatalogCache(servers) {
+  try {
+    const safe = sanitizeCachedServerCatalog(servers);
+    if (safe.length) localStorage.setItem(SERVER_CATALOG_CACHE_KEY, JSON.stringify(safe));
+  } catch (_) {
+    // Storage is only a convenience; the live API remains authoritative.
   }
 }
 
@@ -924,9 +984,7 @@ function setupEventListeners() {
   });
 
   // Match Android's tappable cards with accessible desktop keyboard actions.
-  // VPN rings already have dedicated keyboard handling further below.
   document.querySelectorAll('[role="button"][tabindex="0"]').forEach(element => {
-    if (element.id === 'vpn-power-ring' || element.id === 'vpn-power-ring-off') return;
     element.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -1028,14 +1086,6 @@ function setupEventListeners() {
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
   document.getElementById('vpn-power-ring-off')?.addEventListener('click', toggleVpn);
-  for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
-    document.getElementById(id)?.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        void toggleVpn();
-      }
-    });
-  }
   document.getElementById('btn-toggle-vpn')?.addEventListener('click', () => {
     if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
       void refreshAccountSnapshot(true);
@@ -1161,6 +1211,7 @@ function setupEventListeners() {
   // Settings switches
   document.getElementById('set-autostart')?.addEventListener('change', (e) => handleSettingChange('autoStart', e.target.checked));
   document.getElementById('set-autoconnect')?.addEventListener('change', e => handleSettingChange('autoConnect', e.target.checked));
+  document.getElementById('set-autoreconnect')?.addEventListener('change', e => handleSettingChange('autoReconnect', e.target.checked));
   document.getElementById('set-background')?.addEventListener('change', (e) => handleSettingChange('stayConnectedInBackground', e.target.checked));
   document.getElementById('set-bypass')?.addEventListener('change', (e) => handleSettingChange('bypassRu', e.target.checked));
   document.getElementById('set-dns-mode')?.addEventListener('change', e => handleSettingChange('dnsMode', e.target.value));
@@ -1412,10 +1463,13 @@ async function handleLogout() {
       state.vpnConnected = false;
       state.vpnVerified = false;
       state.vpnPhase = 'idle';
+      state.reconnectPending = false;
       state.connectionError = null;
       state.vpnSequence += 1;
       state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
       state.servers = [];
+      state.serversStale = false;
+      try { localStorage.removeItem(SERVER_CATALOG_CACHE_KEY); } catch (_) { /* optional cache */ }
       state.devices = [];
       state.user = null;
       state.subscription = null;
@@ -1476,8 +1530,10 @@ async function refreshVpnHealth() {
         'Protected request through Xray failed (cause not confirmed)'),
       tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
         'Xray server responds, but Windows TUN cannot pass the HTTPS probe'),
-      baseline_unknown: uiText('Маршруты совпадают, но исходный IPv4 неизвестен',
-        'Routes match, but the baseline IPv4 is unavailable'),
+      baseline_unknown: uiText('HTTPS через Xray и TUN проходит, но исходный IPv4 неизвестен; проверка защиты не завершена',
+        'HTTPS through Xray and TUN works, but the baseline IPv4 is unknown; protection is not fully verified'),
+      traffic_observed_unverified: uiText('HTTPS через Xray и TUN проходит, но IP-проверка недоступна; защита не подтверждена',
+        'HTTPS through Xray and TUN works, but IP verification is unavailable; protection is unverified'),
       exit_unchanged: uiText('Внешний IPv4 не изменился — защита не подтверждена',
         'External IPv4 unchanged — protection unverified'),
       probe_unavailable: uiText('Проверка реального VPN-пути временно недоступна',
@@ -1490,6 +1546,10 @@ async function refreshVpnHealth() {
       uiText('Адаптер TUN: ', 'TUN adapter: ') + adapter,
       uiText('Маршрут IPv4: ', 'IPv4 route: ') +
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Восстановление сети: ', 'Network recovery: ') +
+        (report?.network_recovery_required === true
+          ? uiText('нужно повторить; ByMeVPN не подтвердил очистку', 'retry required; ByMeVPN could not confirm cleanup')
+          : uiText('последняя очистка подтверждена', 'last cleanup confirmed')),
       uiText('Маршрут IPv6: ', 'IPv6 route: ') +
         checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
       uiText('Выбранный Windows маршрут IPv4: ', 'Windows-selected IPv4 route: ') +
@@ -1529,22 +1589,24 @@ async function refreshVpnHealth() {
 // VPN Lifecycle & Real-time Metrics
 async function toggleVpn(allowServerSwitch = false) {
   if (state.connectionBusy || (state.serverSwitchBusy && allowServerSwitch !== true)) return;
-  if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
+  const disconnectRequested = state.vpnConnected || state.reconnectPending;
+  if (!disconnectRequested && (!state.subscription || state.subscription.status === 'unknown')) {
     showToast(uiText('Сначала проверьте подписку.', 'Verify your subscription first.'), true);
     return;
   }
   state.connectionBusy = true;
   state.vpnSequence += 1;
   state.connectionError = null;
-  state.vpnPhase = state.vpnConnected ? 'disconnecting' : 'connecting';
+  state.vpnPhase = disconnectRequested ? 'disconnecting' : 'connecting';
   updateVpnUi();
   try {
-  if (state.vpnConnected) {
+  if (disconnectRequested) {
     showToast('Отключение VPN...');
     try {
       await invoke('vpn_stop');
       state.vpnConnected = false;
       state.vpnVerified = false;
+      state.reconnectPending = false;
       if (state.timerInterval) {
         clearInterval(state.timerInterval);
         state.timerInterval = null;
@@ -1637,6 +1699,8 @@ async function checkVpnStatus() {
     if (status && status.connected) {
       state.vpnVerified = status.verified === true;
       state.vpnConnected = true;
+      state.vpnPhase = 'connected';
+      state.reconnectPending = false;
       state.connectedSeconds = status.connected_seconds || 0;
       state.metrics = status;
       startLiveTimer();
@@ -1674,7 +1738,9 @@ function startStatusPolling() {
       if (state.pollInterval === interval) state.pollInterval = null;
       return;
     }
-    if (state.vpnConnected && !state.connectionBusy && !document.hidden && !state.pollBusy) {
+    const shouldWatchReconnect = !!state.user && state.settings.autoReconnect &&
+      (state.reconnectPending || state.vpnConnected);
+    if ((state.vpnConnected || shouldWatchReconnect) && !state.connectionBusy && !document.hidden && !state.pollBusy) {
       const sequence = state.vpnSequence;
       state.pollBusy = true;
       try {
@@ -1686,19 +1752,32 @@ function startStatusPolling() {
         if (status) {
           const wasConnected = state.vpnConnected;
           state.vpnConnected = status.connected === true;
+          if (state.vpnConnected) state.reconnectPending = false;
+          else if (wasConnected && shouldWatchReconnect) state.reconnectPending = true;
+          state.vpnPhase = state.vpnConnected ? 'connected' :
+            (state.reconnectPending && shouldWatchReconnect ? 'reconnecting' : 'idle');
           state.metrics = status;
           state.connectedSeconds = status.connected_seconds || 0;
+          if (!wasConnected && state.vpnConnected) {
+            state.connectionError = null;
+            startLiveTimer();
+            showToast(uiText('VPN-соединение восстановлено.', 'VPN connection restored.'));
+          }
           if (wasConnected && !state.vpnConnected) {
             clearInterval(state.timerInterval);
-            clearInterval(interval);
             state.timerInterval = null;
-            if (state.pollInterval === interval) state.pollInterval = null;
-            state.connectionError = status?.proof === 'network_recovery_required'
+            state.connectionError = shouldWatchReconnect
+              ? uiText('Связь прервалась. Восстанавливаем VPN…', 'Connection interrupted. Reconnecting VPN…')
+              : status?.proof === 'network_recovery_required'
               ? uiText('Windows не восстановила маршруты ByMeVPN. Перезагрузите компьютер.',
                 'Windows could not restore ByMeVPN routes. Restart the computer.')
               : uiText('Соединение VPN прервано. Сетевые маршруты восстановлены.',
                 'VPN interrupted. Network routes restored.');
             showToast(state.connectionError, true);
+            if (!shouldWatchReconnect) {
+              clearInterval(interval);
+              if (state.pollInterval === interval) state.pollInterval = null;
+            }
           }
           updateVpnUi();
         }
@@ -1727,7 +1806,7 @@ document.addEventListener('visibilitychange', () => {
       state.pollInterval = null;
     }
   } else {
-    if (state.vpnConnected && !state.pollInterval) startStatusPolling();
+    if ((state.vpnConnected || state.reconnectPending) && !state.pollInterval) startStatusPolling();
     if (state.user) void refreshAccountSnapshot();
   }
 });
@@ -1886,6 +1965,9 @@ function updateVpnUi() {
       ? uiText('Завершаем соединение…', 'Closing the connection…')
       : state.vpnVerified
         ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
+        : proof === 'baseline_unknown' || proof === 'traffic_observed_unverified' ?
+          uiText('Трафик и маршрут через TUN обнаружены, но проверка внешнего IP недоступна. Защита от утечек не подтверждена.',
+            'Traffic and the TUN route are detected, but external IP verification is unavailable. Leak protection is unverified.')
         : proof === 'server_unreachable' ?
           uiText('Проверьте диагностику подключения.', 'Review connection diagnostics.')
           : proof === 'tun_no_traffic' ?
@@ -1914,7 +1996,11 @@ function updateVpnUi() {
   } else {
     // Has active plan, disconnected
     const heading = document.querySelector('#home-state-disconnected .status-title-text');
-    if (heading) heading.textContent = uiText('VPN выключен', 'VPN off');
+    if (heading) heading.textContent = state.vpnPhase === 'reconnecting'
+      ? uiText('Восстанавливаем VPN', 'Reconnecting VPN')
+      : state.vpnPhase === 'disconnecting'
+        ? uiText('Отключаем VPN', 'Disconnecting VPN')
+      : uiText('VPN выключен', 'VPN off');
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.add('hidden');
     disconnectedBox?.classList.remove('hidden');
@@ -1925,11 +2011,18 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (desc) desc.textContent = state.vpnPhase === 'connecting' ?
-      uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
-      uiText('Нажмите, чтобы подключиться', 'Click to connect');
-    if (btn) btn.textContent = state.vpnPhase === 'connecting' ?
-      uiText('Подключаемся...', 'Connecting...') : uiText('Подключиться', 'Connect');
+    if (desc) desc.textContent = state.vpnPhase === 'reconnecting' ?
+      uiText('Пытаемся восстановить соединение…', 'Trying to restore the connection…') :
+      state.vpnPhase === 'disconnecting' ?
+        uiText('Останавливаем соединение и повторные попытки…', 'Stopping the connection and retry attempts…') :
+      state.vpnPhase === 'connecting' ?
+        uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
+        uiText('Нажмите, чтобы подключиться', 'Click to connect');
+    if (btn) btn.textContent = state.vpnPhase === 'reconnecting' ?
+      uiText('Восстанавливаем...', 'Reconnecting...') : state.vpnPhase === 'connecting' ?
+        uiText('Подключаемся...', 'Connecting...') : state.vpnPhase === 'disconnecting' ?
+          uiText('Отключаем...', 'Disconnecting...') : uiText('Подключиться', 'Connect');
+    ringOff?.classList.toggle('is-reconnecting', state.vpnPhase === 'reconnecting');
     ringOff?.classList.remove('ring-off');
     ringOff?.classList.add('ring-ready');
     promoBox?.classList.add('hidden');
@@ -1947,6 +2040,8 @@ function updateVpnUi() {
     const showError = !isConn && hasPlan && !accessUnknown && !!state.connectionError;
     connectionError.textContent = showError ? state.connectionError : '';
     connectionError.classList.toggle('hidden', !showError);
+    connectionError.classList.toggle('reconnecting', showError && state.vpnPhase === 'reconnecting');
+    connectionError.setAttribute('role', state.vpnPhase === 'reconnecting' ? 'status' : 'alert');
   }
 
   // Update Server info in card
@@ -1964,7 +2059,13 @@ function updateVpnUi() {
     const ring = document.getElementById(id);
     ring?.setAttribute('aria-busy', String(state.connectionBusy));
     ring?.setAttribute('aria-disabled', String(accessUnknown && !isConn));
-    if (ring && id === 'vpn-power-ring-off') ring.tabIndex = accessUnknown ? -1 : 0;
+    if (ring) {
+      ring.setAttribute('aria-pressed', String(isConn));
+      ring.disabled = state.connectionBusy || (accessUnknown && !isConn);
+      ring.setAttribute('aria-label', id === 'vpn-power-ring'
+        ? uiText('Отключить VPN', 'Disconnect VPN')
+        : uiText('Включить VPN', 'Connect VPN'));
+    }
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
@@ -2159,8 +2260,8 @@ function updateDevicesUi() {
       <div class="device-icon-box">${icon}</div>
       <div class="device-info-col">
         <strong>${escapeHtml(model)}</strong>
-        <span class="${isCurrent ? 'device-status-online' : 'device-last-seen'}">
-          ${isCurrent ? `<span class="dot-green">●</span> ${uiText('Онлайн', 'Online')}` : escapeHtml(dev.last_active || uiText('Недавно', 'Recently'))}
+        <span class="device-last-seen">
+          ${isCurrent ? uiText('Это устройство', 'This device') : escapeHtml(dev.last_active || uiText('Недавно', 'Recently'))}
         </span>
       </div>
       ${isCurrent
@@ -2367,10 +2468,12 @@ async function selectServer(server) {
   }
   const previous = state.selectedServer;
   const wasConnected = state.vpnConnected;
+  const wasReconnecting = state.reconnectPending;
+  const shouldRestoreConnection = wasConnected || wasReconnecting;
   const epoch = state.sessionEpoch;
   state.serverSwitchBusy = true;
   try {
-    if (wasConnected) {
+    if (shouldRestoreConnection) {
       await toggleVpn(true);
       if (state.vpnConnected) return; // Native stop failed; keep the old endpoint.
     }
@@ -2384,14 +2487,14 @@ async function selectServer(server) {
     renderServersList();
     updateVpnUi();
     switchTab('tab-home');
-    if (wasConnected && epoch === state.sessionEpoch) await toggleVpn(true);
-    if (state.vpnConnected || !wasConnected) {
+    if (shouldRestoreConnection && epoch === state.sessionEpoch) await toggleVpn(true);
+    if (state.vpnConnected || !shouldRestoreConnection) {
       showToast(uiText('Выбран сервер: ', 'Server selected: ') + serverDisplayName(server));
     }
   } catch (error) {
     showToast(uiText('Не удалось сменить сервер. Настройка не сохранена.',
       'Could not switch servers. Selection was not saved.'), true);
-    if (epoch === state.sessionEpoch && wasConnected && !state.vpnConnected &&
+    if (epoch === state.sessionEpoch && shouldRestoreConnection && !state.vpnConnected &&
         state.selectedServer === previous) {
       await toggleVpn(true); // Restore the previous active endpoint when possible.
     }
@@ -2639,6 +2742,19 @@ async function handleSettingChange(key, value) {
     await invoke('save_setting', { key, value });
     state.settings[key] = value;
     if (key === 'language') applyLanguage(value);
+    if (key === 'autoReconnect') {
+      if (value && state.user && !state.vpnConnected && !state.pollInterval) startStatusPolling();
+      if (!value && !state.vpnConnected && state.pollInterval) {
+        clearInterval(state.pollInterval);
+        state.pollInterval = null;
+      }
+      if (!value && state.vpnPhase === 'reconnecting') {
+        state.reconnectPending = false;
+        state.vpnPhase = 'idle';
+        state.connectionError = null;
+        updateVpnUi();
+      }
+    }
     showToast(key === 'bypassRu'
       ? uiText('Изменение маршрутизации применится при следующем подключении.',
         'Routing changes take effect on your next connection.')
@@ -2660,6 +2776,7 @@ function applySettingsToUi() {
   const s = state.settings;
   const setAuto = document.getElementById('set-autostart');
   const setAutoConnect = document.getElementById('set-autoconnect');
+  const setAutoReconnect = document.getElementById('set-autoreconnect');
   const setBg = document.getElementById('set-background');
   const setBypass = document.getElementById('set-bypass');
   const setDnsMode = document.getElementById('set-dns-mode');
@@ -2667,7 +2784,8 @@ function applySettingsToUi() {
 
   if (setAuto) setAuto.checked = !!s.autoStart;
   if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
-  if (setBg) setBg.checked = false;
+  if (setAutoReconnect) setAutoReconnect.checked = s.autoReconnect !== false;
+  if (setBg) setBg.checked = !!s.stayConnectedInBackground;
   if (setBypass) setBypass.checked = !!s.bypassRu;
   if (setDnsMode) setDnsMode.value = s.dnsMode || 'cloudflare';
   if (setKill) setKill.checked = false;

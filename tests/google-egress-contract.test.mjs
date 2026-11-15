@@ -19,7 +19,7 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
-  assert.match(probes, /probe_https_reachability\(client\)/);
+  assert.match(probes, /probe_https_reachability\(client\.clone\(\)\)/);
   assert.match(probes, /TrafficObservedUnverified/);
   assert.match(probes, /pub fn traffic_confirmed\(/);
   assert.match(rust, /verify_tunnel_path\(/);

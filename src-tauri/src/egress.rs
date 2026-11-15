@@ -228,33 +228,42 @@ pub async fn verify_tunnel_path(
     // IP match or leak-free IPv4/IPv6 behavior.
     let ip_paths = probe_ip_paths(baseline, via_xray.clone(), system.clone());
     let generic_paths = probe_https_paths(via_xray, system);
-    let pair = async {
-        tokio::pin!(ip_paths);
-        tokio::pin!(generic_paths);
-        tokio::select! {
-            proof = &mut ip_paths => {
-                apply_generic_connectivity_fallback(proof, generic_paths.await)
-            }
-            generic_ok = &mut generic_paths => {
-                if !generic_ok {
-                    ip_paths.await
-                } else {
-                    // If a real HTTPS request already passed through both Xray
-                    // and Windows, give an IP endpoint a brief chance to prove
-                    // the exit without holding up activation for blocked APIs.
-                    match tokio::time::timeout(Duration::from_millis(250), &mut ip_paths).await {
-                        Ok(proof) => apply_generic_connectivity_fallback(proof, true),
-                        Err(_) => TunnelProof::TrafficObservedUnverified,
-                    }
-                }
-            }
-        }
-    };
-    // Each provider pair now runs concurrently; leave a short bounded window
-    // for DNS/TLS setup while preserving fail-safe rollback.
+    let pair = resolve_probe_results(ip_paths, generic_paths);
+    // A bounded failure remains fail-closed; no process or route is accepted
+    // based only on an accepted CONNECT or an unanswered request.
     tokio::time::timeout(Duration::from_secs(6), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)
+}
+
+async fn resolve_probe_results(
+    ip_paths: impl std::future::Future<Output = TunnelProof>,
+    generic_paths: impl std::future::Future<Output = bool>,
+) -> TunnelProof {
+    tokio::pin!(ip_paths);
+    tokio::pin!(generic_paths);
+    tokio::select! {
+        proof = &mut ip_paths => {
+            if matches!(proof, TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable) {
+                apply_generic_connectivity_fallback(proof, generic_paths.await)
+            } else {
+                proof
+            }
+        }
+        generic_ok = &mut generic_paths => {
+            if !generic_ok {
+                ip_paths.await
+            } else {
+                // If a real HTTPS request already passed through both Xray
+                // and Windows, give an IP endpoint a brief chance to prove
+                // the exit without holding up activation for blocked APIs.
+                match tokio::time::timeout(Duration::from_millis(250), &mut ip_paths).await {
+                    Ok(proof) => apply_generic_connectivity_fallback(proof, true),
+                    Err(_) => TunnelProof::TrafficObservedUnverified,
+                }
+            }
+        }
+    }
 }
 
 async fn probe_ip_paths(
@@ -264,30 +273,30 @@ async fn probe_ip_paths(
 ) -> TunnelProof {
     let mut proxy_reachable = false;
     let mut system_reachable = false;
-    // Some VPN servers cap concurrent connections per user. Probing six IP
-    // services plus two generic checks at once can look like a failed server
-    // even when a normal request succeeds. Keep the fan-out small and stop as
-    // soon as a same-provider route pair is available.
-    for endpoints in PROBES.chunks(2) {
-        let mut probes = JoinSet::new();
-        for endpoint in endpoints {
-            let proxy = proxy.clone();
-            let system = system.clone();
-            probes.spawn(async move {
-                // The Xray inbound forces this request through the selected server.
-                tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
-            });
-        }
-        while let Some(result) = probes.join_next().await {
-            match result {
-                Ok((Some(remote_ip), Some(system_ip))) => {
-                    probes.abort_all();
-                    return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
-                }
-                Ok((Some(_), None)) => proxy_reachable = true,
-                Ok((None, Some(_))) => system_reachable = true,
-                _ => {}
+    // Start fallback providers after a short stagger rather than waiting for
+    // earlier pairs to time out. Sequential 4.5s batches could not finish
+    // within the enclosing 6s deadline and produced probe_unavailable.
+    let mut probes = JoinSet::new();
+    for (index, endpoint) in PROBES.iter().enumerate() {
+        let proxy = proxy.clone();
+        let system = system.clone();
+        probes.spawn(async move {
+            if index >= 2 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
+            // The Xray inbound forces this request through the selected server.
+            tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
+        });
+    }
+    while let Some(result) = probes.join_next().await {
+        match result {
+            Ok((Some(remote_ip), Some(system_ip))) => {
+                probes.abort_all();
+                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+            }
+            Ok((Some(_), None)) => proxy_reachable = true,
+            Ok((None, Some(_))) => system_reachable = true,
+            _ => {}
         }
     }
     if proxy_reachable {
@@ -457,6 +466,17 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn confirmed_ip_result_does_not_wait_for_unresponsive_generic_probe() {
+        let ip: IpAddr = "198.51.100.2".parse().unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            resolve_probe_results(async { TunnelProof::Verified(ip) }, std::future::pending()),
+        )
+        .await;
+        assert_eq!(result.unwrap(), TunnelProof::Verified(ip));
+    }
 
     #[test]
     fn diagnostic_statuses_never_confuse_no_probe_with_a_changed_ip() {

@@ -91,7 +91,7 @@ test('healthy live diagnostics reconcile egress and suppress false startup-error
     if (!nodes.has(id)) nodes.set(id, {
       textContent: '', disabled: false, className: '',
       classList: { add(){}, remove(){}, toggle(){} },
-      querySelector(){return null}
+      querySelector(){return null}, setAttribute(){}, toggleAttribute(){}
     });
     return nodes.get(id);
   };
@@ -128,4 +128,46 @@ test('healthy live diagnostics reconcile egress and suppress false startup-error
   assert.doesNotMatch(result, /ошибка запуска/);
   assert.equal(runInContext('state.vpnVerified', context), true);
   assert.ok(calls.includes('vpn_status'));
+});
+
+test('a completed diagnostic immediately updates Home and ignores older status responses', async () => {
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      textContent: '', disabled: false, className: '',
+      classList: { add(){}, remove(){}, toggle(){} },
+      querySelector(){return null}, setAttribute(){}, toggleAttribute(){}
+    });
+    return nodes.get(id);
+  };
+  let finishOldStatus;
+  const oldStatus = new Promise(resolve => { finishOldStatus = resolve; });
+  let statusCalls = 0;
+  const context = createContext({
+    console, setTimeout, clearTimeout, setInterval: () => 1, clearInterval() {},
+    document: { hidden: false, addEventListener(){}, getElementById: node,
+      querySelectorAll(){return []}, querySelector(){return null} },
+    window: {__TAURI__: {core: {invoke: async name => {
+      if (name === 'vpn_status') {
+        statusCalls++;
+        return statusCalls === 1 ? oldStatus : new Promise(() => {});
+      }
+      if (name === 'vpn_health_report') return {
+        process_tracked: true, ip_verified: true, runtime_healthy: true,
+        baseline_known: true, adapter: 'up', ipv4_default: true,
+        effective_ipv4: true, dns_resolution: true, egress_probe: 'paths_match'
+      };
+      return null;
+    }}}}
+  });
+  runInContext(app, context);
+  runInContext("state.vpnConnected = true; state.subscription = {status: 'active'}", context);
+  const pendingStatus = runInContext('checkVpnStatus()', context);
+  void runInContext('refreshVpnHealth()', context);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(runInContext('state.vpnVerified', context), true);
+  finishOldStatus({ connected: true, verified: false, proof: 'traffic_observed_unverified' });
+  await pendingStatus;
+  assert.equal(runInContext('state.vpnVerified', context), true);
+  assert.doesNotMatch(node('vpn-health-details').textContent, /выход Xray совпадает/i);
 });

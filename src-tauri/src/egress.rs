@@ -184,14 +184,22 @@ pub async fn wait_for_attestation_listener(port: u16, timeout: Duration) -> bool
 }
 
 /// Server-only preflight: does the configured Xray proxy itself pass a real
-/// HTTPS request? Until this is true, Windows TUN routes must not be changed.
+/// HTTPS request? Try both connectivity-check endpoints and independent IP
+/// providers. Some networks block Google/Microsoft checks while allowing the
+/// same VPN to carry ordinary HTTPS traffic. Until one real request succeeds,
+/// Windows TUN routes must not be changed.
 pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
     let Ok(client) = authenticated_proxy_client(port, password) else {
         return false;
     };
-    tokio::time::timeout(Duration::from_secs(7), probe_https_reachability(client))
-        .await
-        .is_ok_and(|reachable| reachable)
+    tokio::time::timeout(Duration::from_secs(10), async move {
+        if probe_https_reachability(client.clone()).await {
+            return true;
+        }
+        probe_egress(client).await.is_some()
+    })
+    .await
+    .is_ok_and(|reachable| reachable)
 }
 
 /// End-to-end evidence using Xray's authenticated loopback HTTP inbound.

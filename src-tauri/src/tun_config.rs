@@ -141,6 +141,20 @@ pub fn build_tun_config_ext(
                 "network": transport,
                 "security": security,
             });
+            // Windows may advertise a small TCP receive window under loss or
+            // congestion, which can cap a high-RTT VLESS connection. Scope the
+            // 2 MiB buffer to Xray's own TCP sockets; this does not change
+            // Windows-wide networking and has no effect on UDP/Hysteria2.
+            stream_settings["sockopt"] = json!({
+                "customSockopt": [{
+                    "system": "windows",
+                    "network": "tcp",
+                    "type": "int",
+                    "level": "65535",
+                    "opt": "4098",
+                    "value": "2097152"
+                }]
+            });
             if transport == "grpc" {
                 let mut grpc =
                     json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
@@ -534,6 +548,32 @@ mod tests {
             result["outbounds"][0]["streamSettings"]["security"],
             "reality"
         );
+    }
+
+    #[test]
+    fn windows_vless_tcp_uses_larger_receive_buffer_without_affecting_hysteria() {
+        let tcp = build_tun_config(&session()).unwrap();
+        assert_eq!(
+            tcp["outbounds"][0]["streamSettings"]["sockopt"]["customSockopt"],
+            json!([{
+                "system": "windows",
+                "network": "tcp",
+                "type": "int",
+                "level": "65535",
+                "opt": "4098",
+                "value": "2097152"
+            }])
+        );
+
+        let mut hysteria = session();
+        hysteria["protocol"] = json!("hysteria2");
+        hysteria["network"] = json!("udp");
+        hysteria["security"] = json!("tls");
+        hysteria["uuid"] = json!("subscription-auth");
+        hysteria["public_key"] = json!("");
+        assert!(build_tun_config(&hysteria).unwrap()["outbounds"][0]["streamSettings"]
+            .get("sockopt")
+            .is_none());
     }
 
     #[test]

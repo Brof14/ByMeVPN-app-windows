@@ -1,7 +1,7 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-15
-**Starting app version:** `1.2.11`; follow-up connection reliability patch is `1.2.13` (the supplied audit describes `1.2.8`)
+**Current build:** `1.2.15` (Windows TCP receive-buffer optimization; live speed acceptance pending). Connection status synchronization release is `1.2.14`.
 **Development branch:** `codex/windows-trial-eligibility-runtime-pin`
 **Release classification:** Experimental / NOT production-ready.
 
@@ -20,6 +20,7 @@
 - Automatic server-selection text now describes service assignment without claiming lowest latency.
 - Unsupported device management and Kill Switch no longer claim to be operational. The tray can hide the current process, but no independent Windows service keeps VPN alive after the app exits.
 - Node-based frontend syntax/contract tests and Rust checks are configured in CI.
+- VLESS TCP outbounds use a Windows-only 2 MiB receive buffer in Xray. Synthetic config and the pinned Xray parser accept it; no real throughput comparison has been run.
 
 ## Critical outstanding release blockers
 

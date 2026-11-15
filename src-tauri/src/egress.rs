@@ -128,6 +128,19 @@ pub fn classify_tunnel_path(
     }
 }
 
+fn apply_generic_connectivity_fallback(proof: TunnelProof, generic_ok: bool) -> TunnelProof {
+    if generic_ok
+        && matches!(
+            proof,
+            TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable
+        )
+    {
+        TunnelProof::TrafficObservedUnverified
+    } else {
+        proof
+    }
+}
+
 fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Client, String> {
     let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))
         .map_err(|_| "Некорректный локальный адрес проверки VPN.".to_string())?
@@ -208,12 +221,25 @@ pub async fn verify_tunnel_path(
     let ip_paths = probe_ip_paths(baseline, via_xray.clone(), system.clone());
     let generic_paths = probe_https_paths(via_xray, system);
     let pair = async {
-        let (proof, generic_ok) = tokio::join!(ip_paths, generic_paths);
-        match proof {
-            TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable if generic_ok => {
-                TunnelProof::TrafficObservedUnverified
+        tokio::pin!(ip_paths);
+        tokio::pin!(generic_paths);
+        tokio::select! {
+            proof = &mut ip_paths => {
+                apply_generic_connectivity_fallback(proof, generic_paths.await)
             }
-            other => other,
+            generic_ok = &mut generic_paths => {
+                if !generic_ok {
+                    ip_paths.await
+                } else {
+                    // If a real HTTPS request already passed through both Xray
+                    // and Windows, give an IP endpoint a brief chance to prove
+                    // the exit without holding up activation for blocked APIs.
+                    match tokio::time::timeout(Duration::from_millis(250), &mut ip_paths).await {
+                        Ok(proof) => apply_generic_connectivity_fallback(proof, true),
+                        Err(_) => TunnelProof::TrafficObservedUnverified,
+                    }
+                }
+            }
         }
     };
     // Each provider pair now runs concurrently; leave a short bounded window
@@ -228,26 +254,32 @@ async fn probe_ip_paths(
     proxy: reqwest::Client,
     system: reqwest::Client,
 ) -> TunnelProof {
-    let mut probes = JoinSet::new();
-    for endpoint in PROBES {
-        let proxy = proxy.clone();
-        let system = system.clone();
-        probes.spawn(async move {
-            // The Xray inbound forces this request through the selected server.
-            tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
-        });
-    }
     let mut proxy_reachable = false;
     let mut system_reachable = false;
-    while let Some(result) = probes.join_next().await {
-        match result {
-            Ok((Some(remote_ip), Some(system_ip))) => {
-                probes.abort_all();
-                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+    // Some VPN servers cap concurrent connections per user. Probing six IP
+    // services plus two generic checks at once can look like a failed server
+    // even when a normal request succeeds. Keep the fan-out small and stop as
+    // soon as a same-provider route pair is available.
+    for endpoints in PROBES.chunks(2) {
+        let mut probes = JoinSet::new();
+        for endpoint in endpoints {
+            let proxy = proxy.clone();
+            let system = system.clone();
+            probes.spawn(async move {
+                // The Xray inbound forces this request through the selected server.
+                tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
+            });
+        }
+        while let Some(result) = probes.join_next().await {
+            match result {
+                Ok((Some(remote_ip), Some(system_ip))) => {
+                    probes.abort_all();
+                    return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+                }
+                Ok((Some(_), None)) => proxy_reachable = true,
+                Ok((None, Some(_))) => system_reachable = true,
+                _ => {}
             }
-            Ok((Some(_), None)) => proxy_reachable = true,
-            Ok((None, Some(_))) => system_reachable = true,
-            _ => {}
         }
     }
     if proxy_reachable {
@@ -521,6 +553,26 @@ mod tests {
         assert_eq!(
             TunnelProof::TrafficObservedUnverified.status(),
             "traffic_observed_unverified"
+        );
+    }
+
+    #[test]
+    fn generic_https_traffic_recovers_blocked_ip_probe_services_without_claiming_verification() {
+        assert_eq!(
+            apply_generic_connectivity_fallback(TunnelProof::ProxyUnreachable, true),
+            TunnelProof::TrafficObservedUnverified
+        );
+        assert_eq!(
+            apply_generic_connectivity_fallback(TunnelProof::TunUnreachable, true),
+            TunnelProof::TrafficObservedUnverified
+        );
+        assert_eq!(
+            apply_generic_connectivity_fallback(TunnelProof::ProxyUnreachable, false),
+            TunnelProof::ProxyUnreachable
+        );
+        assert_eq!(
+            apply_generic_connectivity_fallback(TunnelProof::RoutingBypass, true),
+            TunnelProof::RoutingBypass
         );
     }
 

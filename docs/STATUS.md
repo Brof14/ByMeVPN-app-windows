@@ -1,7 +1,7 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-15
-**Starting app version:** `1.2.11`; this audit patch is `1.2.12` (the supplied audit describes `1.2.8`)
+**Starting app version:** `1.2.11`; follow-up connection reliability patch is `1.2.13` (the supplied audit describes `1.2.8`)
 **Development branch:** `codex/windows-trial-eligibility-runtime-pin`
 **Release classification:** Experimental / NOT production-ready.
 

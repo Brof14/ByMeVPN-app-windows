@@ -20,6 +20,14 @@
 }
 .toast-popup.show { transform: translateY(0); }
 .toast-popup.error { background: #271e29; color: #ffc0c0; }
+#tab-home .mobile-verification-notice,
+#tab-home .connection-error {
+  font-size: 14px;
+  line-height: 1.5;
+  user-select: text;
+}
+#tab-home .mobile-health-button { min-height: 44px; font-size: 14px; }
+.mobile-vpn-health-modal .mobile-health-results { font-size: 14px; }
 #tab-home .mobile-verification-notice {
   max-width: 360px;
   margin: 10px 0 0;

@@ -51,6 +51,7 @@ const state = {
   pollBusy: false,
   pollFailures: 0,
   catalogReady: false,
+  serversStale: false,
   devicesSupported: false,
   availableDeviceCounts: [],
   paymentBusy: false,
@@ -205,7 +206,7 @@ const I18N = {
     server_sheet_desc: "Выберите страну или доверьтесь автоматике.",
     server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
-    vpn_unverified_help: "Xray работает, но маршрут и внешний IP не подтверждены. Проверьте соединение перед передачей важных данных.",
+    vpn_unverified_help: "Туннель работает, но проверка защиты не завершена. Пока статус не подтверждён, не считайте соединение защищённым.",
     vpn_health_action: "Диагностика соединения",
     vpn_health_title: "Проверка подключения",
     vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
@@ -310,7 +311,7 @@ const I18N = {
     terms_agreement: 'Нажимая «Оплатить», вы соглашаетесь с Условиями использования и Политикой конфиденциальности.',
     back: 'Назад',
     server_auto: 'Автоматически',
-    server_auto_desc: 'Выберем лучшее доступное соединение',
+    server_auto_desc: 'Система назначит доступный сервер',
     available_servers: 'ДОСТУПНЫЕ СЕРВЕРЫ',
     autorenew_on: 'Статус автопродления',
     renew: 'Продлить',
@@ -489,7 +490,7 @@ const I18N = {
     server_sheet_desc: "Choose a country or use automatic selection.",
     server_sheet_footnote: "Only servers in your subscription are shown.",
     home_connection_kicker: "YOUR CONNECTION",
-    vpn_unverified_help: "Xray is running, but routing and the external IP are unverified. Check connectivity before transferring sensitive data.",
+    vpn_unverified_help: "The tunnel is running, but protection checks are incomplete. Do not treat the connection as protected until its status is verified.",
     vpn_health_action: "Connection diagnostics",
     vpn_health_title: "Connection diagnostics",
     vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
@@ -594,7 +595,7 @@ const I18N = {
     terms_agreement: 'By clicking "Pay", you agree to Terms of Service and Privacy Policy.',
     back: 'Back',
     server_auto: 'Automatic',
-    server_auto_desc: 'We will select the lowest latency server',
+    server_auto_desc: 'The service will assign an available server',
     available_servers: 'AVAILABLE SERVERS',
     autorenew_on: 'Auto-renewal status',
     renew: 'Extend',
@@ -717,7 +718,10 @@ async function loadAvailableServers() {
   try {
     const servers = await fetchServerCatalog(epoch);
     if (epoch !== state.sessionEpoch) return;
-    state.servers = Array.isArray(servers) ? servers : [];
+    if (!Array.isArray(servers)) throw new Error('Invalid server catalog');
+    state.servers = servers;
+    state.serversStale = false;
+    saveServerCatalogCache(state.servers);
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
     // Never relabel a live tunnel when the server catalog refreshes.
     // The selected endpoint changes only after a successful stop/switch flow.
@@ -733,9 +737,57 @@ async function loadAvailableServers() {
     updateVpnUi();
   } catch (err) {
     if (epoch !== state.sessionEpoch) return;
-    state.servers = [];
+    if (!state.servers.length) state.servers = readServerCatalogCache();
+    state.serversStale = state.servers.length > 0;
+    if (!state.vpnConnected && !state.connectionBusy) {
+      const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
+      state.selectedServer = preferred || {
+        code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0
+      };
+    }
     renderServersList();
-    showToast(serverCatalogErrorMessage(err), true);
+    showToast(state.serversStale
+      ? uiText('Не удалось обновить серверы. Показаны последние сохранённые локации; для подключения нужна сеть.',
+        'Could not refresh servers. Showing the last saved locations; a network connection is required to connect.')
+      : serverCatalogErrorMessage(err), true);
+  }
+}
+
+const SERVER_CATALOG_CACHE_KEY = 'bymevpn.server-catalog.v1';
+const SERVER_CATALOG_FIELDS = [
+  'name', 'name_en', 'country', 'country_en', 'country_code', 'city', 'city_en', 'flag'
+];
+
+function sanitizeCachedServerCatalog(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 200).flatMap(server => {
+    if (!server || typeof server !== 'object' ||
+        typeof server.code !== 'string' || !/^[a-z0-9._-]{1,64}$/i.test(server.code) ||
+        typeof server.supported !== 'boolean') return [];
+    const safe = { code: server.code, supported: server.supported };
+    for (const field of SERVER_CATALOG_FIELDS) {
+      if (typeof server[field] === 'string') safe[field] = server[field].slice(0, 100);
+    }
+    safe.ping = Number.isInteger(server.ping) && server.ping >= 0 && server.ping <= 9999
+      ? server.ping : 0;
+    return [safe];
+  });
+}
+
+function readServerCatalogCache() {
+  try {
+    return sanitizeCachedServerCatalog(JSON.parse(localStorage.getItem(SERVER_CATALOG_CACHE_KEY) || 'null'));
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveServerCatalogCache(servers) {
+  try {
+    const safe = sanitizeCachedServerCatalog(servers);
+    if (safe.length) localStorage.setItem(SERVER_CATALOG_CACHE_KEY, JSON.stringify(safe));
+  } catch (_) {
+    // Storage is only a convenience; the live API remains authoritative.
   }
 }
 
@@ -932,9 +984,7 @@ function setupEventListeners() {
   });
 
   // Match Android's tappable cards with accessible desktop keyboard actions.
-  // VPN rings already have dedicated keyboard handling further below.
   document.querySelectorAll('[role="button"][tabindex="0"]').forEach(element => {
-    if (element.id === 'vpn-power-ring' || element.id === 'vpn-power-ring-off') return;
     element.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -1036,14 +1086,6 @@ function setupEventListeners() {
   // VPN connection toggle
   document.getElementById('vpn-power-ring')?.addEventListener('click', toggleVpn);
   document.getElementById('vpn-power-ring-off')?.addEventListener('click', toggleVpn);
-  for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
-    document.getElementById(id)?.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        void toggleVpn();
-      }
-    });
-  }
   document.getElementById('btn-toggle-vpn')?.addEventListener('click', () => {
     if (!state.vpnConnected && (!state.subscription || state.subscription.status === 'unknown')) {
       void refreshAccountSnapshot(true);
@@ -1426,6 +1468,8 @@ async function handleLogout() {
       state.vpnSequence += 1;
       state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
       state.servers = [];
+      state.serversStale = false;
+      try { localStorage.removeItem(SERVER_CATALOG_CACHE_KEY); } catch (_) { /* optional cache */ }
       state.devices = [];
       state.user = null;
       state.subscription = null;
@@ -1486,8 +1530,10 @@ async function refreshVpnHealth() {
         'Protected request through Xray failed (cause not confirmed)'),
       tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
         'Xray server responds, but Windows TUN cannot pass the HTTPS probe'),
-      baseline_unknown: uiText('Маршруты совпадают, но исходный IPv4 неизвестен',
-        'Routes match, but the baseline IPv4 is unavailable'),
+      baseline_unknown: uiText('HTTPS через Xray и TUN проходит, но исходный IPv4 неизвестен; проверка защиты не завершена',
+        'HTTPS through Xray and TUN works, but the baseline IPv4 is unknown; protection is not fully verified'),
+      traffic_observed_unverified: uiText('HTTPS через Xray и TUN проходит, но IP-проверка недоступна; защита не подтверждена',
+        'HTTPS through Xray and TUN works, but IP verification is unavailable; protection is unverified'),
       exit_unchanged: uiText('Внешний IPv4 не изменился — защита не подтверждена',
         'External IPv4 unchanged — protection unverified'),
       probe_unavailable: uiText('Проверка реального VPN-пути временно недоступна',
@@ -1500,6 +1546,10 @@ async function refreshVpnHealth() {
       uiText('Адаптер TUN: ', 'TUN adapter: ') + adapter,
       uiText('Маршрут IPv4: ', 'IPv4 route: ') +
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
+      uiText('Восстановление сети: ', 'Network recovery: ') +
+        (report?.network_recovery_required === true
+          ? uiText('нужно повторить; ByMeVPN не подтвердил очистку', 'retry required; ByMeVPN could not confirm cleanup')
+          : uiText('последняя очистка подтверждена', 'last cleanup confirmed')),
       uiText('Маршрут IPv6: ', 'IPv6 route: ') +
         checked(report?.ipv6_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),
       uiText('Выбранный Windows маршрут IPv4: ', 'Windows-selected IPv4 route: ') +
@@ -1915,6 +1965,9 @@ function updateVpnUi() {
       ? uiText('Завершаем соединение…', 'Closing the connection…')
       : state.vpnVerified
         ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
+        : proof === 'baseline_unknown' || proof === 'traffic_observed_unverified' ?
+          uiText('Трафик и маршрут через TUN обнаружены, но проверка внешнего IP недоступна. Защита от утечек не подтверждена.',
+            'Traffic and the TUN route are detected, but external IP verification is unavailable. Leak protection is unverified.')
         : proof === 'server_unreachable' ?
           uiText('Проверьте диагностику подключения.', 'Review connection diagnostics.')
           : proof === 'tun_no_traffic' ?
@@ -2006,7 +2059,13 @@ function updateVpnUi() {
     const ring = document.getElementById(id);
     ring?.setAttribute('aria-busy', String(state.connectionBusy));
     ring?.setAttribute('aria-disabled', String(accessUnknown && !isConn));
-    if (ring && id === 'vpn-power-ring-off') ring.tabIndex = accessUnknown ? -1 : 0;
+    if (ring) {
+      ring.setAttribute('aria-pressed', String(isConn));
+      ring.disabled = state.connectionBusy || (accessUnknown && !isConn);
+      ring.setAttribute('aria-label', id === 'vpn-power-ring'
+        ? uiText('Отключить VPN', 'Disconnect VPN')
+        : uiText('Включить VPN', 'Connect VPN'));
+    }
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
@@ -2201,8 +2260,8 @@ function updateDevicesUi() {
       <div class="device-icon-box">${icon}</div>
       <div class="device-info-col">
         <strong>${escapeHtml(model)}</strong>
-        <span class="${isCurrent ? 'device-status-online' : 'device-last-seen'}">
-          ${isCurrent ? `<span class="dot-green">●</span> ${uiText('Онлайн', 'Online')}` : escapeHtml(dev.last_active || uiText('Недавно', 'Recently'))}
+        <span class="device-last-seen">
+          ${isCurrent ? uiText('Это устройство', 'This device') : escapeHtml(dev.last_active || uiText('Недавно', 'Recently'))}
         </span>
       </div>
       ${isCurrent

@@ -1,6 +1,6 @@
 [package]
 name = "bymevpn"
-version = "1.2.11"
+version = "1.2.12"
 description = "ByMeVPN Windows desktop client"
 authors = ["ByMeVPN"]
 edition = "2021"

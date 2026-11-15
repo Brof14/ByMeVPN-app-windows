@@ -83,6 +83,34 @@ test('checkout never displays historical prices before server verification', () 
   assert.match(source, /purchaseEnabled === true/);
 });
 
+test('server catalog keeps a safe display-only cache when refresh fails', () => {
+  const start = source.indexOf('async function loadAvailableServers()');
+  const end = source.indexOf('async function fetchServerCatalog(epoch)', start);
+  const loader = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(loader, /state\.servers\s*=\s*\[\]/);
+  assert.match(loader, /state\.servers\s*=\s*readServerCatalogCache\(\)/);
+  assert.match(source, /SERVER_CATALOG_CACHE_KEY/);
+  assert.match(source, /function sanitizeCachedServerCatalog\(/);
+  assert.doesNotMatch(source.slice(source.indexOf('function sanitizeCachedServerCatalog('), end), /config|uuid|password|public_key/);
+});
+
+test('current-device identity is not mislabeled as an active connection', () => {
+  assert.match(source, /uiText\('Это устройство', 'This device'\)/);
+  assert.doesNotMatch(source, /isCurrent \? `<span class="dot-green">●<\/span> \$\{uiText\('Онлайн', 'Online'\)\}`/);
+  assert.match(source, /Система назначит доступный сервер/);
+  assert.match(source, /The service will assign an available server/);
+});
+
+test('VPN controls use native buttons for built-in keyboard and screen-reader behavior', () => {
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
+    assert.match(html, new RegExp(`<button type="button" id="${id}"`));
+    assert.doesNotMatch(html, new RegExp(`<div id="${id}"[^>]*role="button"`));
+  }
+  assert.match(source, /ring\.setAttribute\('aria-pressed', String\(isConn\)\)/);
+});
+
 test('production UI fails closed without Tauri rather than pretending to use a VPN', async () => {
   const context = createContext({
     console,

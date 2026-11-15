@@ -91,12 +91,12 @@ fn should_restart_after_health_probe(
     if proof == TunnelProof::RoutingBypass {
         return true;
     }
-    if proof.verified_ip().is_some() && path_ready {
+    if proof.traffic_confirmed() && path_ready {
         *consecutive_failures = 0;
     } else if matches!(
         proof,
         TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable
-    ) || (proof.verified_ip().is_some() && !path_ready)
+    ) || (proof.traffic_confirmed() && !path_ready)
     {
         *consecutive_failures = consecutive_failures.saturating_add(1);
     } else {
@@ -119,6 +119,9 @@ pub struct AppState {
     /// Keeps the last successfully selected node so transient tunnel failures
     /// can be retried without treating a failed first connection as recovery.
     pub reconnect: Mutex<ReconnectState>,
+    /// A failed startup/exit cleanup must remain visible to status polling
+    /// until a later scoped recovery succeeds.
+    pub network_recovery_required: Mutex<bool>,
 }
 
 #[derive(Default)]
@@ -772,35 +775,54 @@ pub async fn auth_register(
     store_auth(value).await
 }
 
-#[tauri::command]
-pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let _connection_guard = state.connection_gate.lock().await;
-    // Logout must not leave the privileged VPN running under a different
-    // account. Refuse logout if the OS cannot terminate the tunnel.
-    {
+/// One local shutdown path for manual disconnect, logout and cleanup retries.
+/// It only removes routes and DNS settings owned by the ByMeVPN adapter.
+async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String> {
+    state
+        .reconnect
+        .lock()
+        .map_err(|e| e.to_string())?
+        .manually_stopped();
+
+    let active = {
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if let Some(active) = lock.as_mut() {
             let already_exited = active
                 .child
                 .try_wait()
-                .map_err(|e| format!("Не удалось проверить VPN перед выходом: {e}"))?
+                .map_err(|e| format!("Не удалось проверить VPN перед отключением: {e}"))?
                 .is_some();
             if !already_exited {
                 active
                     .child
                     .kill()
-                    .map_err(|e| format!("Не удалось остановить VPN перед выходом: {e}"))?;
+                    .map_err(|e| format!("Не удалось остановить VPN: {e}"))?;
                 active
                     .child
                     .wait()
                     .map_err(|e| format!("Не удалось дождаться остановки VPN: {e}"))?;
             }
         }
-        if let Some(active) = lock.take() {
-            let _ = fs::remove_file(active.config_path);
-        }
+        lock.take()
+    };
+    if let Some(active) = active {
+        let _ = fs::remove_file(active.config_path);
     }
+    let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
+    if let Ok(mut required) = state.network_recovery_required.lock() {
+        *required = cleanup.is_err();
+    }
+    cleanup
+}
+
+#[tauri::command]
+pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let _connection_guard = state.connection_gate.lock().await;
+    // Even when local cleanup fails, revoke the backend session. Keep local
+    // credentials until cleanup succeeds so the user can retry the operation.
+    let cleanup = stop_tunnel_and_restore_network(&state).await;
     let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    cleanup?;
     let _ = request(
         &app,
         Method::POST,
@@ -1644,6 +1666,19 @@ pub async fn vpn_start(
             return Err("Подключение уже активно.".into());
         }
     }
+    let recovery_required = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
+    if recovery_required {
+        crate::tun_health::cleanup_bymevpn_routes_after_exit()
+            .await
+            .map_err(|error| format!("Сначала восстановите сеть Windows: {error}"))?;
+        if let Ok(mut required) = state.network_recovery_required.lock() {
+            *required = false;
+        }
+    }
 
     // Check that user has an active or trial subscription before launching tunnel
     let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
@@ -1906,7 +1941,7 @@ pub async fn vpn_start(
                 return (TunnelProof::ProbeUnavailable, false);
             }
             let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
-            if proof.verified_ip().is_none() {
+            if !proof.traffic_confirmed() {
                 return (proof, false);
             }
             let (mut routes, dns) = tokio::join!(
@@ -1921,7 +1956,7 @@ pub async fn vpn_start(
                 &routes,
                 dns,
                 true,
-                true,
+                proof.traffic_confirmed(),
             );
             (proof, healthy)
         })
@@ -1934,14 +1969,11 @@ pub async fn vpn_start(
                 return Err("Проверка VPN превысила безопасный лимит. Системный интернет восстановлен.".into());
             }
         };
-        let verified_ip = if route_and_dns_ok && matches!(child.try_wait(), Ok(None)) {
-            proof.verified_ip()
-        } else {
-            None
-        };
-        if verified_ip.is_none() {
+        let tunnel_ready = route_and_dns_ok && matches!(child.try_wait(), Ok(None));
+        let verified_ip = tunnel_ready.then(|| proof.verified_ip()).flatten();
+        if !tunnel_ready {
             stop_failed_tun(&mut child, &config_path).await?;
-            return Err(if proof.verified_ip().is_none() {
+            return Err(if !proof.traffic_confirmed() {
                 format!("VPN не передаёт трафик ({}). Сетевые настройки Windows восстановлены.", proof.status())
             } else {
                 "VPN-сервер отвечает, но Windows TUN или DNS не работает. Подключение отменено, обычный интернет восстановлен.".into()
@@ -2010,42 +2042,10 @@ pub async fn vpn_start(
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
-    if let Ok(mut reconnect) = state.reconnect.lock() {
-        reconnect.manually_stopped();
-    }
-    let maybe_active = {
-        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        if let Some(active) = lock.as_mut() {
-            let already_stopped = active
-                .child
-                .try_wait()
-                .map_err(|e| format!("Не удалось проверить Xray: {e}"))?
-                .is_some();
-            if !already_stopped {
-                // Do not clear connected state until the OS confirms termination.
-                active
-                    .child
-                    .kill()
-                    .map_err(|e| format!("Не удалось остановить VPN-процесс: {e}"))?;
-                active
-                    .child
-                    .wait()
-                    .map_err(|e| format!("Не удалось дождаться остановки Xray: {e}"))?;
-            }
-        }
-        lock.take()
-    };
-    if let Some(active) = maybe_active {
-        let _ = fs::remove_file(&active.config_path);
-        // Revoke device session even if Windows refuses route cleanup.
-        let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
-        cleanup?;
-    } else {
-        // Also repair a stale ByMeVPN route from an earlier crashed build.
-        crate::tun_health::cleanup_bymevpn_routes_after_exit().await?;
-    }
-    Ok(())
+    let cleanup = stop_tunnel_and_restore_network(&state).await;
+    // Revoke even if route cleanup failed: don't retain an active server slot.
+    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    cleanup
 }
 
 #[tauri::command]
@@ -2076,13 +2076,13 @@ pub async fn vpn_status(
     };
     if let Some((started_at, baseline_ip, port, password)) = probe {
         let result = verify_tunnel_path(baseline_ip, port, &password).await;
-        let path_ready = if result.verified_ip().is_some() {
+        let path_ready = if result.traffic_confirmed() {
             let routes = crate::tun_health::inspect().await;
             crate::tun_health::health_proves_connection(
                 &routes,
                 crate::tun_health::dns_resolution_check().await,
                 true,
-                true,
+                result.traffic_confirmed(),
             )
         } else {
             false
@@ -2178,13 +2178,20 @@ pub async fn vpn_status(
     // A crashed tunnel or an observed routing leak must release its server
     // session as well as its local process and config. Never await HTTP while
     // holding the tunnel Mutex.
-    let mut recovery_failed = false;
+    let mut recovery_failed = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
     if revoke_session {
         // Never leave the UI falsely connected if Windows refuses our route
         // cleanup: report a disconnected process and a specific repair status.
         recovery_failed = crate::tun_health::cleanup_bymevpn_routes_after_exit()
             .await
             .is_err();
+        if let Ok(mut required) = state.network_recovery_required.lock() {
+            *required = recovery_failed;
+        }
         let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
     }
     if let Some((elapsed, server_name, country, ip, verified, ping, proof)) = active_info {
@@ -2277,7 +2284,7 @@ pub async fn vpn_health_report(
             &routes,
             dns_resolution,
             true,
-            proof.verified_ip().is_some(),
+            proof.traffic_confirmed(),
         );
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         let mut verified = false;
@@ -2285,7 +2292,9 @@ pub async fn vpn_health_report(
             .as_mut()
             .filter(|active| Some(active.started_at) == tunnel_started_at)
         {
-            verified = route_dns_ok && matches!(tunnel.child.try_wait(), Ok(None));
+            verified = route_dns_ok
+                && proof.verified_ip().is_some()
+                && matches!(tunnel.child.try_wait(), Ok(None));
             tunnel.last_tunnel_proof = proof;
             tunnel.last_egress_probe = std::time::Instant::now();
             tunnel.egress_verified = verified;
@@ -2311,6 +2320,11 @@ pub async fn vpn_health_report(
     } else {
         "unknown"
     };
+    let network_recovery_required = state
+        .network_recovery_required
+        .lock()
+        .map(|required| *required)
+        .unwrap_or(true);
     Ok(json!({
         "process_tracked": process_tracked,
         "ip_verified": ip_verified,
@@ -2322,6 +2336,7 @@ pub async fn vpn_health_report(
         "dns_resolution": dns_resolution,
         "egress_probe": egress_probe,
         "runtime_healthy": runtime_healthy,
+        "network_recovery_required": network_recovery_required,
         "xray_hint": hint
     }))
 }

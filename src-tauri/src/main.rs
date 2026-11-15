@@ -21,8 +21,20 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 fn main() {
     tauri::Builder::default()
+        .manage(service::AppState::default())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Recover app-owned TUN state left by an earlier process before
+            // enabling account actions in the new session.
+            let recovery_required =
+                crate::tun_health::cleanup_bymevpn_routes_after_exit_sync().is_err();
+            if let Ok(mut required) = app
+                .state::<service::AppState>()
+                .network_recovery_required
+                .lock()
+            {
+                *required = recovery_required;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 window_layout::fit_to_monitor(&window)?;
             }
@@ -82,7 +94,6 @@ fn main() {
             });
             Ok(())
         })
-        .manage(service::AppState::default())
         .invoke_handler(tauri::generate_handler![
             api_transport::api_transport_encrypted,
             service::auth_login,
@@ -134,7 +145,7 @@ fn main() {
                     }
                 }
             }
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+            if matches!(event, RunEvent::ExitRequested { .. }) {
                 if let Some(state) = app_handle.try_state::<service::AppState>() {
                     if let Ok(mut lock) = state.tunnel.lock() {
                         if let Some(mut active) = lock.take() {
@@ -142,6 +153,15 @@ fn main() {
                             let _ = active.child.wait();
                             let _ = std::fs::remove_file(&active.config_path);
                         }
+                    }
+                }
+                // ExitRequested is the last synchronous opportunity to clean
+                // stale routes/DNS after Xray exits. The helper is scoped to
+                // the ByMeVPN adapter; physical interfaces are untouched.
+                let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit_sync();
+                if let Some(state) = app_handle.try_state::<service::AppState>() {
+                    if let Ok(mut required) = state.network_recovery_required.lock() {
+                        *required = cleanup.is_err();
                     }
                 }
             }

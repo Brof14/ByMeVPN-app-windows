@@ -1500,6 +1500,8 @@ async function handleDeleteAccount() {
 async function refreshVpnHealth() {
   const details = document.getElementById('vpn-health-details');
   if (!details) return;
+  const epoch = state.sessionEpoch;
+  const sequence = state.vpnSequence;
   const refresh = document.getElementById('btn-vpn-health-refresh');
   if (refresh) refresh.disabled = true;
   details.textContent = uiText('Проверяем TUN, маршруты и Xray…', 'Checking TUN, routes and Xray…');
@@ -1522,10 +1524,10 @@ async function refreshVpnHealth() {
       unknown: uiText('Нет конкретной причины в локальном журнале.', 'No specific reason in local log.')
     };
     const freshEgress = {
-      paths_match: uiText('Выход Xray совпадает с Windows TUN. Остальные сетевые проверки выполняются отдельно.',
-        'Xray and Windows TUN exits match. Other network checks are evaluated separately.'),
-      routing_bypass: uiText('Windows обходит VPN: выходы Xray и TUN различаются',
-        'Windows bypasses VPN: Xray and TUN exits differ'),
+      paths_match: uiText('HTTPS проходит через Xray и TUN; внешний IPv4 изменился относительно исходного.',
+        'HTTPS works through Xray and TUN; the external IPv4 differs from the original.'),
+      routing_bypass: uiText('Windows использует исходный IPv4: возможен обход VPN',
+        'Windows uses the original IPv4: the VPN may be bypassed'),
       server_unreachable: uiText('Не прошёл защищённый тест через Xray (причина не установлена)',
         'Protected request through Xray failed (cause not confirmed)'),
       tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
@@ -1574,10 +1576,16 @@ async function refreshVpnHealth() {
         'Pre-connection IP was not available.'));
     }
     details.textContent = lines.join('\n');
-    // A fresh successful health check updates the native tunnel state.
-    // Synchronize the Home warning immediately instead of waiting for the
-    // 20-second watchdog cycle or displaying stale protection status.
-    if (state.vpnConnected && report?.process_tracked) await checkVpnStatus();
+    // The native report updates the active tunnel only when its identity and
+    // process still match. Discard older status replies before updating Home.
+    if (epoch === state.sessionEpoch && sequence === state.vpnSequence &&
+        !state.connectionBusy && state.vpnConnected && report?.process_tracked) {
+      state.vpnSequence += 1;
+      state.vpnVerified = report?.runtime_healthy === true && report?.ip_verified === true;
+      state.metrics = { ...state.metrics, proof: report?.egress_probe, verified: state.vpnVerified };
+      updateVpnUi();
+      void checkVpnStatus();
+    }
   } catch (_) {
     details.textContent = uiText('Не удалось выполнить локальную проверку. Проверьте журнал Windows.',
       'Local diagnostics unavailable. Check the Windows logs.');

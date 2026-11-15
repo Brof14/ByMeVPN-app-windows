@@ -22,13 +22,19 @@ test('selected VPN endpoint must respond before Xray takes over Windows TUN', ()
   assert.match(tunConfig, /"outboundTag": "proxy"/);
 });
 
-test('unverified full tunnel is immediately aborted, never left blocking the internet', () => {
+test('observed traffic without IP proof stays unverified; failed TUN proof is rolled back', () => {
   const start = service.slice(service.indexOf('pub async fn vpn_start('), service.indexOf('pub async fn vpn_stop('));
-  assert.match(start, /if verified_ip\.is_none\(\) \{/);
+  assert.match(start, /if !proof\.traffic_confirmed\(\) \{/);
+  assert.match(start, /let tunnel_ready = route_and_dns_ok && matches!\(child\.try_wait\(\), Ok\(None\)\)/);
+  assert.match(start, /let verified_ip = tunnel_ready\.then\(\|\| proof\.verified_ip\(\)\)\.flatten\(\)/);
+  assert.match(start, /if !tunnel_ready \{/);
   assert.match(start, /stop_failed_tun\(&mut child, &config_path\)\.await/);
   assert.match(start, /tokio::time::timeout\(Duration::from_secs\(9\)/);
   assert.match(start, /return Err\(/);
-  assert.ok(start.indexOf('if verified_ip.is_none()') < start.indexOf('*lock = Some(ActiveTunnel {'));
+  assert.ok(start.indexOf('if !tunnel_ready') < start.indexOf('*lock = Some(ActiveTunnel {'));
+  assert.match(egress, /TrafficObservedUnverified/);
+  assert.match(egress, /BaselineUnavailable/);
+  assert.match(start, /egress_verified: verified_ip\.is_some\(\)/);
   assert.match(service, /cleanup_bymevpn_routes_after_exit/);
   assert.match(tunHealth, /Remove-NetRoute/);
   assert.doesNotMatch(tunHealth, /Remove-NetRoute\s+-InterfaceIndex\s+\$env/);

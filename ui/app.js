@@ -2234,6 +2234,9 @@ function updateVpnUi() {
   const homeFlag = document.getElementById('home-server-flag');
   const homeCountry = document.getElementById('home-server-country');
   const homeCity = document.getElementById('home-server-city');
+  const automaticConnected = isConn && s.code === 'auto' && !!state.metrics?.server_name;
+  const automaticSubtitle = document.querySelector('#recommended-server-auto .rec-server-info span');
+  if (automaticSubtitle) automaticSubtitle.textContent = automaticServerSubtitle();
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
   if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
@@ -2253,10 +2256,10 @@ function updateVpnUi() {
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
-    uiText('Автоматически', 'Automatic') :
+    (automaticConnected && state.metrics?.country ? state.metrics.country : uiText('Автоматически', 'Automatic')) :
     (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
-    uiText('Автовыбор', 'Auto select') :
+    (automaticConnected ? state.metrics.server_name : uiText('Автовыбор', 'Auto select')) :
     ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
@@ -2654,7 +2657,17 @@ function serverDisplayName(server) {
   return server.city_en ? country + ' • ' + server.city_en : country;
 }
 
+function automaticServerSubtitle() {
+  const selectedName = state.vpnConnected && state.selectedServer.code === 'auto'
+    ? String(state.metrics?.server_name || '').trim()
+    : '';
+  if (!selectedName) return uiText('Система назначит доступный сервер', 'The service will assign an available server');
+  return uiText(`Выбран: ${selectedName}`, `Selected: ${selectedName}`);
+}
+
 function renderServersList(filter = '') {
+  const autoSubtitle = document.querySelector('#recommended-server-auto .rec-server-info span');
+  if (autoSubtitle) autoSubtitle.textContent = automaticServerSubtitle();
   const container = document.getElementById('servers-dynamic-list');
   if (!container) return;
   container.replaceChildren();

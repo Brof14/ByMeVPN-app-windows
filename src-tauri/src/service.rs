@@ -9,7 +9,9 @@ use keyring::Entry;
 use reqwest::{Client, Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::{
@@ -40,6 +42,40 @@ static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(())
 // reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
 static API_CLIENT: OnceLock<Client> = OnceLock::new();
+static SERVER_PING_CACHE: OnceLock<Mutex<ServerPingCache>> = OnceLock::new();
+const SERVER_PING_CACHE_TTL: Duration = Duration::from_secs(600);
+const SERVER_PING_CACHE_LIMIT: usize = 512;
+
+#[derive(Default)]
+struct ServerPingCache {
+    entries: HashMap<String, (std::time::Instant, u32)>,
+}
+
+impl ServerPingCache {
+    fn get(&mut self, key: &str, now: std::time::Instant) -> Option<u32> {
+        self.entries.retain(|_, (measured_at, _)| {
+            now.saturating_duration_since(*measured_at) < SERVER_PING_CACHE_TTL
+        });
+        self.entries.get(key).map(|(_, ping)| *ping)
+    }
+
+    fn insert(&mut self, key: String, ping: u32, now: std::time::Instant) {
+        self.entries.retain(|_, (measured_at, _)| {
+            now.saturating_duration_since(*measured_at) < SERVER_PING_CACHE_TTL
+        });
+        if self.entries.len() >= SERVER_PING_CACHE_LIMIT && !self.entries.contains_key(&key) {
+            if let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, (measured_at, _))| *measured_at)
+                .map(|(key, _)| key.clone())
+            {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.entries.insert(key, (now, ping));
+    }
+}
 
 pub struct ActiveTunnel {
     pub child: std::process::Child,
@@ -1126,6 +1162,32 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
     0
 }
 
+fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
+    let serialized = serde_json::to_vec(config).unwrap_or_default();
+    let mut digest = Sha256::new();
+    digest.update(node_code.as_bytes());
+    digest.update([0]);
+    digest.update(serialized);
+    format!("{:x}", digest.finalize())
+}
+
+fn cached_server_ping(key: &str) -> Option<u32> {
+    SERVER_PING_CACHE
+        .get_or_init(|| Mutex::new(ServerPingCache::default()))
+        .lock()
+        .ok()?
+        .get(key, std::time::Instant::now())
+}
+
+fn cache_server_ping(key: String, ping: u32) {
+    if let Ok(mut cache) = SERVER_PING_CACHE
+        .get_or_init(|| Mutex::new(ServerPingCache::default()))
+        .lock()
+    {
+        cache.insert(key, ping, std::time::Instant::now());
+    }
+}
+
 #[tauri::command]
 pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
@@ -1230,18 +1292,23 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
         let supported = supports_windows_session(config);
         // Hysteria2 is UDP-only; a TCP connect is not its latency and
         // just delays the server list by waiting for a closed TCP port.
-        let task = if should_probe
-            && supported
+        let tcp_probe_supported = supported
             && protocol_supports_tcp_ping(config)
             && !host.is_empty()
-            && (1..=65535).contains(&port)
-        {
+            && (1..=65535).contains(&port);
+        let cache_key = tcp_probe_supported.then(|| server_ping_cache_key(code, config));
+        let cached_ping = cache_key.as_deref().and_then(cached_server_ping);
+        let task = if should_probe && tcp_probe_supported && cached_ping.is_none() {
             let slots = ping_slots.clone();
+            let key = cache_key.expect("eligible TCP probes have a cache key");
             Some(tauri::async_runtime::spawn(async move {
                 let _permit = slots.acquire_owned().await.ok()?;
-                tauri::async_runtime::spawn_blocking(move || measure_real_ping(&host, port as u16))
-                    .await
-                    .ok()
+                let ping = tauri::async_runtime::spawn_blocking(move || {
+                    measure_real_ping(&host, port as u16)
+                })
+                .await
+                .ok()?;
+                Some((key, ping))
             }))
         } else {
             None
@@ -1250,7 +1317,7 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
-            "flag":flag, "supported":supported, "ping":0}));
+            "flag":flag, "supported":supported, "ping":cached_ping.unwrap_or(0)}));
     }
     // Bound the entire catalog loading delay, even with dozens of blocked
     // endpoints. Unknown latency stays 0 rather than becoming a fake ping.
@@ -1258,7 +1325,10 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
     for (server, task) in normalized.iter_mut().zip(tasks) {
         if let Some(mut task) = task {
             match tokio::time::timeout_at(deadline, &mut task).await {
-                Ok(Ok(Some(ping))) => server["ping"] = json!(ping),
+                Ok(Ok(Some((key, ping)))) => {
+                    cache_server_ping(key, ping);
+                    server["ping"] = json!(ping);
+                }
                 _ => task.abort(),
             }
         }
@@ -2738,6 +2808,25 @@ mod tests {
     fn protected_retry_rejects_a_changed_account_session() {
         assert!(require_same_session(7, 7).is_ok());
         assert!(require_same_session(7, 8).is_err());
+    }
+
+    #[test]
+    fn server_tcp_ping_cache_is_config_scoped_keeps_failures_and_expires() {
+        let now = std::time::Instant::now();
+        let config = json!({"protocol":"vless","server":"vpn.example","port":443});
+        let key = server_ping_cache_key("node-a", &config);
+        let mut cache = ServerPingCache::default();
+        cache.insert(key.clone(), 0, now);
+
+        assert_eq!(cache.get(&key, now), Some(0));
+        assert_ne!(
+            key,
+            server_ping_cache_key(
+                "node-a",
+                &json!({"protocol":"vless","server":"vpn2.example","port":443})
+            )
+        );
+        assert_eq!(cache.get(&key, now + Duration::from_secs(600)), None);
     }
 
     #[test]

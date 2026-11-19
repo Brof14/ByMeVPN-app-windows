@@ -24,6 +24,7 @@ function harness(getPlans = async () => canonical, overrides = {}) {
     document: {
       addEventListener() {},
       getElementById(id) { return id === 'page-title' ? { textContent: '' } : null; },
+      querySelector() { return null; },
       querySelectorAll() { return []; }
     },
     window: { __TAURI__: { core: { invoke: async (cmd) => {

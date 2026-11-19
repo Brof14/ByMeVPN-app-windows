@@ -157,7 +157,8 @@ test('version text follows the chosen language without changing the real build n
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
   assert.equal(version.textContent, 'Версия 1.2.15');
-  assert.match(html, /data-app-version="1\.2\.15"/);
+  const buildVersion = JSON.parse(read('src-tauri/tauri.conf.json')).version;
+  assert.ok(html.includes(`data-app-version="${buildVersion}"`));
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {

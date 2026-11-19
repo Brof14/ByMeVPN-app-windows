@@ -29,8 +29,7 @@ test('unknown or unavailable entitlement never renders active VPN controls', () 
 test('all clickable non-button cards are keyboard-operable', () => {
   const ids = [
     'btn-acc-open-devices', 'btn-open-server-picker', 'btn-active-location-pill',
-    'row-server-info', 'btn-open-manage-pricing', 'card-support-channel',
-    'card-support-faq', 'tile-faq-modal', 'tile-support-telegram',
+    'row-server-info', 'btn-open-manage-pricing', 'tile-faq-modal', 'tile-support-telegram',
     'tile-privacy-policy', 'tile-terms-of-use'
   ];
   for (const id of ids) {
@@ -38,6 +37,9 @@ test('all clickable non-button cards are keyboard-operable', () => {
     assert.ok(tag, 'Missing card ' + id);
     assert.match(tag[0], /role="button"/);
     assert.match(tag[0], /tabindex="0"/);
+  }
+  for (const id of ['card-support-channel', 'card-support-faq', 'card-support-email']) {
+    assert.match(html, new RegExp('<button[^>]*id="' + id + '"[^>]*>'));
   }
   assert.match(js, /element\.click\(\)/);
 });

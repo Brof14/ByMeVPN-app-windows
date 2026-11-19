@@ -105,6 +105,8 @@ fn main() {
             service::telegram_check_session,
             service::telegram_cancel_session,
             service::auth_logout,
+            service::auth_delete_account,
+            service::auth_session_generation,
             service::restore_session,
             service::account_snapshot,
             service::get_servers,

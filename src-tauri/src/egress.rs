@@ -58,8 +58,8 @@ pub fn egress_result_code(result: EgressCheck) -> &'static str {
 /// (a) authenticated local Xray HTTP CONNECT -> configured remote VPN,
 /// (b) a normal system request expected to traverse Windows TUN.
 /// Public VPN egress can vary by connection, so different Xray/TUN IPs alone
-/// are not proof of bypass. Compare the system path to the pre-tunnel baseline;
-/// the caller separately requires a live TUN route and healthy DNS.
+/// are not proof of bypass. They also cannot prove matching egress: keep that
+/// case unverified even when the system IP differs from the baseline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TunnelProof {
     Verified(IpAddr),
@@ -123,6 +123,7 @@ pub fn classify_tunnel_path(
             TunnelProof::RoutingBypass
         }
         Some(before) if before == via_system => TunnelProof::BaselineUnchanged,
+        Some(_) if via_proxy != via_system => TunnelProof::TrafficObservedUnverified,
         // The caller still checks the active TUN route and DNS before accepting.
         Some(_) => TunnelProof::Verified(via_system),
     }
@@ -547,7 +548,7 @@ mod tests {
         );
         assert_eq!(
             classify_tunnel_path(Some(original), Some(tunneled), Some(other_tunneled_exit)),
-            TunnelProof::Verified(other_tunneled_exit)
+            TunnelProof::TrafficObservedUnverified
         );
         assert_eq!(
             classify_tunnel_path(Some(original), None, Some(tunneled)),

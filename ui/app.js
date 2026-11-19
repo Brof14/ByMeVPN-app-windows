@@ -120,7 +120,16 @@ const I18N = {
     killswitch_unavailable_tip: "Полная аварийная защита пока не реализована",
     renewal_disclaimer: "Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.",
     renewal_select_plan: "Выбрать или продлить тариф",
-    support_bonus_explained: "Нашли ошибку или придумали улучшение? Напишите нам в поддержку.",
+    support_bonus_explained: "Напишите нам о проблеме или задайте вопрос по работе ByMeVPN.",
+    support_email_title: "Электронная почта",
+    devices_upgrade_title: "Нужно больше устройств?",
+    devices_upgrade_desc: "Доплата за 5 или 10 устройств рассчитывается за оставшийся срок подписки. Выберите лимит и проверьте сумму в Telegram-боте перед оплатой.",
+    devices_upgrade_action: "Увеличить лимит в Telegram",
+    support_info: "Информация",
+    support_about: "О приложении",
+    support_about_desc: "Версия и контакты",
+    support_legal: "Документы и приватность",
+    support_legal_desc: "Условия использования",
     support_open_telegram: "Написать в поддержку",
     paywall_activate_title: "Активируйте ByMeVPN",
     paywall_trial_desc: "Без привязки карты • Все серверы сразу",
@@ -194,7 +203,9 @@ const I18N = {
     account_settings_advanced_desc: "Сеть, маршруты и диагностика",
     account_settings_help_desc: "Связаться со службой поддержки",
     account_settings_logout_desc: "Завершить текущий сеанс",
-    account_settings_delete_desc: "Запросить удаление через поддержку",
+    account_password_reset: "Сменить пароль",
+    account_password_reset_desc: "Получить ссылку на почту",
+    account_settings_delete_desc: "Удалить аккаунт и доступ к VPN",
     language_short_title: "Язык",
     language_dialog_title: "Язык приложения",
     language_dialog_desc: "Выберите язык приложения.",
@@ -332,7 +343,7 @@ const I18N = {
     support_desc: 'Если у вас возникли вопросы или нужна помощь — мы всегда рядом.',
     write_support: 'Написать в поддержку',
     logout: 'Выйти из аккаунта',
-    delete_account: 'Запросить удаление аккаунта',
+    delete_account: 'Удалить аккаунт',
     set_general_title: 'Основное',
     set_general_desc: 'Удобная работа с ByMeVPN',
     autostart_title: 'Запускать вместе с системой',
@@ -407,7 +418,16 @@ const I18N = {
     killswitch_unavailable_tip: "A full kill switch is not implemented yet",
     renewal_disclaimer: "Renewal terms depend on your checkout. Contact support if in-app management is unavailable.",
     renewal_select_plan: "Choose or renew a plan",
-    support_bonus_explained: "Found a bug or have an improvement idea? Contact support.",
+    support_bonus_explained: "Contact us with a question or a problem using ByMeVPN.",
+    support_email_title: "Email",
+    devices_upgrade_title: "Need more devices?",
+    devices_upgrade_desc: "Upgrades to 5 or 10 devices are prorated over your remaining subscription period. Choose a limit and review the final price in the Telegram bot.",
+    devices_upgrade_action: "Upgrade devices in Telegram",
+    support_info: "Information",
+    support_about: "About",
+    support_about_desc: "Version and contact",
+    support_legal: "Privacy and documents",
+    support_legal_desc: "Terms of service",
     support_open_telegram: "Contact support",
     paywall_activate_title: "Activate ByMeVPN",
     paywall_trial_desc: "No card required • All servers",
@@ -481,7 +501,9 @@ const I18N = {
     account_settings_advanced_desc: "Network, routing and diagnostics",
     account_settings_help_desc: "Contact support",
     account_settings_logout_desc: "End the current session",
-    account_settings_delete_desc: "Request account removal through support",
+    account_password_reset: "Change password",
+    account_password_reset_desc: "Receive a reset link by email",
+    account_settings_delete_desc: "Delete your account and VPN access",
     language_short_title: "Language",
     language_dialog_title: "App language",
     language_dialog_desc: "Choose the app language.",
@@ -619,7 +641,7 @@ const I18N = {
     support_desc: 'Need help or have questions? Our support team is always ready.',
     write_support: 'Contact Support',
     logout: 'Log Out',
-    delete_account: 'Request Account Deletion',
+    delete_account: 'Delete account',
     set_general_title: 'General',
     set_general_desc: 'Comfortable experience with ByMeVPN',
     autostart_title: 'Launch on Windows startup',
@@ -704,7 +726,7 @@ async function loadInitialData() {
   if (epoch !== state.sessionEpoch) return;
   if (session?.user) {
     state.user = session.user;
-    state.subscription = session.subscription;
+    setSubscription(session.subscription);
     showAppShell();
   } else {
     showAuthScreen('login');
@@ -777,8 +799,9 @@ function sanitizeCachedServerCatalog(value) {
     for (const field of SERVER_CATALOG_FIELDS) {
       if (typeof server[field] === 'string') safe[field] = server[field].slice(0, 100);
     }
-    safe.ping = Number.isInteger(server.ping) && server.ping >= 0 && server.ping <= 9999
-      ? server.ping : 0;
+    // Cached catalog entries can outlive the network and server settings.
+    // Never show an old TCP measurement as a current latency.
+    safe.ping = 0;
     return [safe];
   });
 }
@@ -892,6 +915,42 @@ async function loadPricingCatalog() {
 }
 
 // UI State Toggles: Auth vs App Shell
+let subscriptionExpiryTimer = null;
+
+function subscriptionRemaining(sub) {
+  const seconds = sub?.seconds_remaining;
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const syncedAt = sub._receivedAt;
+  if (!Number.isFinite(syncedAt)) return seconds;
+  return Math.max(0, seconds - Math.floor(Math.max(0, Date.now() - syncedAt) / 1000));
+}
+
+function subscriptionExpired(sub) {
+  return subscriptionRemaining(sub) === 0;
+}
+
+function setSubscription(value) {
+  if (subscriptionExpiryTimer) clearTimeout(subscriptionExpiryTimer);
+  subscriptionExpiryTimer = null;
+  state.subscription = value && typeof value === 'object' ? { ...value, _receivedAt: Date.now() } : value;
+  const current = state.subscription;
+  const schedule = () => {
+    if (state.subscription !== current) return;
+    const remaining = subscriptionRemaining(current);
+    if (remaining === null) return;
+    if (remaining <= 0) {
+      updateSubscriptionUi();
+      updateVpnUi();
+      updateDevicesUi();
+      if (state.user) void refreshAccountSnapshot();
+      return;
+    }
+    subscriptionExpiryTimer = setTimeout(schedule, Math.min(remaining * 1000, 2147483647));
+    subscriptionExpiryTimer?.unref?.();
+  };
+  schedule();
+}
+
 function showAuthScreen(box = 'login') {
   document.getElementById('view-auth')?.classList.remove('hidden');
   document.getElementById('view-app-shell')?.classList.add('hidden');
@@ -1062,6 +1121,7 @@ function setupEventListeners() {
     await refreshAccountSnapshot(true);
     await loadAvailableServers();
   });
+  document.getElementById('btn-account-password-reset')?.addEventListener('click', handleAccountPasswordReset);
   document.getElementById('btn-account-copy-id')?.addEventListener('click', () => {
     const value = String(state.user?.id || '');
     if (!value) return showToast('ID аккаунта пока не загружен', true);
@@ -1143,11 +1203,26 @@ function setupEventListeners() {
 
   // Support subpage actions
   document.getElementById('btn-open-telegram-support')?.addEventListener('click', handleOpenTelegramSupport);
+  document.getElementById('btn-devices-upgrade')?.addEventListener('click', () => {
+    invoke('open_external_url', { url: 'https://t.me/ByMeVPNbot' })
+      .catch(() => showToast(uiText('Не удалось открыть Telegram. Найдите @ByMeVPNbot.', 'Could not open Telegram. Search for @ByMeVPNbot.'), true));
+  });
   document.getElementById('card-support-channel')?.addEventListener('click', () => {
     const url = 'https://t.me/ByMeVPN';
     invoke('open_external_url', { url }).catch(() => showToast(uiText('Не удалось открыть ссылку.', 'Could not open the link.'), true));
   });
   document.getElementById('card-support-faq')?.addEventListener('click', () => openModal('modal-faq'));
+  document.getElementById('card-support-legal')?.addEventListener('click', () => openLegalModal('terms'));
+  document.getElementById('card-support-about')?.addEventListener('click', () => openLegalModal('about'));
+  document.getElementById('card-support-email')?.addEventListener('click', async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText('support@bymevpn.com');
+      showToast(uiText('Адрес поддержки скопирован: support@bymevpn.com', 'Support address copied: support@bymevpn.com'));
+    } catch (_) {
+      showToast(uiText('Адрес поддержки: support@bymevpn.com', 'Support address: support@bymevpn.com'));
+    }
+  });
 
   // Telegram bot payment button
   document.getElementById('btn-pay-telegram-bot')?.addEventListener('click', () => {
@@ -1290,6 +1365,25 @@ async function handlePasswordReset() {
   }
 }
 
+async function handleAccountPasswordReset() {
+  const user = state.user;
+  const email = typeof user?.email === 'string' ? user.email.trim() : '';
+  if (state.accountPasswordResetBusy || user?.is_google === true || !email.includes('@') || email === 'user@bymevpn.app') return;
+  const epoch = state.sessionEpoch;
+  state.accountPasswordResetBusy = true;
+  const button = document.getElementById('btn-account-password-reset');
+  if (button) button.disabled = true;
+  try {
+    await invoke('auth_request_password_reset', { email });
+    if (epoch === state.sessionEpoch) showToast(uiText('Если пароль доступен для этого аккаунта, ссылка придёт на почту.', 'If password reset is available, a link will be sent to your email.'));
+  } catch (_) {
+    if (epoch === state.sessionEpoch) showToast(uiText('Не удалось запросить восстановление. Повторите позже.', 'Could not request password recovery. Try again later.'), true);
+  } finally {
+    state.accountPasswordResetBusy = false;
+    if (button) button.disabled = false;
+  }
+}
+
 async function handleLogin(e) {
   e.preventDefault();
   if (state.authBusy) return;
@@ -1305,7 +1399,7 @@ async function handleLogin(e) {
     if (!res?.user?.id) throw new Error('Сервер не подтвердил вход в аккаунт');
     state.sessionEpoch += 1;
     state.user = res.user;
-    state.subscription = res.subscription;
+    setSubscription(res.subscription);
     showAppShell();
     showToast('Вход выполнен');
     document.getElementById('login-password').value = '';
@@ -1332,7 +1426,7 @@ async function handleRegister(e) {
     if (!res?.user?.id) throw new Error('Сервер не подтвердил регистрацию');
     state.sessionEpoch += 1;
     state.user = res.user;
-    state.subscription = res.subscription;
+    setSubscription(res.subscription);
     showAppShell();
     showToast('Аккаунт создан');
     document.getElementById('register-password').value = '';
@@ -1377,7 +1471,7 @@ async function handleGoogleAuth() {
     if (!result?.user?.id) throw new Error('Сервер не подтвердил вход через Google.');
     state.sessionEpoch += 1;
     state.user = result.user;
-    state.subscription = result.subscription;
+    setSubscription(result.subscription);
     showAppShell();
     showToast(uiText('Вход через Google подтверждён.', 'Google sign-in complete.'));
     void refreshAccountSnapshot();
@@ -1442,7 +1536,7 @@ async function startTelegramAuthFlow() {
           cancelTelegramPolling();
           state.sessionEpoch += 1;
           state.user = check.auth.user;
-          state.subscription = check.auth.subscription;
+          setSubscription(check.auth.subscription);
           closeModal('modal-telegram');
           showAppShell();
           showToast('Вход через Telegram подтверждён');
@@ -1504,7 +1598,7 @@ async function handleLogout() {
       try { localStorage.removeItem(SERVER_CATALOG_CACHE_KEY); } catch (_) { /* optional cache */ }
       state.devices = [];
       state.user = null;
-      state.subscription = null;
+      setSubscription(null);
       state.pendingCheckout = null;
       showAuthScreen('login');
       showToast('Вы вышли из системы');
@@ -1513,16 +1607,65 @@ async function handleLogout() {
 }
 
 async function handleDeleteAccount() {
-  // DELETE /me currently returns 501. Never imply that the account is gone.
+  if (state.accountDeleteBusy) return;
+  const epoch = state.sessionEpoch;
+  const accountId = String(state.user?.id ?? '');
+  if (!accountId) return;
+  let generation;
+  try {
+    generation = await invoke('auth_session_generation');
+    if (!Number.isSafeInteger(generation) || generation < 0) throw new Error('Invalid session');
+  } catch (_) {
+    if (epoch === state.sessionEpoch) showToast(uiText('Не удалось проверить сеанс. Войдите снова.', 'Could not verify your session. Sign in again.'), true);
+    return;
+  }
+  if (epoch !== state.sessionEpoch || String(state.user?.id ?? '') !== accountId) return;
   showConfirm(
-    uiText('Запросить удаление аккаунта', 'Request account deletion'),
-    uiText('Автоматическое удаление пока недоступно. Открыть поддержку для подачи запроса?',
-      'Automatic account deletion is not available yet. Open support to request deletion?'),
+    uiText('Удалить аккаунт без возможности восстановления?', 'Permanently delete your account?'),
+    uiText('Аккаунт и доступ к VPN будут удалены. Оплаченный срок не сохраняется. Финансовые записи могут сохраняться для расчётов и споров. Это действие нельзя отменить.',
+      'Your account and VPN access will be deleted. Remaining paid time will be lost. Financial records may be retained for payments and disputes. This cannot be undone.'),
     async () => {
+      if (epoch !== state.sessionEpoch || String(state.user?.id ?? '') !== accountId) return;
+      if (state.accountDeleteBusy) return;
+      if (state.connectionBusy || state.serverSwitchBusy) {
+        showToast(uiText('Дождитесь завершения работы VPN', 'Wait for the VPN operation to finish.'), true);
+        return;
+      }
+      state.accountDeleteBusy = true;
       try {
-        await handleOpenTelegramSupport();
+        await invoke('auth_delete_account', { generation });
+        if (epoch !== state.sessionEpoch || String(state.user?.id ?? '') !== accountId) return;
+        state.sessionEpoch += 1;
+        cancelTelegramPolling();
+        for (const interval of ['pollInterval', 'timerInterval']) {
+          if (state[interval]) clearInterval(state[interval]);
+          state[interval] = null;
+        }
+        state.vpnConnected = false;
+        state.vpnVerified = false;
+        state.vpnPhase = 'idle';
+        state.reconnectPending = false;
+        state.connectionError = null;
+        state.vpnSequence += 1;
+        state.metrics = { download_mbps: 0, upload_mbps: 0, ping_ms: 0 };
+        state.user = null;
+        setSubscription(null);
+        state.devices = [];
+        state.servers = [];
+        state.serversStale = false;
+        try { localStorage.removeItem(SERVER_CATALOG_CACHE_KEY); } catch (_) { /* optional cache */ }
+        state.pendingCheckout = null;
+        closeModal('modal-account-settings');
+        showAuthScreen('login');
+        showToast(uiText('Аккаунт удалён.', 'Account deleted.'));
       } catch (err) {
-        showToast(uiText('Не удалось открыть поддержку.', 'Could not open support.'), true);
+        if (epoch === state.sessionEpoch) {
+          await checkVpnStatus();
+          showToast(uiText('Не удалось подтвердить удаление. Попробуйте войти снова или обратитесь в поддержку.',
+            'Deletion could not be confirmed. Try signing in again or contact support.'), true);
+        }
+      } finally {
+        state.accountDeleteBusy = false;
       }
     }
   );
@@ -1630,7 +1773,7 @@ async function refreshVpnHealth() {
 async function toggleVpn(allowServerSwitch = false) {
   if (state.connectionBusy || (state.serverSwitchBusy && allowServerSwitch !== true)) return;
   const disconnectRequested = state.vpnConnected || state.reconnectPending;
-  if (!disconnectRequested && (!state.subscription || state.subscription.status === 'unknown')) {
+  if (!disconnectRequested && (!state.subscription || state.subscription.status === 'unknown' || subscriptionExpired(state.subscription))) {
     showToast(uiText('Сначала проверьте подписку.', 'Verify your subscription first.'), true);
     return;
   }
@@ -1956,8 +2099,8 @@ function localizedToast(text) {
 function updateVpnUi() {
   const isConn = state.vpnConnected;
   const sub = state.subscription;
-  const accessUnknown = !sub || sub.status === 'unknown';
-  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
+  const accessUnknown = !sub || sub.status === 'unknown' || subscriptionExpired(sub);
+  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status) && !accessUnknown;
 
   const noPlanBox = document.getElementById('home-state-no-plan');
   const connectedBox = document.getElementById('home-state-connected');
@@ -2148,6 +2291,9 @@ function updateUserUi() {
   const profileEmail = document.getElementById('account-settings-profile-email');
   if (profileName) profileName.textContent = state.user.name || uiText('Пользователь', 'User');
   if (profileEmail) profileEmail.textContent = state.user.email || 'ByMeVPN';
+  const reset = document.getElementById('btn-account-password-reset');
+  const email = typeof state.user.email === 'string' ? state.user.email.trim() : '';
+  reset?.classList?.toggle('hidden', state.user.is_google === true || !email.includes('@') || email === 'user@bymevpn.app');
 }
 
 function renewalStatusPresentation(value) {
@@ -2223,8 +2369,8 @@ function confirmCancelRenewal() {
 
 function updateSubscriptionUi() {
   const sub = state.subscription;
-  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
-  const isUnknown = !sub || sub.status === 'unknown';
+  const isUnknown = !sub || sub.status === 'unknown' || subscriptionExpired(sub);
+  const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status) && !isUnknown;
 
   const title = hasPlan
     ? (sub.plan_name || uiText('Подписка ByMeVPN', 'ByMeVPN subscription'))
@@ -2249,7 +2395,7 @@ function updateSubscriptionUi() {
   if (homeSubTitle) homeSubTitle.textContent = hasPlan
     ? uiText('Подписка активна', 'Subscription active') : title;
   if (homeSubExpiry) {
-    const remaining = sub?.seconds_remaining;
+    const remaining = subscriptionRemaining(sub);
     const days = Number.isFinite(remaining) && remaining > 0
       ? Math.ceil(remaining / 86400) : null;
     homeSubExpiry.textContent = hasPlan
@@ -2275,8 +2421,8 @@ function updateSubscriptionUi() {
     statusPill.className = hasPlan ? 'mobile-account-badge'
       : 'mobile-account-badge mobile-account-badge-inactive';
   }
-  const remainingDays = Number.isFinite(sub?.seconds_remaining) && sub.seconds_remaining > 0
-    ? Math.ceil(sub.seconds_remaining / 86400) : null;
+  const remainingSeconds = subscriptionRemaining(sub);
+  const remainingDays = remainingSeconds > 0 ? Math.ceil(remainingSeconds / 86400) : null;
   const remainingLabel = document.getElementById('acc-remaining-days');
   if (remainingLabel) remainingLabel.textContent = remainingDays == null ? '—' : String(remainingDays);
   document.getElementById('acc-days-suffix')?.classList?.toggle('hidden', remainingDays === null);
@@ -2331,7 +2477,13 @@ function updateDevicesUi() {
   const ratioEl = document.getElementById('acc-devices-ratio');
   const sub = state.subscription;
   const maxDev = Number.isInteger(sub?.max_devices) ? sub.max_devices : null;
+  const upgrade = document.getElementById('devices-upgrade-card');
+  if (upgrade) upgrade.classList.toggle('hidden', !(sub && ['active', 'trial', 'grace'].includes(sub.status) && !subscriptionExpired(sub) && [2, 5].includes(maxDev)));
   const devList = Array.isArray(state.devices) ? state.devices : [];
+  const upgradeTitle = document.getElementById('devices-upgrade-title');
+  if (upgradeTitle) upgradeTitle.textContent = state.devicesSupported && maxDev && devList.length >= maxDev
+    ? uiText('Лимит устройств достигнут', 'Device limit reached')
+    : uiText('Нужно больше устройств?', 'Need more devices?');
 
   if (ratioEl) {
     ratioEl.textContent = state.devicesSupported ? `${devList.length} / ${maxDev ?? '—'}` :
@@ -2420,9 +2572,9 @@ function escapeHtml(str) {
 
 // Pricing Matrix UI Calculation
 function priceNoteForOffer(code, offer) {
-  if (!offer) return uiText('Тариф недоступен', 'Plan unavailable');
-  const months = VERIFIED_PLAN_TYPES[code]?.months || 1;
-  const monthly = Math.round(offer.price / months);
+  if (!offer || !Number.isFinite(offer.price) || offer.price <= 0 || !Number.isFinite(offer.days) || offer.days <= 0) return uiText('Тариф недоступен', 'Plan unavailable');
+  // Android displays the server-confirmed price per 30 days, rounded up.
+  const monthly = Math.ceil(offer.price * 30 / offer.days);
   const price = uiText(`${monthly} ₽`, `${monthly} RUB`);
   if (code === 'month') return uiText(`${price} за месяц`, `${price} per month`);
   const bonus = {quarter: 1, half_year: 2, year: 3}[code] || 0;
@@ -2543,6 +2695,10 @@ function renderServersList(filter = '') {
     const ping = document.createElement('span');
     ping.className = 'server-ping-badge';
     ping.textContent = srv.ping > 0 ? (srv.ping + ' ms') : '—';
+    ping.title = srv.ping > 0
+      ? uiText('Время TCP-соединения с сервером, не задержка через VPN', 'TCP connection time to the server, not latency through VPN')
+      : uiText('Задержка неизвестна', 'Latency unavailable');
+    ping.setAttribute('aria-label', srv.ping > 0 ? `${ping.title}: ${srv.ping} ms` : ping.title);
     const dot = document.createElement('span');
     dot.className = 'radio-selection-dot';
     card.append(flag, details, ping, dot);
@@ -2655,7 +2811,21 @@ function trialActivationMessage(error) {
     'Could not activate your free trial. Please try again.');
 }
 
-async function handleActivateTrial() {
+async function handleActivateTrial(confirmed = false) {
+  if (confirmed !== true) {
+    const epoch = state.sessionEpoch;
+    const accountId = String(state.user?.id ?? '');
+    if (!accountId) return;
+    showConfirm(
+      uiText('3 дня бесплатно', '3 days free'),
+      uiText('Попробуйте VPN бесплатно. Пробный доступ на 3 дня, если он ещё не использован. После окончания выберите тариф, чтобы продолжить.',
+        'Try VPN for free. Get 3 days of access if your trial has not been used. Choose a plan to continue afterwards.'),
+      () => {
+        if (epoch === state.sessionEpoch && String(state.user?.id ?? '') === accountId) return handleActivateTrial(true);
+      }
+    );
+    return;
+  }
   // Android V2 parity: never issue multiple trial activations for one user.
   if (state.trialBusy) return;
   if (!state.user?.id) {
@@ -2679,7 +2849,7 @@ async function handleActivateTrial() {
         'Could not verify free-trial eligibility.'
       ));
     }
-    state.subscription = snapshot.subscription;
+    setSubscription(snapshot.subscription);
     updateSubscriptionUi();
     updateVpnUi();
     const freshSub = state.subscription;
@@ -2702,7 +2872,7 @@ async function handleActivateTrial() {
         'The server did not confirm free-trial activation.'
       ));
     }
-    state.subscription = res;
+    setSubscription(res);
     updateSubscriptionUi();
     updateVpnUi();
     closeModal('modal-paywall');
@@ -2955,7 +3125,7 @@ async function refreshAccountSnapshot(notify = false) {
     if (epoch !== state.sessionEpoch) return;
     if (data) {
       if (data.user) state.user = data.user;
-      if (data.subscription) state.subscription = data.subscription;
+      if (data.subscription) setSubscription(data.subscription);
       if (Array.isArray(data.devices)) state.devices = data.devices;
       state.devicesSupported = data.devices_supported !== false;
       updateUserUi();
@@ -3054,6 +3224,14 @@ function openLegalModal(type) {
   const body = document.getElementById('legal-modal-body');
   if (!modal || !title || !body) return;
   const en = effectiveLanguage() === 'en';
+
+  if (type === 'about') {
+    const version = document.querySelector?.('.version-num')?.dataset?.appVersion;
+    title.textContent = 'ByMeVPN';
+    body.textContent = `${version ? uiText('Версия ', 'Version ') + version + '. ' : ''}${uiText('Для связи: ', 'Contact: ')}support@bymevpn.com`;
+    openModal('modal-legal');
+    return;
+  }
 
   // This is a concise in-app explanation, not a fabricated audited privacy
   // policy or a substitute for formally published terms.

@@ -118,20 +118,18 @@ pub fn build_tun_config_ext(
             let id = text(session, &["uuid", "id"])
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .ok_or("Сервер вернул некорректный идентификатор VPN.")?;
-            // Preserve an explicitly empty flow. XTLS-Vision is only a legacy
-            // default for VLESS Reality over TCP, never for TLS or XHTTP.
-            let default_flow = if security == "reality" && matches!(network.as_str(), "tcp" | "raw")
-            {
-                "xtls-rprx-vision"
-            } else {
-                ""
-            };
-            let flow = session
-                .get("flow")
-                .and_then(Value::as_str)
-                .unwrap_or(default_flow);
+            // Match the Android API parser: an omitted flow is empty. Inferring
+            // Vision can make an otherwise valid server reject the connection.
+            let flow = session.get("flow").and_then(Value::as_str).unwrap_or("");
             if !flow.is_empty() && flow != "xtls-rprx-vision" {
                 return Err("Сервер использует неподдерживаемый режим VLESS.".into());
+            }
+            // Do not silently turn a server-provided VLESS encryption mode
+            // into "none". Unsupported modes must fail before routes change.
+            if text(session, &["encryption"])
+                .is_some_and(|encryption| !encryption.eq_ignore_ascii_case("none"))
+            {
+                return Err("Сервер использует неподдерживаемое шифрование VLESS.".into());
             }
             let mut user = json!({"id": id.to_string(), "encryption": "none"});
             if !flow.is_empty() {
@@ -156,9 +154,8 @@ pub fn build_tun_config_ext(
                 }]
             });
             if transport == "grpc" {
-                let mut grpc =
-                    json!({"serviceName": text(session, &["transport_path"]).unwrap_or("")});
-                if text(session, &["transport_mode"])
+                let mut grpc = json!({"serviceName": text(session, &["serviceName", "service_name", "transport_path", "path"]).unwrap_or("")});
+                if text(session, &["mode", "transport_mode"])
                     .is_some_and(|mode| mode.eq_ignore_ascii_case("multi"))
                 {
                     grpc["multiMode"] = json!(true);
@@ -167,20 +164,26 @@ pub fn build_tun_config_ext(
             }
             if transport == "ws" {
                 let mut ws = json!({});
-                if let Some(path) = text(session, &["transport_path"]) {
+                if let Some(path) = text(
+                    session,
+                    &["serviceName", "service_name", "transport_path", "path"],
+                ) {
                     ws["path"] = json!(path);
                 }
-                if let Some(host) = text(session, &["transport_host"]) {
+                if let Some(host) = text(session, &["host", "transport_host"]) {
                     ws["headers"] = json!({"Host": host});
                 }
                 stream_settings["wsSettings"] = ws;
             }
             if transport == "httpupgrade" {
                 let mut upgrade = json!({});
-                if let Some(path) = text(session, &["transport_path"]) {
+                if let Some(path) = text(
+                    session,
+                    &["serviceName", "service_name", "transport_path", "path"],
+                ) {
                     upgrade["path"] = json!(path);
                 }
-                if let Some(host) = text(session, &["transport_host"]) {
+                if let Some(host) = text(session, &["host", "transport_host"]) {
                     upgrade["host"] = json!(host);
                 }
                 stream_settings["httpupgradeSettings"] = upgrade;
@@ -188,9 +191,12 @@ pub fn build_tun_config_ext(
             if transport == "xhttp" {
                 let mut settings = json!({});
                 for (field, aliases) in [
-                    ("path", &["transport_path"][..]),
-                    ("host", &["transport_host"][..]),
-                    ("mode", &["transport_mode"][..]),
+                    (
+                        "path",
+                        &["serviceName", "service_name", "transport_path", "path"][..],
+                    ),
+                    ("host", &["host", "transport_host"][..]),
+                    ("mode", &["mode", "transport_mode"][..]),
                 ] {
                     if let Some(value) = text(session, aliases) {
                         settings[field] = json!(value);
@@ -637,6 +643,27 @@ mod tests {
     }
 
     #[test]
+    fn vless_never_silently_downgrades_server_encryption() {
+        let mut config = session();
+        config["encryption"] = json!("unsupported-encryption");
+        assert!(build_tun_config(&config).is_err());
+        config["encryption"] = json!("none");
+        assert!(build_tun_config(&config).is_ok());
+    }
+
+    #[test]
+    fn grpc_accepts_android_transport_aliases() {
+        let mut config = session();
+        config["network"] = json!("grpc");
+        config["serviceName"] = json!("vpn-service");
+        config["mode"] = json!("multi");
+        let result = build_tun_config(&config).unwrap();
+        let grpc = &result["outbounds"][0]["streamSettings"]["grpcSettings"];
+        assert_eq!(grpc["serviceName"], "vpn-service");
+        assert_eq!(grpc["multiMode"], true);
+    }
+
+    #[test]
     fn accepts_android_hysteria_session_aliases_and_protocol_defaults() {
         let mut session = session();
         session["protocol"] = json!("hy2");
@@ -695,6 +722,11 @@ mod tests {
     #[test]
     fn honors_explicit_empty_reality_flow_and_never_defaults_vision_for_tls() {
         let mut reality = session();
+        reality.as_object_mut().unwrap().remove("flow");
+        let config = build_tun_config(&reality).unwrap();
+        assert!(config["outbounds"][0]["settings"]["vnext"][0]["users"][0]
+            .get("flow")
+            .is_none());
         reality["flow"] = json!("");
         let config = build_tun_config(&reality).unwrap();
         assert!(config["outbounds"][0]["settings"]["vnext"][0]["users"][0]

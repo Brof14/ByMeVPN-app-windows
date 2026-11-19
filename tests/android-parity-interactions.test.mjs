@@ -157,7 +157,8 @@ test('version text follows the chosen language without changing the real build n
   app.eval("state.settings.language = 'ru'");
   app.eval("applyLanguage('ru')");
   assert.equal(version.textContent, 'Версия 1.2.15');
-  assert.match(html, /data-app-version="1\.2\.15"/);
+  const buildVersion = JSON.parse(read('src-tauri/tauri.conf.json')).version;
+  assert.ok(html.includes(`data-app-version="${buildVersion}"`));
 });
 
 test('Android system locale resolves English variants and defaults to Russian otherwise', () => {
@@ -235,6 +236,6 @@ test('Windows never allocates a VPN session before checking the original egress 
   assert.ok(startup.includes('let connection_result: Result<TunnelMetrics, String> = async {'));
   const rollback = startup.indexOf('if connection_result.is_err() {');
   assert.ok(rollback > 0, 'missing shared startup-failure handler');
-  assert.ok(startup.slice(rollback).includes('Method::DELETE, "/vpn/session"'));
+  assert.match(startup.slice(rollback), /request_in_session\([\s\S]*?Method::DELETE,\s*"\/vpn\/session"[\s\S]*?Some\(generation\)/);
 
 });

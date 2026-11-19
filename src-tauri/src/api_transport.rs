@@ -33,6 +33,11 @@ pub async fn send_to_bases(
             request = request.header("X-Device-OS", "Windows");
             request = request.header("X-VPN-Capabilities", VPN_CAPABILITIES);
         }
+        if path == "/me" && method == Method::DELETE {
+            // Account erasure is irreversible and the API requires an explicit
+            // confirmation header; keep it scoped to this exact operation.
+            request = request.header("X-Confirm-Account-Deletion", "DELETE");
+        }
         if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
             // The backend forwards this stable per-install ID to 3x-ui, whose
             // subscription feed uses it for device access checks. Android

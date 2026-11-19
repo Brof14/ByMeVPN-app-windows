@@ -19,7 +19,7 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);
-  assert.match(probes, /probe_https_reachability\(client\)/);
+  assert.match(probes, /probe_https_reachability\(client\.clone\(\)\)/);
   assert.match(probes, /TrafficObservedUnverified/);
   assert.match(probes, /pub fn traffic_confirmed\(/);
   assert.match(rust, /verify_tunnel_path\(/);
@@ -79,7 +79,8 @@ test('VPN startup is bounded, logs native TUN failures, and avoids an eager extr
   assert.match(rust, /verify_tunnel_path\(baseline_ip, probe_port, &probe_password\)/);
   assert.match(rust, /xray_startup\.log/);
   assert.match(rust, /cached_ping_ms/);
-  assert.match(rust, /last_ping_probe\.elapsed\(\) >= Duration::from_secs\(45\)/);
+  const status = rust.split('pub async fn vpn_status(')[1].split('pub async fn auto_reconnect_if_due')[0];
+  assert.doesNotMatch(status, /measure_real_ping\(/);
   assert.match(rust, /static API_CLIENT: OnceLock<Client>/);
   assert.match(probes, /timeout\(Duration::from_millis\(4500\)\)/);
 });

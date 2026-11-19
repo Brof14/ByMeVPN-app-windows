@@ -58,8 +58,8 @@ pub fn egress_result_code(result: EgressCheck) -> &'static str {
 /// (a) authenticated local Xray HTTP CONNECT -> configured remote VPN,
 /// (b) a normal system request expected to traverse Windows TUN.
 /// Public VPN egress can vary by connection, so different Xray/TUN IPs alone
-/// are not proof of bypass. Compare the system path to the pre-tunnel baseline;
-/// the caller separately requires a live TUN route and healthy DNS.
+/// are not proof of bypass. They also cannot prove matching egress: keep that
+/// case unverified even when the system IP differs from the baseline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TunnelProof {
     Verified(IpAddr),
@@ -123,6 +123,7 @@ pub fn classify_tunnel_path(
             TunnelProof::RoutingBypass
         }
         Some(before) if before == via_system => TunnelProof::BaselineUnchanged,
+        Some(_) if via_proxy != via_system => TunnelProof::TrafficObservedUnverified,
         // The caller still checks the active TUN route and DNS before accepting.
         Some(_) => TunnelProof::Verified(via_system),
     }
@@ -184,14 +185,33 @@ pub async fn wait_for_attestation_listener(port: u16, timeout: Duration) -> bool
 }
 
 /// Server-only preflight: does the configured Xray proxy itself pass a real
-/// HTTPS request? Until this is true, Windows TUN routes must not be changed.
+/// HTTPS request? Try both connectivity-check endpoints and independent IP
+/// providers. Some networks block Google/Microsoft checks while allowing the
+/// same VPN to carry ordinary HTTPS traffic. Until one real request succeeds,
+/// Windows TUN routes must not be changed.
 pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
     let Ok(client) = authenticated_proxy_client(port, password) else {
         return false;
     };
-    tokio::time::timeout(Duration::from_secs(7), probe_https_reachability(client))
+    tokio::time::timeout(Duration::from_secs(10), async move {
+        first_successful_preflight(probe_https_reachability(client.clone()), async move {
+            probe_egress(client).await.is_some()
+        })
         .await
-        .is_ok_and(|reachable| reachable)
+    })
+    .await
+    .is_ok_and(|reachable| reachable)
+}
+
+async fn first_successful_preflight(
+    first: impl std::future::Future<Output = bool>,
+    second: impl std::future::Future<Output = bool>,
+) -> bool {
+    tokio::pin!(first, second);
+    tokio::select! {
+        result = &mut first => result || second.await,
+        result = &mut second => result || first.await,
+    }
 }
 
 /// End-to-end evidence using Xray's authenticated loopback HTTP inbound.
@@ -220,33 +240,42 @@ pub async fn verify_tunnel_path(
     // IP match or leak-free IPv4/IPv6 behavior.
     let ip_paths = probe_ip_paths(baseline, via_xray.clone(), system.clone());
     let generic_paths = probe_https_paths(via_xray, system);
-    let pair = async {
-        tokio::pin!(ip_paths);
-        tokio::pin!(generic_paths);
-        tokio::select! {
-            proof = &mut ip_paths => {
-                apply_generic_connectivity_fallback(proof, generic_paths.await)
-            }
-            generic_ok = &mut generic_paths => {
-                if !generic_ok {
-                    ip_paths.await
-                } else {
-                    // If a real HTTPS request already passed through both Xray
-                    // and Windows, give an IP endpoint a brief chance to prove
-                    // the exit without holding up activation for blocked APIs.
-                    match tokio::time::timeout(Duration::from_millis(250), &mut ip_paths).await {
-                        Ok(proof) => apply_generic_connectivity_fallback(proof, true),
-                        Err(_) => TunnelProof::TrafficObservedUnverified,
-                    }
-                }
-            }
-        }
-    };
-    // Each provider pair now runs concurrently; leave a short bounded window
-    // for DNS/TLS setup while preserving fail-safe rollback.
+    let pair = resolve_probe_results(ip_paths, generic_paths);
+    // A bounded failure remains fail-closed; no process or route is accepted
+    // based only on an accepted CONNECT or an unanswered request.
     tokio::time::timeout(Duration::from_secs(6), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)
+}
+
+async fn resolve_probe_results(
+    ip_paths: impl std::future::Future<Output = TunnelProof>,
+    generic_paths: impl std::future::Future<Output = bool>,
+) -> TunnelProof {
+    tokio::pin!(ip_paths);
+    tokio::pin!(generic_paths);
+    tokio::select! {
+        proof = &mut ip_paths => {
+            if matches!(proof, TunnelProof::ProxyUnreachable | TunnelProof::TunUnreachable) {
+                apply_generic_connectivity_fallback(proof, generic_paths.await)
+            } else {
+                proof
+            }
+        }
+        generic_ok = &mut generic_paths => {
+            if !generic_ok {
+                ip_paths.await
+            } else {
+                // If a real HTTPS request already passed through both Xray
+                // and Windows, give an IP endpoint a brief chance to prove
+                // the exit without holding up activation for blocked APIs.
+                match tokio::time::timeout(Duration::from_millis(250), &mut ip_paths).await {
+                    Ok(proof) => apply_generic_connectivity_fallback(proof, true),
+                    Err(_) => TunnelProof::TrafficObservedUnverified,
+                }
+            }
+        }
+    }
 }
 
 async fn probe_ip_paths(
@@ -256,30 +285,30 @@ async fn probe_ip_paths(
 ) -> TunnelProof {
     let mut proxy_reachable = false;
     let mut system_reachable = false;
-    // Some VPN servers cap concurrent connections per user. Probing six IP
-    // services plus two generic checks at once can look like a failed server
-    // even when a normal request succeeds. Keep the fan-out small and stop as
-    // soon as a same-provider route pair is available.
-    for endpoints in PROBES.chunks(2) {
-        let mut probes = JoinSet::new();
-        for endpoint in endpoints {
-            let proxy = proxy.clone();
-            let system = system.clone();
-            probes.spawn(async move {
-                // The Xray inbound forces this request through the selected server.
-                tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
-            });
-        }
-        while let Some(result) = probes.join_next().await {
-            match result {
-                Ok((Some(remote_ip), Some(system_ip))) => {
-                    probes.abort_all();
-                    return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
-                }
-                Ok((Some(_), None)) => proxy_reachable = true,
-                Ok((None, Some(_))) => system_reachable = true,
-                _ => {}
+    // Start fallback providers after a short stagger rather than waiting for
+    // earlier pairs to time out. Sequential 4.5s batches could not finish
+    // within the enclosing 6s deadline and produced probe_unavailable.
+    let mut probes = JoinSet::new();
+    for (index, endpoint) in PROBES.iter().enumerate() {
+        let proxy = proxy.clone();
+        let system = system.clone();
+        probes.spawn(async move {
+            if index >= 2 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
+            // The Xray inbound forces this request through the selected server.
+            tokio::join!(query_probe(proxy, endpoint), query_probe(system, endpoint))
+        });
+    }
+    while let Some(result) = probes.join_next().await {
+        match result {
+            Ok((Some(remote_ip), Some(system_ip))) => {
+                probes.abort_all();
+                return classify_tunnel_path(baseline, Some(remote_ip), Some(system_ip));
+            }
+            Ok((Some(_), None)) => proxy_reachable = true,
+            Ok((None, Some(_))) => system_reachable = true,
+            _ => {}
         }
     }
     if proxy_reachable {
@@ -450,6 +479,29 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn preflight_does_not_wait_for_blocked_connectivity_checks_when_ip_probe_succeeds() {
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            first_successful_preflight(std::future::pending(), async { true }),
+        )
+        .await;
+        assert_eq!(result, Ok(true));
+        assert!(first_successful_preflight(async { false }, async { true }).await);
+        assert!(!first_successful_preflight(async { false }, async { false }).await);
+    }
+
+    #[tokio::test]
+    async fn confirmed_ip_result_does_not_wait_for_unresponsive_generic_probe() {
+        let ip: IpAddr = "198.51.100.2".parse().unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            resolve_probe_results(async { TunnelProof::Verified(ip) }, std::future::pending()),
+        )
+        .await;
+        assert_eq!(result.unwrap(), TunnelProof::Verified(ip));
+    }
+
     #[test]
     fn diagnostic_statuses_never_confuse_no_probe_with_a_changed_ip() {
         let old = "192.0.2.1".parse::<IpAddr>().unwrap();
@@ -496,7 +548,7 @@ mod tests {
         );
         assert_eq!(
             classify_tunnel_path(Some(original), Some(tunneled), Some(other_tunneled_exit)),
-            TunnelProof::Verified(other_tunneled_exit)
+            TunnelProof::TrafficObservedUnverified
         );
         assert_eq!(
             classify_tunnel_path(Some(original), None, Some(tunneled)),

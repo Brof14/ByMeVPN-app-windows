@@ -42,7 +42,8 @@ test('observed traffic without IP proof stays unverified; failed TUN proof is ro
 
 test('missing transport proof is a failure, never a fabricated green status', () => {
   assert.match(egress, /pub async fn preflight_xray_server\(/);
-  assert.match(egress, /timeout\(Duration::from_secs\(7\)/);
+  assert.match(egress, /timeout\(Duration::from_secs\(10\)/);
+  assert.match(egress, /probe_egress\(client\)\.await\.is_some\(\)/);
   assert.match(service, /verify_tunnel_path\(/);
   assert.match(service, /last_tunnel_proof: proof/);
 });

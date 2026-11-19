@@ -8,6 +8,7 @@ const main = read('src-tauri/src/main.rs');
 const job = read('src-tauri/src/windows_job.rs');
 const cargo = read('src-tauri/Cargo.toml');
 const ci = read('.github/workflows/ci.yml');
+const transport = read('src-tauri/src/api_transport.rs');
 
 test('Windows VPN process is owned by kill-on-close Job Object', () => {
   assert.match(job, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/);
@@ -43,7 +44,7 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {
   assert.match(native, /spawn_blocking\(move \|\| \{/);
   assert.match(native, /Semaphore::new\(6\)/);
-  assert.match(native, /if supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
+  assert.match(native, /if should_probe\s*&& supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
   assert.match(native, /protocol\.eq_ignore_ascii_case\("hysteria2"\)/);
   assert.match(native, /tokio::time::timeout_at\(deadline, &mut task\)/);
   assert.match(native, /task\.abort\(\)/);
@@ -53,4 +54,22 @@ test('experimental builds are not auto published to paying clients', () => {
   assert.match(ci, /preview-release:/);
   assert.match(ci, /draft: true/);
   assert.match(read('.github/workflows/release.yml'), /draft: true/);
+});
+
+test('Telegram login ticket is never sent in a URL on server errors', () => {
+  const check = native.split('pub async fn telegram_check_session(')[1]
+    .split('#[tauri::command]')[0];
+  assert.match(check, /Method::POST,\s*"\/auth\/telegram\/check-session"/);
+  assert.doesNotMatch(check, /check-session\?token=/);
+});
+
+test('account deletion requires explicit backend confirmation and clears only the same session', () => {
+  assert.match(transport, /path == "\/me" && method == Method::DELETE/);
+  assert.match(transport, /X-Confirm-Account-Deletion", "DELETE"/);
+  const deletion = native.split('pub async fn auth_delete_account(')[1]
+    .split('#[tauri::command]')[0];
+  assert.match(deletion, /stop_tunnel_and_restore_network\(&state\)\.await\?/);
+  assert.match(deletion, /request_in_session\([\s\S]*Some\(generation\)/);
+  assert.match(deletion, /require_same_session\(generation, AUTH_GENERATION\.load/);
+  assert.match(deletion, /clear_secrets\(\)/);
 });

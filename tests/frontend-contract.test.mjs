@@ -234,7 +234,7 @@ test('a canceled Telegram ticket is revoked at the native IPC boundary', () => {
   assert.equal(app.eval('tgPollingInterval'), null);
   // Assert the user-visible handler cannot restore a canceled auth token.
   assert.match(readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8'),
-    /ticket\.as_deref\(\) != Some\(token\)/);
+    /saved == token && \*ticket_generation == generation/);
 });
 
 test('pricing matrix has no purchasable prices before live API validation', () => {
@@ -335,8 +335,8 @@ test('trial activation sends only one request even after rapid repeated clicks',
     }
   });
   app.eval("state.user = { id: 'account-A' }");
-  const first = app.eval("handleActivateTrial()");
-  const duplicate = app.eval("handleActivateTrial()");
+  const first = app.eval("handleActivateTrial(true)");
+  const duplicate = app.eval("handleActivateTrial(true)");
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls, 1);
   assert.equal(app.eval('state.trialBusy'), true);
@@ -352,7 +352,7 @@ test('trial activation requires a fresh affirmative eligibility response', async
     activate_trial: async () => { activations += 1; return { status: 'trial' }; }
   });
   app.eval("state.user = { id: 'account-A' }");
-  await app.eval('handleActivateTrial()');
+  await app.eval('handleActivateTrial(true)');
   assert.equal(activations, 0);
   assert.equal(app.eval('state.subscription.status'), 'unknown');
 });
@@ -370,7 +370,7 @@ test('trial activation refreshes account eligibility before the backend mutation
     }
   });
   app.eval("state.user = { id: 'account-A' }");
-  await app.eval('handleActivateTrial()');
+  await app.eval('handleActivateTrial(true)');
   assert.deepEqual(calls, ['account_snapshot', 'activate_trial']);
   assert.equal(app.eval('state.subscription.status'), 'trial');
 });
@@ -383,7 +383,7 @@ test('late trial confirmation cannot replace a different signed-in account', asy
     activate_trial: async () => pending
   });
   app.eval("state.user = { id: 'account-A' }");
-  const first = app.eval("handleActivateTrial()");
+  const first = app.eval("handleActivateTrial(true)");
   app.eval("state.sessionEpoch += 1; state.user = { id: 'account-B' }; state.subscription = {status:'none'}");
   settle({ status: 'trial', max_devices: 2 });
   await first;
@@ -435,9 +435,17 @@ test('server catalog does not retry authorization errors and explains recovery',
   assert.match(app.eval("serverCatalogErrorMessage('API temporarily unavailable (HTTP 503)')"), /temporarily unavailable/i);
 });
 
-test('account deletion remains a support request, not a destructive native IPC', () => {
+test('cached server catalogs do not present stale latency as current', () => {
+  const app = harness();
+  const result = app.eval("sanitizeCachedServerCatalog([{code:'node-a',supported:true,ping:42}])");
+  assert.equal(result[0].ping, 0);
+});
+
+test('account deletion requires an explicit warning before invoking native IPC', () => {
   const backend = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');
-  assert.doesNotMatch(backend, /service::delete_account,/);
-  assert.doesNotMatch(source, /invoke\('delete_account'/);
-  assert.match(source, /Automatic account deletion is not available yet/);
+  assert.match(backend, /service::auth_delete_account,/);
+  const action = source.split('async function handleDeleteAccount()')[1].split('// Local health report')[0];
+  assert.match(action, /showConfirm\(/);
+  assert.match(action, /Remaining paid time will be lost/);
+  assert.match(action, /invoke\('auth_delete_account', \{ generation \}\)/);
 });

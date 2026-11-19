@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 use std::{
     fs,
     path::PathBuf,
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
     time::Duration,
 };
 use tauri::{AppHandle, Manager, State};
@@ -30,6 +33,9 @@ const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
 static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+// Changes only when the signed-in account is replaced or cleared, not when
+// its access token rotates. Protected requests retain this identity on retry.
+static AUTH_GENERATION: AtomicU64 = AtomicU64::new(0);
 static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 // reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
@@ -45,11 +51,7 @@ pub struct ActiveTunnel {
     pub server_name: String,
     pub country: String,
     pub server_ip: String,
-    pub server_host: String,
-    pub server_port: u16,
-    pub use_tcp_ping: bool,
     pub last_egress_probe: std::time::Instant,
-    pub last_ping_probe: std::time::Instant,
     pub cached_ping_ms: u32,
     pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
@@ -115,7 +117,7 @@ pub struct AppState {
     // Native OAuth sessions must not overlap and confuse browser callbacks.
     pub google_gate: tokio::sync::Mutex<()>,
     // One Telegram session is allowed to authorize this desktop process at a time.
-    pub telegram_ticket: Mutex<Option<String>>,
+    pub telegram_ticket: Mutex<Option<(String, u64)>>,
     /// Keeps the last successfully selected node so transient tunnel failures
     /// can be retried without treating a failed first connection as recovery.
     pub reconnect: Mutex<ReconnectState>,
@@ -133,6 +135,10 @@ pub struct ReconnectState {
 }
 
 impl ReconnectState {
+    fn permits_retry(&self, enabled: bool, node_code: &Option<String>) -> bool {
+        enabled && self.armed && &self.node_code == node_code
+    }
+
     fn connected(&mut self, node_code: String) {
         self.armed = true;
         self.node_code = Some(node_code);
@@ -274,6 +280,7 @@ fn save_secret(name: &str, value: &str) -> Result<(), String> {
 }
 
 fn clear_secrets() {
+    AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
@@ -450,11 +457,38 @@ async fn request(
     auth: bool,
     retried: bool,
 ) -> Result<Value, String> {
+    request_in_session(app, method, path, body, auth, retried, None).await
+}
+
+fn require_same_session(expected: u64, current: u64) -> Result<(), String> {
+    if expected != current {
+        return Err("Аккаунт изменился во время запроса. Повторите действие.".into());
+    }
+    Ok(())
+}
+
+async fn request_in_session(
+    app: &AppHandle,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+    auth: bool,
+    retried: bool,
+    expected_generation: Option<u64>,
+) -> Result<Value, String> {
     let client = http(app)?;
-    let token = if auth {
-        Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?)
+    let (token, generation) = if auth {
+        let _guard = REFRESH_LOCK.lock().await;
+        let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+        if let Some(expected) = expected_generation {
+            require_same_session(expected, generation)?;
+        }
+        (
+            Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?),
+            Some(generation),
+        )
     } else {
-        None
+        (None, None)
     };
     let device_id = if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
         Some(install_id(app)?)
@@ -481,6 +515,7 @@ async fn request(
     if status == StatusCode::UNAUTHORIZED && auth && !retried {
         {
             let _guard = REFRESH_LOCK.lock().await;
+            require_same_session(generation.unwrap(), AUTH_GENERATION.load(Ordering::SeqCst))?;
             // A different request may already have refreshed the same expired token.
             if read_secret(ACCESS_KEY) == token {
                 match refresh(&client).await {
@@ -493,7 +528,13 @@ async fn request(
                 }
             }
         }
-        return Box::pin(request(app, method, path, body, true, true)).await;
+        return Box::pin(request_in_session(
+            app, method, path, body, true, true, generation,
+        ))
+        .await;
+    }
+    if let Some(generation) = generation {
+        require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     }
     if !status.is_success() {
         return Err(api_error(status, &data));
@@ -557,8 +598,11 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
     })
 }
 
-async fn store_auth(value: Value) -> Result<AuthResult, String> {
+async fn store_auth(value: Value, generation: u64) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
+    AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
     // A newly authenticated identity must not inherit another account's invoice.
     clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
@@ -598,6 +642,7 @@ pub async fn telegram_create_session(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<TelegramSessionInit, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     let res = request(
         &app,
         Method::POST,
@@ -615,7 +660,10 @@ pub async fn telegram_create_session(
         .get("bot_url")
         .and_then(Value::as_str)
         .ok_or("Сервер не вернул ссылку на бота.")?;
-    *state.telegram_ticket.lock().map_err(|e| e.to_string())? = Some(token.to_string());
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
+    *state.telegram_ticket.lock().map_err(|e| e.to_string())? =
+        Some((token.to_string(), generation));
     Ok(TelegramSessionInit {
         session_token: token.to_string(),
         bot_url: bot_url.to_string(),
@@ -630,7 +678,10 @@ pub fn telegram_cancel_session(
     session_token: String,
 ) -> Result<(), String> {
     let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
-    if ticket.as_deref() == Some(session_token.as_str()) {
+    if ticket
+        .as_ref()
+        .is_some_and(|(token, _)| token == &session_token)
+    {
         *ticket = None;
     }
     Ok(())
@@ -646,15 +697,17 @@ pub async fn telegram_check_session(
     if token.len() > 256 || token.is_empty() {
         return Err("Некорректный токен Telegram.".into());
     }
-    {
+    let generation = {
         let current = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
-        if current.as_deref() != Some(token) {
-            return Err("Этот сеанс Telegram уже отменён.".into());
-        }
-    }
-    // POST keeps one-time tickets out of proxy logs. Only a legacy HTTP 405
-    // permits the same narrow GET fallback as the current Android client.
-    let res = match request(
+        current
+            .as_ref()
+            .filter(|(saved, _)| saved == token)
+            .map(|(_, generation)| *generation)
+            .ok_or("Этот сеанс Telegram уже отменён.")?
+    };
+    // Never put one-time tickets in a URL, including on server errors.
+    // Android uses the same POST-only contract.
+    let res = request(
         &app,
         Method::POST,
         "/auth/telegram/check-session",
@@ -662,16 +715,7 @@ pub async fn telegram_check_session(
         false,
         false,
     )
-    .await
-    {
-        Ok(response) => response,
-        Err(error) if error.ends_with("(HTTP 405)") => {
-            let escaped: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
-            let path = format!("/auth/telegram/check-session?token={escaped}");
-            request(&app, Method::GET, &path, None, false, false).await?
-        }
-        Err(error) => return Err(error),
-    };
+    .await?;
     let status = res
         .get("status")
         .and_then(Value::as_str)
@@ -707,12 +751,17 @@ pub async fn telegram_check_session(
             .unwrap_or_else(|| format!("ref_{access_token}"));
         // Check cancellation while the HTTP request was in flight. Keep the
         // ticket lock through credential persistence and avoid fake profiles.
+        let _guard = REFRESH_LOCK.lock().await;
         let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
-        if ticket.as_deref() != Some(token) {
+        if !ticket.as_ref().is_some_and(|(saved, ticket_generation)| {
+            saved == token && *ticket_generation == generation
+        }) {
             return Err("Вход через Telegram отменён.".into());
         }
+        require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
         // Telegram may switch the active account. Invalidate any previous
         // identity's invoice before saving the new signed-in credentials.
+        AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
         clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
             .and_then(|_| save_secret(ACCESS_KEY, access_token))
@@ -739,6 +788,7 @@ pub async fn auth_login(
     email: String,
     password: String,
 ) -> Result<AuthResult, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     let id = install_id(&app)?;
     let value = request(
         &app,
@@ -749,7 +799,28 @@ pub async fn auth_login(
         false,
     )
     .await?;
-    store_auth(value).await
+    store_auth(value, generation).await
+}
+
+#[tauri::command]
+pub async fn auth_request_password_reset(app: AppHandle, email: String) -> Result<(), String> {
+    let email = email.trim();
+    if email.is_empty() || email.len() > 254 || !email.contains('@') {
+        return Err("Введите корректный email.".into());
+    }
+    let value = request(
+        &app,
+        Method::POST,
+        "/auth/password-reset/request",
+        Some(json!({"email": email})),
+        false,
+        false,
+    )
+    .await?;
+    if value.get("status").and_then(Value::as_str) != Some("accepted") {
+        return Err("Сервер не подтвердил запрос восстановления пароля.".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -759,6 +830,7 @@ pub async fn auth_register(
     password: String,
     name: String,
 ) -> Result<AuthResult, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     if password.chars().count() < 6 {
         return Err("Пароль должен содержать не менее 6 символов.".into());
     }
@@ -772,7 +844,7 @@ pub async fn auth_register(
         false,
     )
     .await?;
-    store_auth(value).await
+    store_auth(value, generation).await
 }
 
 /// One local shutdown path for manual disconnect, logout and cleanup retries.
@@ -818,22 +890,91 @@ async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String>
 #[tauri::command]
 pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
+    let generation = {
+        let _guard = REFRESH_LOCK.lock().await;
+        AUTH_GENERATION.load(Ordering::SeqCst)
+    };
     // Even when local cleanup fails, revoke the backend session. Keep local
     // credentials until cleanup succeeds so the user can retry the operation.
     let cleanup = stop_tunnel_and_restore_network(&state).await;
-    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    let _ = request_in_session(
+        &app,
+        Method::DELETE,
+        "/vpn/session",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await;
     cleanup?;
-    let _ = request(
+    let _ = request_in_session(
         &app,
         Method::POST,
         "/auth/logout",
         Some(json!({})),
         true,
         false,
+        Some(generation),
     )
     .await;
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     clear_secrets();
     *state.telegram_ticket.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn auth_session_generation() -> Result<u64, String> {
+    let _guard = REFRESH_LOCK.lock().await;
+    read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?;
+    Ok(AUTH_GENERATION.load(Ordering::SeqCst))
+}
+
+#[tauri::command]
+pub async fn auth_delete_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    generation: u64,
+) -> Result<(), String> {
+    // Stop and restore this app's tunnel before deleting the account. If the
+    // backend refuses deletion, the account remains signed in and can retry.
+    let _connection = state.connection_gate.lock().await;
+    {
+        let _guard = REFRESH_LOCK.lock().await;
+        require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
+    }
+    stop_tunnel_and_restore_network(&state).await?;
+    let result = request_in_session(
+        &app,
+        Method::DELETE,
+        "/me",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    if result.get("status").and_then(Value::as_str) != Some("deleted")
+        || result.get("access_revoked").and_then(Value::as_bool) != Some(true)
+        || result
+            .get("recurring_charges_disabled")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err(
+            "Удаление не подтверждено сервером. Попробуйте войти снова или обратитесь в поддержку."
+                .into(),
+        );
+    }
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
+    clear_telegram_session();
+    clear_secrets();
+    if let Ok(mut reconnect) = state.reconnect.lock() {
+        reconnect.manually_stopped();
+    }
     Ok(())
 }
 
@@ -850,22 +991,41 @@ fn device_is_current(object: &serde_json::Map<String, Value>, install_id: &str) 
 }
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
-    let me = request(app, Method::GET, "/me", None, true, false).await?;
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+    let me =
+        request_in_session(app, Method::GET, "/me", None, true, false, Some(generation)).await?;
     // An outage in the subscription panel must not look like invalid login.
     // Unknown is different from "none" and must not trigger a purchase prompt.
-    let sub = request(app, Method::GET, "/subscription/status", None, true, false)
-        .await
-        .unwrap_or_else(|_| {
-            json!({
-                "status": "unknown",
-                "plan_name": "Не удалось проверить подписку",
-                "trial_available": false
-            })
-        });
+    let sub = request_in_session(
+        app,
+        Method::GET,
+        "/subscription/status",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        json!({
+            "status": "unknown",
+            "plan_name": "Не удалось проверить подписку",
+            "trial_available": false
+        })
+    });
     // Device-management downtime must never break login or session recovery.
-    let devices = request(app, Method::GET, "/devices", None, true, false)
-        .await
-        .ok();
+    let devices = request_in_session(
+        app,
+        Method::GET,
+        "/devices",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .ok();
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     let user = me.get("user").unwrap_or(&me).clone();
     let subscription = normalized_subscription_value(sub.get("subscription").unwrap_or(&sub));
     let current_install_id = install_id(app)?;
@@ -892,20 +1052,23 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, String> {
-    if read_secret(ACCESS_KEY).is_none() {
-        // Legacy URL import never issued API credentials. Do not restore it as a
-        // misleading authenticated user with a fictitious active subscription.
-        clear_telegram_session();
-        if read_secret(REFRESH_KEY).is_none() {
-            return Ok(None);
-        }
-        match refresh(&http(&app)?).await {
-            Ok(()) => {}
-            Err(RefreshError::InvalidSession) => {
-                clear_secrets();
+    {
+        let _guard = REFRESH_LOCK.lock().await;
+        if read_secret(ACCESS_KEY).is_none() {
+            // Legacy URL import never issued API credentials. Do not restore it as a
+            // misleading authenticated user with a fictitious active subscription.
+            clear_telegram_session();
+            if read_secret(REFRESH_KEY).is_none() {
                 return Ok(None);
             }
-            Err(RefreshError::Unavailable(message)) => return Err(message),
+            match refresh(&http(&app)?).await {
+                Ok(()) => {}
+                Err(RefreshError::InvalidSession) => {
+                    clear_secrets();
+                    return Ok(None);
+                }
+                Err(RefreshError::Unavailable(message)) => return Err(message),
+            }
         }
     }
     let data = snapshot(&app).await?;
@@ -964,9 +1127,17 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
 }
 
 #[tauri::command]
-pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
+pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
+    // Catalog refreshes must not create extra probes while a connection is
+    // active or a connect/disconnect operation is in progress.
+    let should_probe = state.connection_gate.try_lock().is_ok()
+        && state
+            .tunnel
+            .lock()
+            .map(|tunnel| tunnel.is_none())
+            .unwrap_or(false);
     // Avoid spawning an unbounded number of blocking DNS/TCP probes when
     // the server catalog grows. Rendering remains responsive under load.
     let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
@@ -1041,20 +1212,14 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
             .unwrap_or(country_en);
-        let flag_fallback = match code_upper.as_str() {
-            "DE" => "🇩🇪",
-            "NL" => "🇳🇱",
-            "US" => "🇺🇸",
-            "FI" => "🇫🇮",
-            "SE" => "🇸🇪",
-            "GB" => "🇬🇧",
-            _ => "🌐",
-        };
+        // Use the normalized ISO-3166 alpha-2 code so newly added server
+        // countries get a flag without requiring a Windows-client release.
+        let flag_fallback = country_flag(&code_upper);
         let flag = server
             .get("flag")
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
-            .unwrap_or(flag_fallback);
+            .unwrap_or(&flag_fallback);
         let host = config
             .get("server")
             .or_else(|| config.get("endpoint"))
@@ -1065,7 +1230,8 @@ pub async fn get_servers(app: AppHandle) -> Result<Vec<Value>, String> {
         let supported = supports_windows_session(config);
         // Hysteria2 is UDP-only; a TCP connect is not its latency and
         // just delays the server list by waiting for a closed TCP port.
-        let task = if supported
+        let task = if should_probe
+            && supported
             && protocol_supports_tcp_ping(config)
             && !host.is_empty()
             && (1..=65535).contains(&port)
@@ -1109,6 +1275,23 @@ fn mobile_plan_duration(code: &str, devices: i64) -> Option<i64> {
         }
     }
     None
+}
+
+fn country_flag(code: &str) -> String {
+    let code = if code == "UK" { "GB" } else { code };
+    let mut chars = code.chars();
+    let (Some(first), Some(second), None) = (chars.next(), chars.next(), chars.next()) else {
+        return "🌐".to_string();
+    };
+    if !first.is_ascii_uppercase() || !second.is_ascii_uppercase() {
+        return "🌐".to_string();
+    }
+    char::from_u32(0x1F1E6 + u32::from(first as u8 - b'A'))
+        .unwrap()
+        .to_string()
+        + &char::from_u32(0x1F1E6 + u32::from(second as u8 - b'A'))
+            .unwrap()
+            .to_string()
 }
 
 fn confirmed_mobile_plan(plan: &Value, devices: i64, checkout_default: bool) -> Option<Value> {
@@ -1217,6 +1400,7 @@ pub async fn auth_google(
     id_token: String,
     nonce: String,
 ) -> Result<AuthResult, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     if id_token.len() > 16_384
         || id_token.split('.').count() != 3
         || nonce.len() < 24
@@ -1234,7 +1418,7 @@ pub async fn auth_google(
         false,
     )
     .await?;
-    store_auth(result).await
+    store_auth(result, generation).await
 }
 
 /// Windows Desktop OAuth: server nonce + native system browser with PKCE.
@@ -1246,6 +1430,7 @@ pub async fn auth_google_desktop(
     state: State<'_, AppState>,
 ) -> Result<AuthResult, String> {
     let _login_guard = state.google_gate.lock().await;
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     let config = request(
         &app,
         Method::GET,
@@ -1293,7 +1478,7 @@ pub async fn auth_google_desktop(
             false,
         )
         .await?;
-        store_auth(result).await
+        store_auth(result, generation).await
     } else {
         // Existing deployments that have not configured server exchange
         // retain the original PKCE flow and clear provider error codes.
@@ -1307,7 +1492,7 @@ pub async fn auth_google_desktop(
             false,
         )
         .await?;
-        store_auth(result).await
+        store_auth(result, generation).await
     }
 }
 
@@ -1332,6 +1517,55 @@ pub async fn activate_trial(app: AppHandle) -> Result<Subscription, String> {
 }
 
 #[tauri::command]
+pub async fn get_auto_renewal(app: AppHandle) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+    let value = request_in_session(
+        &app,
+        Method::GET,
+        "/mobile/v2/renewal",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    let enabled = renewal_status(&value)?;
+    Ok(json!({"enabled": enabled, "generation": generation}))
+}
+
+#[tauri::command]
+pub async fn cancel_auto_renewal(app: AppHandle, generation: u64) -> Result<(), String> {
+    let value = request_in_session(
+        &app,
+        Method::POST,
+        "/mobile/v2/renewal/cancel",
+        Some(json!({"confirm": true})),
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    confirm_renewal_cancellation(&value)
+}
+
+fn renewal_status(value: &Value) -> Result<bool, String> {
+    value
+        .get("auto_renew")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "Сервер не подтвердил статус автопродления.".into())
+}
+
+fn confirm_renewal_cancellation(value: &Value) -> Result<(), String> {
+    if value.get("cancelled").and_then(Value::as_bool) != Some(true)
+        || value.get("auto_renew").and_then(Value::as_bool) != Some(false)
+        || value.get("paid_access_preserved").and_then(Value::as_bool) != Some(true)
+    {
+        return Err("Сервер не подтвердил отключение автопродления. Обновите статус.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn create_payment(
     app: AppHandle,
     plan_code: String,
@@ -1340,6 +1574,7 @@ pub async fn create_payment(
     days: Option<i64>,
     request_id: Option<String>,
 ) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     let dev = devices.unwrap_or(2);
     if !matches!(dev, 2 | 5 | 10) {
         return Err("Недопустимое количество устройств.".into());
@@ -1367,13 +1602,14 @@ pub async fn create_payment(
 
     // Revalidate server-owned price, duration, tier and checkout capability.
     // A stale or tampered desktop UI must never initiate an unknown payment.
-    let catalog = request(
+    let catalog = request_in_session(
         &app,
         Method::GET,
         &format!("/mobile/v2/plans?devices={dev}"),
         None,
         true,
         false,
+        Some(generation),
     )
     .await?;
     let matching = mobile_catalog_plans(&catalog, dev)
@@ -1391,7 +1627,7 @@ pub async fn create_payment(
 
     // New Android contract: send ONLY the canonical SKU and an idempotency
     // key; the backend, not the desktop client, owns the checkout terms.
-    let result = request(
+    let result = request_in_session(
         &app,
         Method::POST,
         "/mobile/v2/payment/create",
@@ -1402,6 +1638,7 @@ pub async fn create_payment(
         })),
         true,
         false,
+        Some(generation),
     )
     .await?;
     let invoice = result
@@ -1436,6 +1673,8 @@ pub async fn create_payment(
         "days":submitted_days, "invoice_id":invoice, "payment_url":payment_url,
         "request_id":request_id
     });
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     save_secret(PENDING_PAYMENT_KEY, &pending.to_string())?;
     Ok(result)
 }
@@ -1459,6 +1698,7 @@ fn payment_url_is_allowed(url: &str) -> bool {
 /// prove that this invoice was paid.
 #[tauri::command]
 pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     if invoice_id.is_empty()
         || invoice_id.len() > 128
         || !invoice_id
@@ -1467,13 +1707,14 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
     {
         return Err("Некорректный номер счёта.".into());
     }
-    let result = request(
+    let result = request_in_session(
         &app,
         Method::GET,
         &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
         None,
         true,
         false,
+        Some(generation),
     )
     .await?;
     let paid = matches!(
@@ -1484,6 +1725,8 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
         result.get("status").and_then(Value::as_str),
         Some("failed" | "canceled" | "cancelled" | "expired")
     );
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     if (paid || failed)
         && get_pending_payment()
             .as_ref()
@@ -1659,7 +1902,27 @@ pub async fn vpn_start(
     state: State<'_, AppState>,
     node_code: Option<String>,
 ) -> Result<TunnelMetrics, String> {
+    vpn_start_inner(app, state, node_code, false).await
+}
+
+async fn vpn_start_inner(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    node_code: Option<String>,
+    automatic: bool,
+) -> Result<TunnelMetrics, String> {
     let _connection_guard = state.connection_gate.lock().await;
+    if automatic {
+        let enabled = load_settings(&app)
+            .get("autoReconnect")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let reconnect = state.reconnect.lock().map_err(|e| e.to_string())?;
+        if !reconnect.permits_retry(enabled, &node_code) {
+            return Err("Автоматическое восстановление отменено.".into());
+        }
+    }
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if lock.is_some() {
@@ -1681,9 +1944,17 @@ pub async fn vpn_start(
     }
 
     // Check that user has an active or trial subscription before launching tunnel
-    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
-        .await
-        .map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
+    let sub_status = request_in_session(
+        &app,
+        Method::GET,
+        "/subscription/status",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
     let subscription = sub_status.get("subscription").unwrap_or(&sub_status);
     let status = subscription
         .get("status")
@@ -1722,7 +1993,7 @@ pub async fn vpn_start(
     // before Windows routes change, so serializing them only adds startup time.
     let (baseline_result, session_result) = tokio::join!(
         crate::egress::public_egress_ip(),
-        request(
+        request_in_session(
             &app,
             Method::POST,
             "/vpn/session",
@@ -1732,6 +2003,7 @@ pub async fn vpn_start(
             })),
             true,
             false,
+            Some(generation),
         )
     );
     // External egress services may be blocked independently of the VPN. That
@@ -1980,13 +2252,13 @@ pub async fn vpn_start(
             });
         }
 
-        let server_port = session
-            .get("port")
-            .and_then(Value::as_u64)
-            .filter(|port| (1..=65535).contains(port))
-            .unwrap_or(443) as u16;
-        // TCP latency measurement is scheduled by vpn_status after connection.
-        // Never delay activation to perform another network round trip.
+        let auth_guard = REFRESH_LOCK.lock().await;
+        if let Err(error) = require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst)) {
+            drop(auth_guard);
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err(error);
+        }
+        // TCP connect time does not measure latency through the VPN.
         let ping = 0;
         let started_at = std::time::Instant::now();
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
@@ -2000,11 +2272,7 @@ pub async fn vpn_start(
             server_name: server_name.clone(),
             country: country.clone(),
             server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
-            server_host: host.to_string(),
-            server_port,
-            use_tcp_ping: protocol_supports_tcp_ping(session),
             last_egress_probe: std::time::Instant::now(),
-            last_ping_probe: std::time::Instant::now() - Duration::from_secs(50),
             cached_ping_ms: ping,
             baseline_ip,
             egress_verified: verified_ip.is_some(),
@@ -2032,7 +2300,16 @@ pub async fn vpn_start(
         if let Ok(dir) = app.path().app_data_dir() {
             let _ = fs::remove_file(dir.join("active_tunnel.json"));
         }
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+        let _ = request_in_session(
+            &app,
+            Method::DELETE,
+            "/vpn/session",
+            None,
+            true,
+            false,
+            Some(generation),
+        )
+        .await;
     } else if let Ok(mut reconnect) = state.reconnect.lock() {
         reconnect.connected(reconnect_node);
     }
@@ -2117,33 +2394,6 @@ pub async fn vpn_status(
                         revoke_session = true;
                     }
                 }
-            }
-        }
-    }
-    // Status is polled by the UI and by the native watchdog. A socket ping on
-    // every poll wastes CPU and network traffic; refresh it at most every 45s.
-    let ping_probe = {
-        let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        lock.as_ref().and_then(|active| {
-            (active.use_tcp_ping && active.last_ping_probe.elapsed() >= Duration::from_secs(45))
-                .then(|| {
-                    (
-                        active.started_at,
-                        active.server_host.clone(),
-                        active.server_port,
-                    )
-                })
-        })
-    };
-    if let Some((started_at, host, port)) = ping_probe {
-        let ping = tokio::task::spawn_blocking(move || measure_real_ping(&host, port))
-            .await
-            .unwrap_or(0);
-        let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
-        if let Some(active) = lock.as_mut() {
-            if active.started_at == started_at {
-                active.cached_ping_ms = ping;
-                active.last_ping_probe = std::time::Instant::now();
             }
         }
     }
@@ -2242,7 +2492,7 @@ pub async fn auto_reconnect_if_due(app: AppHandle) {
         .ok()
         .and_then(|mut reconnect| reconnect.due_node(enabled, std::time::Instant::now()));
     if let Some(node_code) = node_code {
-        let _ = vpn_start(app.clone(), app.state::<AppState>(), Some(node_code)).await;
+        let _ = vpn_start_inner(app.clone(), app.state::<AppState>(), Some(node_code), true).await;
     }
 }
 
@@ -2472,6 +2722,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn renewal_changes_are_accepted_only_with_explicit_server_confirmation() {
+        assert_eq!(renewal_status(&json!({"auto_renew": true})).unwrap(), true);
+        assert!(renewal_status(&json!({"auto_renew": "false"})).is_err());
+        assert!(confirm_renewal_cancellation(
+            &json!({"cancelled": true, "auto_renew": false, "paid_access_preserved": true})
+        )
+        .is_ok());
+        assert!(
+            confirm_renewal_cancellation(&json!({"cancelled": true, "auto_renew": false})).is_err()
+        );
+    }
+
+    #[test]
+    fn protected_retry_rejects_a_changed_account_session() {
+        assert!(require_same_session(7, 7).is_ok());
+        assert!(require_same_session(7, 8).is_err());
+    }
+
+    #[test]
     fn tunnel_recovery_ignores_one_probe_miss_but_keeps_routing_leaks_fail_closed() {
         let mut failures = 0;
         assert!(!should_restart_after_health_probe(
@@ -2559,6 +2828,19 @@ mod tests {
             reconnect.due_node(true, now + Duration::from_secs(60)),
             None
         );
+    }
+
+    #[test]
+    fn queued_reconnect_is_cancelled_by_manual_stop_or_server_change() {
+        let mut reconnect = ReconnectState::default();
+        reconnect.connected("node-a".into());
+        let queued = Some("node-a".to_string());
+        assert!(reconnect.permits_retry(true, &queued));
+        assert!(!reconnect.permits_retry(false, &queued));
+        reconnect.manually_stopped();
+        assert!(!reconnect.permits_retry(true, &queued));
+        reconnect.connected("node-b".into());
+        assert!(!reconnect.permits_retry(true, &queued));
     }
 
     #[test]
@@ -2723,12 +3005,6 @@ mod tests {
         assert_eq!(found[0]["purchase_enabled"], false);
         assert_eq!(mobile_plan_duration("3m_d5", 5), Some(120));
         assert_eq!(mobile_plan_duration("3m_d2", 5), None);
-    }
-
-    #[test]
-    fn telegram_legacy_ticket_query_is_percent_encoded() {
-        let encoded: String = url::form_urlencoded::byte_serialize(b"ab+c/=token").collect();
-        assert_eq!(encoded, "ab%2Bc%2F%3Dtoken");
     }
 
     #[test]

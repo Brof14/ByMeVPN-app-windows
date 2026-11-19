@@ -77,6 +77,15 @@ html, body {
   opacity: 0.85;
 }
 
+.auth-reset {
+  align-self: flex-end;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  min-height: 36px;
+}
+.auth-reset:focus-visible { outline: 2px solid var(--neon-green); outline-offset: 2px; }
+
 .cyan-link {
   color: var(--neon-cyan);
   text-decoration: none;
@@ -1561,6 +1570,17 @@ html, body {
   gap: 8px;
 }
 
+.devices-upgrade-card {
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.devices-upgrade-card p {
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 10px 0 16px;
+}
+
 .device-item-row {
   display: flex;
   align-items: center;
@@ -2593,7 +2613,24 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: all 0.2s;
+  width: 100%;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.support-action-card .card-row-left > div,
+.support-action-card .card-row-left > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.support-action-card .card-row-left > div > span,
+.support-action-card .card-row-left > span:last-child > span {
+  color: var(--text-secondary);
 }
 
 .support-action-card:hover {

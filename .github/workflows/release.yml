@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag / Release version (e.g. v1.2.0)'
+        description: 'Tag / Release version (e.g. v1.2.19)'
         required: false
-        default: 'v1.2.1-rc.1'
+        default: 'v1.2.19'
       create_release:
         description: 'Publish as GitHub Release'
         type: boolean
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build Windows Installers (.exe & .msi)
+    name: Build Windows .exe installer
     runs-on: windows-latest
 
     steps:
@@ -53,48 +53,28 @@ jobs:
           $env:BYMEVPN_NO_ADMIN_MANIFEST = "1"
           cargo test --release --manifest-path src-tauri/Cargo.toml
 
-      - name: Build Tauri Installers (.exe and .msi)
+      - name: Build Tauri NSIS installer
         shell: powershell
         run: |
           npx --yes @tauri-apps/cli@2 build
 
-      - name: Verify MSI contains the runtime at the path the app resolves
+      - name: Install, verify runtime hashes and uninstall NSIS package
         shell: pwsh
-        run: ./scripts/smoke-msi.ps1
+        run: ./scripts/smoke-nsis.ps1
 
-      - name: Prepare Artifacts & Calculate Checksums
+      - name: Package .exe installer & Calculate Checksum
         id: artifacts
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
-          
-          # Installers include the configured Tauri resources.
-          Get-ChildItem -Path "src-tauri\target\release\bundle" -Include *.exe, *.msi -Recurse | Copy-Item -Destination "dist" -Force
-          # A bare .exe does NOT include Xray/Wintun, so publish a complete ZIP.
-          $binary = "src-tauri\target\release\bymevpn.exe"
-          if (Test-Path $binary) {
-            $portable = "dist\ByMeVPN-portable"
-            $runtimeTarget = Join-Path $portable "vendor\runtime\windows-x64"
-            New-Item -ItemType Directory -Path $runtimeTarget -Force | Out-Null
-            Copy-Item $binary (Join-Path $portable "bymevpn.exe") -Force
-            Copy-Item "vendor\runtime\windows-x64\*" $runtimeTarget -Recurse -Force
-            Compress-Archive -Path "$portable\*" -DestinationPath "dist\ByMeVPN-portable-win-x64.zip" -Force
-            Remove-Item $portable -Recurse -Force
-          }
-          
-          # Compute SHA-256 hashes
-          Get-ChildItem -Path "dist" -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
-            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$hash  $($_.Name)"
-          } | Set-Content -Path "dist\SHA256SUMS.txt" -Encoding utf8
-          
-          Get-ChildItem -Path "dist" | Format-Table Name, Length
+          ./scripts/package-installers.ps1
 
       - name: Upload Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
         with:
           name: ByMeVPN-Windows-Build
-          path: dist/*
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.txt
           retention-days: 30
 
       - name: Publish GitHub Release
@@ -107,9 +87,8 @@ jobs:
             ## ByMeVPN Windows Client Release
             
             ### Файлы установки:
-            * **`ByMeVPN_*_x64-setup.exe`** — Рекомендуемый инсталлятор Windows (NSIS). Полная поддержка UAC, интеграция в систему, автоматическое удаление и обновление.
-            * **`ByMeVPN_*_x64_en-US.msi`** — MSI-пакет для корпоративного развёртывания (GPO / Active Directory / Intune).
-            * **`ByMeVPN-portable-win-x64.zip`** — Полная портативная версия с проверенными Xray, Wintun и базами маршрутизации. Распакуйте архив перед запуском.
+            * **`ByMeVPN_*_x64-setup.exe`** — единственный установщик Windows. Содержит проверенные Xray, Wintun и базы маршрутизации.
+            * **`SHA256SUMS.txt`** — контрольная сумма установщика.
             
             ### Основные возможности:
             * Экспериментальный клиент Xray/Wintun: запуск и проверка конфигурации реализованы, реальные сетевые сценарии требуют проверки.
@@ -127,7 +106,8 @@ jobs:
             ### Контрольные суммы (SHA-256):
             См. прикреплённый файл `SHA256SUMS.txt`.
           files: |
-            dist/*
-          # Not publicly marked stable until real Windows VPN acceptance is signed off.
+            dist/*.exe
+            dist/SHA256SUMS.txt
+          # Remains gated until privileged-service, signed-build and live-network release criteria pass.
           draft: true
           prerelease: true

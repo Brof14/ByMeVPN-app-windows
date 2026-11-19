@@ -1,14 +1,15 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-19
-**Source version:** `1.2.18`
-**Release classification:** Experimental / **NOT production-ready**. The existing `v1.2.18` GitHub release is a draft prerelease.
+**Source version:** `1.2.19`
+**Release classification:** Experimental / **NOT production-ready**. The existing `v1.2.18` GitHub draft does not contain this `1.2.19` source version.
 
 ## Implemented and source-verified
 
 - Tauri 2 + Rust client with Credential Manager-backed account tokens and asynchronous API calls.
 - Email, Telegram and desktop Google authentication flows; trial eligibility checks; subscription, device, pricing and checkout screens. Production backend/payment behavior has not been fully revalidated from this build.
 - Server catalog normalization, supported-protocol filtering and bounded TCP reachability checks. Recent TCP results are cached in memory for ten minutes by node and full config; this is endpoint connection time, not VPN tunnel latency. Hysteria2 is excluded from TCP checks.
+- Distribution is now a single NSIS `.exe` installer plus SHA-256 checksum; MSI and portable ZIP are excluded. CI installs the package on its disposable runner, checks Xray/Wintun/database hashes at the app-relative path, then uninstalls it.
 - Automatic selection now shows the backend-assigned server after connection, matching the latest Android selection feedback where Windows has the same server name.
 - Rust configuration generation/validation covers supported VLESS Reality/TCP/gRPC variants and Hysteria2 inputs. Synthetic parser checks do not establish real protocol interoperability.
 - Tunnel process monitoring, reconnect backoff, session cleanup and explicit verified/unverified connection states. These paths have not been validated through real Windows traffic in this release cycle.

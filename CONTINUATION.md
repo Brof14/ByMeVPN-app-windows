@@ -141,3 +141,13 @@ Public stable release is not proven ready. Existing release audit: `docs/AUDIT_2
 - Full locked Rust tests (71) and the full Node suite passed after correcting two stale test harness expectations. Rust formatting, frontend syntax and whitespace checks passed.
 - No live VPN, external server probes, Android device, route/DNS/proxy changes or account mutations were used.
 - Stable/public release remains NO-GO under `docs/PRODUCTION_RELEASE_GATE.md`: privileged service/secure IPC, signed distribution and live protocol/network acceptance are still open. Existing v1.2.18 draft remains untouched; do not publish stable without evidence and do not claim Android tunnel-latency parity.
+
+## 2026-11-19 EXE-only 1.2.19 packaging
+- Bumped source version consistently to 1.2.19 (Cargo, Cargo.lock, Tauri and visible UI).
+- Changed Tauri bundle target and CI/release artifacts to one complete NSIS `.exe` installer plus `SHA256SUMS.txt`; removed MSI and portable ZIP from both preview and release assets. Generated releases remain gated as drafts/prereleases.
+- Replaced MSI extraction with a Windows-CI-only NSIS install/runtime-hash/uninstall smoke check. It never launches the app or VPN. Local install smoke was not run because the installer is per-machine/elevated; no local UAC or network changes were initiated.
+- Hardened `scripts/package-installers.ps1`: it no longer recursively deletes `dist`, refuses to overwrite non-empty output, accepts `BYMEVPN_DIST_DIR`, and selects the exact versioned installer so stale `target` artifacts cannot be packaged. Existing ignored `dist` contents were preserved.
+- Built `ByMeVPN_1.2.19_x64-setup.exe` and packaged it under `src-tauri/target/release-artifacts-v1.2.19/` with SHA-256 `3b82c98dc0cc44d858373bda90bc8f83d20d83321d949862ce4cbc503a393594`.
+- Full Rust test suite: 71 passed. Full Node suite and focused packaging contract passed after the exact packaging-version filter; PowerShell parser, Rust formatting, JavaScript syntax and whitespace checks also passed.
+- Packaged installer SHA-256 was rechecked and matches the recorded value. Authenticode status is `NotSigned`; release code signing remains unresolved.
+- No live VPN session, real server probe, Android device/USB, account mutation, route/DNS/proxy change or local installer execution. Public stable release remains blocked by the production gate; do not tag/publish v1.2.19 as stable or change the draft policy.

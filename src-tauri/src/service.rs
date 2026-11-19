@@ -1830,9 +1830,9 @@ fn find_verified_runtime(candidates: impl IntoIterator<Item = PathBuf>) -> Resul
         damaged_or_incomplete = true;
     }
     if damaged_or_incomplete {
-        Err("Компоненты VPN повреждены или неполные. Переустановите ByMeVPN из полного установщика (.exe или .msi).".into())
+        Err("Компоненты VPN повреждены или неполные. Переустановите ByMeVPN из полного установщика (.exe).".into())
     } else {
-        Err("Не найдены компоненты Xray и Wintun. Установите ByMeVPN через полный установщик .exe/.msi, а не запускайте отдельный файл bymevpn.exe.".into())
+        Err("Не найдены компоненты Xray и Wintun. Установите ByMeVPN через полный установщик .exe, а не запускайте отдельный файл bymevpn.exe.".into())
     }
 }
 

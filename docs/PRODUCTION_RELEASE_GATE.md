@@ -41,7 +41,7 @@ Suggested acceptance targets, **not measured results**: cold start p95 under 2 s
 
 ## Distribution gate (P0)
 
-- [ ] CI frontend and native tests green, MSI/NSIS install + uninstall smoke test green.
+- [ ] CI frontend and native tests green, NSIS `.exe` install + uninstall smoke test green.
 - [ ] Microsoft Authenticode-signed executables/installers with publicly verifiable certificate, verified Xray/Wintun provenance and pinned checksums; package manifest/resources tested.
 - [ ] Clean machine installation and rollback, without disabling SmartScreen, UAC, Defender or AV.
 - [ ] Controlled staged rollout, signed release notes, reproducible versioned release and support rollback path.

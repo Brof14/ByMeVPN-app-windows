@@ -54,3 +54,10 @@ test('experimental builds are not auto published to paying clients', () => {
   assert.match(ci, /draft: true/);
   assert.match(read('.github/workflows/release.yml'), /draft: true/);
 });
+
+test('Telegram login ticket is never sent in a URL on server errors', () => {
+  const check = native.split('pub async fn telegram_check_session(')[1]
+    .split('#[tauri::command]')[0];
+  assert.match(check, /Method::POST,\s*"\/auth\/telegram\/check-session"/);
+  assert.doesNotMatch(check, /check-session\?token=/);
+});

@@ -235,6 +235,6 @@ test('Windows never allocates a VPN session before checking the original egress 
   assert.ok(startup.includes('let connection_result: Result<TunnelMetrics, String> = async {'));
   const rollback = startup.indexOf('if connection_result.is_err() {');
   assert.ok(rollback > 0, 'missing shared startup-failure handler');
-  assert.ok(startup.slice(rollback).includes('Method::DELETE, "/vpn/session"'));
+  assert.match(startup.slice(rollback), /request_in_session\([\s\S]*?Method::DELETE,\s*"\/vpn\/session"[\s\S]*?Some\(generation\)/);
 
 });

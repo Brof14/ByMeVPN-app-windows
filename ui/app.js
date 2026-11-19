@@ -55,6 +55,9 @@ const state = {
   devicesSupported: false,
   availableDeviceCounts: [],
   paymentBusy: false,
+  renewalBusy: false,
+  renewalChecked: false,
+  renewalGeneration: null,
   trialBusy: false,
   pendingCheckout: null,
   preferredServerCode: 'auto',
@@ -135,6 +138,8 @@ const I18N = {
     devices_stat_hint: "Количество подключённых устройств ограничено вашим тарифом.",
     devices_connected_label: "ПОДКЛЮЧЁННЫЕ УСТРОЙСТВА",
     renewal_title: "Автопродление",
+    renewal_cancel: "Отключить автопродление",
+    renewal_refresh: "Обновить статус",
     renewal_heading: "Автопродление подписки",
     renewal_unavailable: "Статус уточняется",
     support_page_title: "Помощь",
@@ -254,6 +259,7 @@ const I18N = {
     perk_fast: 'Быстрое подключение',
     perk_easy: 'Простое управление',
     login_title: 'Вход',
+    reset_password: 'Забыли пароль?',
     login_subtitle: 'Войдите в свой аккаунт ByMeVPN',
     continue_google: 'Продолжить с Google',
     or_email: 'или по почте',
@@ -359,7 +365,7 @@ const I18N = {
     faq_q2: 'Как работает обход российских сервисов?',
     faq_a2: 'При включённом обходе поддерживаемые российские домены и адреса направляются напрямую. Фактические маршруты проверяются на устройстве.',
     faq_q3: 'Как отключить автопродление?',
-    faq_a3: 'Откройте «Аккаунт» → «Управлять подпиской». Пока отключение в приложении недоступно, обратитесь в поддержку. Условия платежей зависят от вашего заказа.',
+    faq_a3: 'Откройте «Аккаунт» → «Автопродление» и обновите статус. Если управление недоступно, обратитесь в поддержку. Условия платежей зависят от вашего заказа.',
     cancel: 'Отмена',
     confirm: 'Подтвердить'
   },
@@ -419,6 +425,8 @@ const I18N = {
     devices_stat_hint: "Your plan limits the number of connected devices.",
     devices_connected_label: "CONNECTED DEVICES",
     renewal_title: "Auto-renewal",
+    renewal_cancel: "Turn off auto-renewal",
+    renewal_refresh: "Refresh status",
     renewal_heading: "Subscription auto-renewal",
     renewal_unavailable: "Status unavailable",
     support_page_title: "Support",
@@ -538,6 +546,7 @@ const I18N = {
     perk_fast: 'Fast connection',
     perk_easy: 'Simple controls',
     login_title: 'Sign In',
+    reset_password: 'Forgot password?',
     login_subtitle: 'Sign in to your ByMeVPN account',
     continue_google: 'Continue with Google',
     or_email: 'or with email',
@@ -643,7 +652,7 @@ const I18N = {
     faq_q2: 'How does local site bypass work?',
     faq_a2: 'When enabled, supported local domains and IPs are routed directly. Actual routing depends on your computer.',
     faq_q3: 'How can I cancel auto-renewal?',
-    faq_a3: 'In-app auto-renewal management is not ready. Contact support to verify or change recurring payments.',
+    faq_a3: 'Open Account → Auto-renewal and refresh the status. Contact support if management is unavailable.',
     cancel: 'Cancel',
     confirm: 'Confirm'
   }
@@ -1013,6 +1022,7 @@ function setupEventListeners() {
 
   // Forms submission
   document.getElementById('form-login')?.addEventListener('submit', handleLogin);
+  document.getElementById('btn-reset-password')?.addEventListener('click', handlePasswordReset);
   document.getElementById('form-register')?.addEventListener('submit', handleRegister);
   document.getElementById('btn-retry-session')?.addEventListener('click', async () => {
     document.getElementById('btn-retry-session')?.classList.add('hidden');
@@ -1044,7 +1054,9 @@ function setupEventListeners() {
 
   // Account Subpages Triggers
   document.getElementById('btn-acc-open-devices')?.addEventListener('click', () => switchTab('tab-devices'));
-  document.getElementById('btn-acc-manage')?.addEventListener('click', () => switchTab('tab-renewal'));
+  document.getElementById('btn-acc-manage')?.addEventListener('click', () => { switchTab('tab-renewal'); void refreshRenewal(); });
+  document.getElementById('btn-renewal-refresh')?.addEventListener('click', refreshRenewal);
+  document.getElementById('btn-renewal-cancel')?.addEventListener('click', confirmCancelRenewal);
   document.getElementById('btn-acc-open-support')?.addEventListener('click', () => switchTab('tab-support'));
   document.getElementById('btn-account-refresh')?.addEventListener('click', async () => {
     await refreshAccountSnapshot(true);
@@ -1252,9 +1264,29 @@ function setupEventListeners() {
 // Authentication Handlers
 function setAuthPending(pending) {
   state.authBusy = pending;
-  for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal', 'btn-google-login', 'btn-google-register']) {
+  for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal', 'btn-google-login', 'btn-google-register', 'btn-reset-password']) {
     const el = document.getElementById(id);
     if (el) el.disabled = pending;
+  }
+}
+
+async function handlePasswordReset() {
+  if (state.authBusy) return;
+  const input = document.getElementById('login-email');
+  const email = input?.value?.trim();
+  if (!email || !input.checkValidity()) {
+    showToast(uiText('Введите корректный email.', 'Enter a valid email address.'), true);
+    input?.focus();
+    return;
+  }
+  setAuthPending(true);
+  try {
+    await invoke('auth_request_password_reset', { email });
+    showToast(uiText('Если аккаунт существует, письмо для восстановления отправлено.', 'If an account exists, a recovery email has been sent.'));
+  } catch (err) {
+    showToast(typeof err === 'string' ? err : err?.message || uiText('Не удалось запросить восстановление.', 'Could not request password recovery.'), true);
+  } finally {
+    setAuthPending(false);
   }
 }
 
@@ -2138,6 +2170,57 @@ function renewalStatusPresentation(value) {
   };
 }
 
+async function refreshRenewal() {
+  if (state.renewalBusy || !state.user) return;
+  const epoch = state.sessionEpoch;
+  state.renewalBusy = true;
+  state.renewalChecked = false;
+  state.renewalGeneration = null;
+  updateSubscriptionUi();
+  try {
+    const result = await invoke('get_auto_renewal');
+    if (epoch !== state.sessionEpoch) return;
+    if (typeof result?.enabled !== 'boolean' || !Number.isSafeInteger(result?.generation)) throw new Error('Invalid renewal status');
+    if (state.subscription) state.subscription.auto_renew = result.enabled;
+    state.renewalGeneration = result.generation;
+    state.renewalChecked = true;
+  } catch {
+    if (epoch === state.sessionEpoch && state.subscription) state.subscription.auto_renew = null;
+  } finally {
+    state.renewalBusy = false;
+    updateSubscriptionUi();
+  }
+}
+
+function confirmCancelRenewal() {
+  if (state.renewalBusy || !state.renewalChecked || state.subscription?.auto_renew !== true) return;
+  const epoch = state.sessionEpoch;
+  const generation = state.renewalGeneration;
+  showConfirm(
+    uiText('Отключить автопродление?', 'Turn off auto-renewal?'),
+    uiText('Следующего автоматического списания не будет. Оплаченный доступ сохранится до конца срока.', 'There will be no next automatic charge. Paid access remains until expiry.'),
+    async () => {
+      if (epoch !== state.sessionEpoch || state.renewalBusy) return;
+      state.renewalBusy = true;
+      state.renewalChecked = false;
+      updateSubscriptionUi();
+      try {
+        await invoke('cancel_auto_renewal', { generation });
+        if (epoch !== state.sessionEpoch) return;
+        if (state.subscription) state.subscription.auto_renew = false;
+        state.renewalChecked = true;
+        showToast(uiText('Автопродление отключено.', 'Auto-renewal is off.'));
+      } catch {
+        if (epoch === state.sessionEpoch && state.subscription) state.subscription.auto_renew = null;
+        showToast(uiText('Не удалось подтвердить отключение. Обновите статус.', 'Cancellation could not be confirmed. Refresh the status.'), true);
+      } finally {
+        state.renewalBusy = false;
+        updateSubscriptionUi();
+      }
+    }
+  );
+}
+
 function updateSubscriptionUi() {
   const sub = state.subscription;
   const hasPlan = sub && ['active', 'trial', 'grace'].includes(sub.status);
@@ -2230,6 +2313,13 @@ function updateSubscriptionUi() {
     renewalBadge.className = sub?.auto_renew === true
       ? 'badge-active-mini' : 'renewal-status-neutral';
   }
+  const renewalCancel = document.getElementById('btn-renewal-cancel');
+  if (renewalCancel) {
+    renewalCancel.classList?.toggle('hidden', !state.renewalChecked || sub?.auto_renew !== true);
+    renewalCancel.disabled = state.renewalBusy;
+  }
+  const renewalRefresh = document.getElementById('btn-renewal-refresh');
+  if (renewalRefresh) renewalRefresh.disabled = state.renewalBusy;
 }
 
 function updateDevicesUi() {

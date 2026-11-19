@@ -36,6 +36,38 @@ function makeHarness() {
   return {get,run:code => runInContext(code,sandbox)};
 }
 
+test('password reset sends the entered email once and shows a neutral confirmation', async () => {
+  const app = makeHarness();
+  app.get('login-email').value = 'user@example.test';
+  app.get('login-email').checkValidity = () => true;
+  app.run("window.resetCalls=[]; window.__TAURI__={core:{invoke:async (cmd,args)=>{window.resetCalls.push({cmd,args});}}}; window.messages=[]; showToast=(message)=>window.messages.push(message)");
+  await app.run('handlePasswordReset()');
+  assert.equal(app.run('window.resetCalls.length'), 1);
+  assert.equal(app.run('window.resetCalls[0].cmd'), 'auth_request_password_reset');
+  assert.equal(app.run('window.resetCalls[0].args.email'), 'user@example.test');
+  assert.match(app.run('window.messages[0]'), /если/i);
+});
+
+test('renewal cancellation requires confirmation and the checked account generation', async () => {
+  const app = makeHarness();
+  app.run("state.user={id:'user-a'}; state.subscription={status:'active'}; window.calls=[]; window.__TAURI__={core:{invoke:async (cmd,args)=>{window.calls.push({cmd,args}); if(cmd==='get_auto_renewal') return {enabled:true,generation:7};}}}; showToast=()=>{}; showConfirm=(title,desc,callback)=>{window.confirm=callback}");
+  await app.run('refreshRenewal()');
+  app.run('confirmCancelRenewal()');
+  assert.equal(app.run('window.calls.length'), 1);
+  await app.run('window.confirm()');
+  assert.equal(app.run('window.calls[1].cmd'), 'cancel_auto_renewal');
+  assert.equal(app.run('window.calls[1].args.generation'), 7);
+  assert.equal(app.run('state.subscription.auto_renew'), false);
+});
+
+test('a changed account cannot confirm an old renewal action', async () => {
+  const app = makeHarness();
+  app.run("state.user={id:'user-a'}; state.subscription={status:'active',auto_renew:true}; state.renewalChecked=true; state.renewalGeneration=7; window.calls=[]; window.__TAURI__={core:{invoke:async (...args)=>window.calls.push(args)}}; showConfirm=(title,desc,callback)=>{window.confirm=callback}");
+  app.run('confirmCancelRenewal(); state.sessionEpoch++');
+  await app.run('window.confirm()');
+  assert.equal(app.run('window.calls.length'), 0);
+});
+
 test('Android active account renders real remaining days and a single active access strip',()=>{
   const app=makeHarness();
   app.run("state.subscription={status:'active',plan_name:'Year',seconds_remaining:86401,trial_available:false}");

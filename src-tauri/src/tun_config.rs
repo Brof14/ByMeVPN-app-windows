@@ -571,9 +571,11 @@ mod tests {
         hysteria["security"] = json!("tls");
         hysteria["uuid"] = json!("subscription-auth");
         hysteria["public_key"] = json!("");
-        assert!(build_tun_config(&hysteria).unwrap()["outbounds"][0]["streamSettings"]
-            .get("sockopt")
-            .is_none());
+        assert!(
+            build_tun_config(&hysteria).unwrap()["outbounds"][0]["streamSettings"]
+                .get("sockopt")
+                .is_none()
+        );
     }
 
     #[test]

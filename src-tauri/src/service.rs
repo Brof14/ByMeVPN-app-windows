@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 use std::{
     fs,
     path::PathBuf,
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
     time::Duration,
 };
 use tauri::{AppHandle, Manager, State};
@@ -30,6 +33,9 @@ const TELEGRAM_PROFILE_KEY: &str = "telegram_profile";
 const TELEGRAM_STATUS_KEY: &str = "telegram_subscription_status";
 const TELEGRAM_SUBSCRIPTION_KEY: &str = "telegram_subscription_url";
 static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+// Changes only when the signed-in account is replaced or cleared, not when
+// its access token rotates. Protected requests retain this identity on retry.
+static AUTH_GENERATION: AtomicU64 = AtomicU64::new(0);
 static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 // reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
@@ -274,6 +280,7 @@ fn save_secret(name: &str, value: &str) -> Result<(), String> {
 }
 
 fn clear_secrets() {
+    AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
@@ -450,11 +457,38 @@ async fn request(
     auth: bool,
     retried: bool,
 ) -> Result<Value, String> {
+    request_in_session(app, method, path, body, auth, retried, None).await
+}
+
+fn require_same_session(expected: u64, current: u64) -> Result<(), String> {
+    if expected != current {
+        return Err("Аккаунт изменился во время запроса. Повторите действие.".into());
+    }
+    Ok(())
+}
+
+async fn request_in_session(
+    app: &AppHandle,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+    auth: bool,
+    retried: bool,
+    expected_generation: Option<u64>,
+) -> Result<Value, String> {
     let client = http(app)?;
-    let token = if auth {
-        Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?)
+    let (token, generation) = if auth {
+        let _guard = REFRESH_LOCK.lock().await;
+        let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+        if let Some(expected) = expected_generation {
+            require_same_session(expected, generation)?;
+        }
+        (
+            Some(read_secret(ACCESS_KEY).ok_or("Сначала войдите в ByMeVPN.")?),
+            Some(generation),
+        )
     } else {
-        None
+        (None, None)
     };
     let device_id = if path == "/servers" || (path == "/vpn/session" && method == Method::POST) {
         Some(install_id(app)?)
@@ -481,6 +515,7 @@ async fn request(
     if status == StatusCode::UNAUTHORIZED && auth && !retried {
         {
             let _guard = REFRESH_LOCK.lock().await;
+            require_same_session(generation.unwrap(), AUTH_GENERATION.load(Ordering::SeqCst))?;
             // A different request may already have refreshed the same expired token.
             if read_secret(ACCESS_KEY) == token {
                 match refresh(&client).await {
@@ -493,7 +528,13 @@ async fn request(
                 }
             }
         }
-        return Box::pin(request(app, method, path, body, true, true)).await;
+        return Box::pin(request_in_session(
+            app, method, path, body, true, true, generation,
+        ))
+        .await;
+    }
+    if let Some(generation) = generation {
+        require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     }
     if !status.is_success() {
         return Err(api_error(status, &data));
@@ -559,6 +600,8 @@ fn parse_auth(value: &Value) -> Result<AuthResult, String> {
 
 async fn store_auth(value: Value) -> Result<AuthResult, String> {
     let parsed = parse_auth(&value)?;
+    let _guard = REFRESH_LOCK.lock().await;
+    AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
     // A newly authenticated identity must not inherit another account's invoice.
     clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
@@ -652,9 +695,9 @@ pub async fn telegram_check_session(
             return Err("Этот сеанс Telegram уже отменён.".into());
         }
     }
-    // POST keeps one-time tickets out of proxy logs. Only a legacy HTTP 405
-    // permits the same narrow GET fallback as the current Android client.
-    let res = match request(
+    // Never put one-time tickets in a URL, including on server errors.
+    // Android uses the same POST-only contract.
+    let res = request(
         &app,
         Method::POST,
         "/auth/telegram/check-session",
@@ -662,16 +705,7 @@ pub async fn telegram_check_session(
         false,
         false,
     )
-    .await
-    {
-        Ok(response) => response,
-        Err(error) if error.ends_with("(HTTP 405)") => {
-            let escaped: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
-            let path = format!("/auth/telegram/check-session?token={escaped}");
-            request(&app, Method::GET, &path, None, false, false).await?
-        }
-        Err(error) => return Err(error),
-    };
+    .await?;
     let status = res
         .get("status")
         .and_then(Value::as_str)
@@ -707,12 +741,14 @@ pub async fn telegram_check_session(
             .unwrap_or_else(|| format!("ref_{access_token}"));
         // Check cancellation while the HTTP request was in flight. Keep the
         // ticket lock through credential persistence and avoid fake profiles.
+        let _guard = REFRESH_LOCK.lock().await;
         let mut ticket = state.telegram_ticket.lock().map_err(|e| e.to_string())?;
         if ticket.as_deref() != Some(token) {
             return Err("Вход через Telegram отменён.".into());
         }
         // Telegram may switch the active account. Invalidate any previous
         // identity's invoice before saving the new signed-in credentials.
+        AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
         clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
             .and_then(|_| save_secret(ACCESS_KEY, access_token))
@@ -750,6 +786,27 @@ pub async fn auth_login(
     )
     .await?;
     store_auth(value).await
+}
+
+#[tauri::command]
+pub async fn auth_request_password_reset(app: AppHandle, email: String) -> Result<(), String> {
+    let email = email.trim();
+    if email.is_empty() || email.len() > 254 || !email.contains('@') {
+        return Err("Введите корректный email.".into());
+    }
+    let value = request(
+        &app,
+        Method::POST,
+        "/auth/password-reset/request",
+        Some(json!({"email": email})),
+        false,
+        false,
+    )
+    .await?;
+    if value.get("status").and_then(Value::as_str) != Some("accepted") {
+        return Err("Сервер не подтвердил запрос восстановления пароля.".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -818,20 +875,36 @@ async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String>
 #[tauri::command]
 pub async fn auth_logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
+    let generation = {
+        let _guard = REFRESH_LOCK.lock().await;
+        AUTH_GENERATION.load(Ordering::SeqCst)
+    };
     // Even when local cleanup fails, revoke the backend session. Keep local
     // credentials until cleanup succeeds so the user can retry the operation.
     let cleanup = stop_tunnel_and_restore_network(&state).await;
-    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    let _ = request_in_session(
+        &app,
+        Method::DELETE,
+        "/vpn/session",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await;
     cleanup?;
-    let _ = request(
+    let _ = request_in_session(
         &app,
         Method::POST,
         "/auth/logout",
         Some(json!({})),
         true,
         false,
+        Some(generation),
     )
     .await;
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     clear_secrets();
     *state.telegram_ticket.lock().map_err(|e| e.to_string())? = None;
     Ok(())
@@ -850,22 +923,41 @@ fn device_is_current(object: &serde_json::Map<String, Value>, install_id: &str) 
 }
 
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
-    let me = request(app, Method::GET, "/me", None, true, false).await?;
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+    let me =
+        request_in_session(app, Method::GET, "/me", None, true, false, Some(generation)).await?;
     // An outage in the subscription panel must not look like invalid login.
     // Unknown is different from "none" and must not trigger a purchase prompt.
-    let sub = request(app, Method::GET, "/subscription/status", None, true, false)
-        .await
-        .unwrap_or_else(|_| {
-            json!({
-                "status": "unknown",
-                "plan_name": "Не удалось проверить подписку",
-                "trial_available": false
-            })
-        });
+    let sub = request_in_session(
+        app,
+        Method::GET,
+        "/subscription/status",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        json!({
+            "status": "unknown",
+            "plan_name": "Не удалось проверить подписку",
+            "trial_available": false
+        })
+    });
     // Device-management downtime must never break login or session recovery.
-    let devices = request(app, Method::GET, "/devices", None, true, false)
-        .await
-        .ok();
+    let devices = request_in_session(
+        app,
+        Method::GET,
+        "/devices",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .ok();
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     let user = me.get("user").unwrap_or(&me).clone();
     let subscription = normalized_subscription_value(sub.get("subscription").unwrap_or(&sub));
     let current_install_id = install_id(app)?;
@@ -892,20 +984,23 @@ async fn snapshot(app: &AppHandle) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn restore_session(app: AppHandle) -> Result<Option<AuthResult>, String> {
-    if read_secret(ACCESS_KEY).is_none() {
-        // Legacy URL import never issued API credentials. Do not restore it as a
-        // misleading authenticated user with a fictitious active subscription.
-        clear_telegram_session();
-        if read_secret(REFRESH_KEY).is_none() {
-            return Ok(None);
-        }
-        match refresh(&http(&app)?).await {
-            Ok(()) => {}
-            Err(RefreshError::InvalidSession) => {
-                clear_secrets();
+    {
+        let _guard = REFRESH_LOCK.lock().await;
+        if read_secret(ACCESS_KEY).is_none() {
+            // Legacy URL import never issued API credentials. Do not restore it as a
+            // misleading authenticated user with a fictitious active subscription.
+            clear_telegram_session();
+            if read_secret(REFRESH_KEY).is_none() {
                 return Ok(None);
             }
-            Err(RefreshError::Unavailable(message)) => return Err(message),
+            match refresh(&http(&app)?).await {
+                Ok(()) => {}
+                Err(RefreshError::InvalidSession) => {
+                    clear_secrets();
+                    return Ok(None);
+                }
+                Err(RefreshError::Unavailable(message)) => return Err(message),
+            }
         }
     }
     let data = snapshot(&app).await?;
@@ -1332,6 +1427,55 @@ pub async fn activate_trial(app: AppHandle) -> Result<Subscription, String> {
 }
 
 #[tauri::command]
+pub async fn get_auto_renewal(app: AppHandle) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
+    let value = request_in_session(
+        &app,
+        Method::GET,
+        "/mobile/v2/renewal",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    let enabled = renewal_status(&value)?;
+    Ok(json!({"enabled": enabled, "generation": generation}))
+}
+
+#[tauri::command]
+pub async fn cancel_auto_renewal(app: AppHandle, generation: u64) -> Result<(), String> {
+    let value = request_in_session(
+        &app,
+        Method::POST,
+        "/mobile/v2/renewal/cancel",
+        Some(json!({"confirm": true})),
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    confirm_renewal_cancellation(&value)
+}
+
+fn renewal_status(value: &Value) -> Result<bool, String> {
+    value
+        .get("auto_renew")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "Сервер не подтвердил статус автопродления.".into())
+}
+
+fn confirm_renewal_cancellation(value: &Value) -> Result<(), String> {
+    if value.get("cancelled").and_then(Value::as_bool) != Some(true)
+        || value.get("auto_renew").and_then(Value::as_bool) != Some(false)
+        || value.get("paid_access_preserved").and_then(Value::as_bool) != Some(true)
+    {
+        return Err("Сервер не подтвердил отключение автопродления. Обновите статус.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn create_payment(
     app: AppHandle,
     plan_code: String,
@@ -1340,6 +1484,7 @@ pub async fn create_payment(
     days: Option<i64>,
     request_id: Option<String>,
 ) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     let dev = devices.unwrap_or(2);
     if !matches!(dev, 2 | 5 | 10) {
         return Err("Недопустимое количество устройств.".into());
@@ -1367,13 +1512,14 @@ pub async fn create_payment(
 
     // Revalidate server-owned price, duration, tier and checkout capability.
     // A stale or tampered desktop UI must never initiate an unknown payment.
-    let catalog = request(
+    let catalog = request_in_session(
         &app,
         Method::GET,
         &format!("/mobile/v2/plans?devices={dev}"),
         None,
         true,
         false,
+        Some(generation),
     )
     .await?;
     let matching = mobile_catalog_plans(&catalog, dev)
@@ -1391,7 +1537,7 @@ pub async fn create_payment(
 
     // New Android contract: send ONLY the canonical SKU and an idempotency
     // key; the backend, not the desktop client, owns the checkout terms.
-    let result = request(
+    let result = request_in_session(
         &app,
         Method::POST,
         "/mobile/v2/payment/create",
@@ -1402,6 +1548,7 @@ pub async fn create_payment(
         })),
         true,
         false,
+        Some(generation),
     )
     .await?;
     let invoice = result
@@ -1436,6 +1583,8 @@ pub async fn create_payment(
         "days":submitted_days, "invoice_id":invoice, "payment_url":payment_url,
         "request_id":request_id
     });
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     save_secret(PENDING_PAYMENT_KEY, &pending.to_string())?;
     Ok(result)
 }
@@ -1459,6 +1608,7 @@ fn payment_url_is_allowed(url: &str) -> bool {
 /// prove that this invoice was paid.
 #[tauri::command]
 pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, String> {
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     if invoice_id.is_empty()
         || invoice_id.len() > 128
         || !invoice_id
@@ -1467,13 +1617,14 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
     {
         return Err("Некорректный номер счёта.".into());
     }
-    let result = request(
+    let result = request_in_session(
         &app,
         Method::GET,
         &format!("/mobile/v2/payment/check?invoice_id={invoice_id}&provider=yookassa"),
         None,
         true,
         false,
+        Some(generation),
     )
     .await?;
     let paid = matches!(
@@ -1484,6 +1635,8 @@ pub async fn check_payment(app: AppHandle, invoice_id: String) -> Result<Value, 
         result.get("status").and_then(Value::as_str),
         Some("failed" | "canceled" | "cancelled" | "expired")
     );
+    let _guard = REFRESH_LOCK.lock().await;
+    require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     if (paid || failed)
         && get_pending_payment()
             .as_ref()
@@ -1660,6 +1813,7 @@ pub async fn vpn_start(
     node_code: Option<String>,
 ) -> Result<TunnelMetrics, String> {
     let _connection_guard = state.connection_gate.lock().await;
+    let generation = AUTH_GENERATION.load(Ordering::SeqCst);
     {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         if lock.is_some() {
@@ -1681,9 +1835,17 @@ pub async fn vpn_start(
     }
 
     // Check that user has an active or trial subscription before launching tunnel
-    let sub_status = request(&app, Method::GET, "/subscription/status", None, true, false)
-        .await
-        .map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
+    let sub_status = request_in_session(
+        &app,
+        Method::GET,
+        "/subscription/status",
+        None,
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    .map_err(|e| format!("Не удалось проверить подписку. Подключение не начато: {e}"))?;
     let subscription = sub_status.get("subscription").unwrap_or(&sub_status);
     let status = subscription
         .get("status")
@@ -1722,7 +1884,7 @@ pub async fn vpn_start(
     // before Windows routes change, so serializing them only adds startup time.
     let (baseline_result, session_result) = tokio::join!(
         crate::egress::public_egress_ip(),
-        request(
+        request_in_session(
             &app,
             Method::POST,
             "/vpn/session",
@@ -1732,6 +1894,7 @@ pub async fn vpn_start(
             })),
             true,
             false,
+            Some(generation),
         )
     );
     // External egress services may be blocked independently of the VPN. That
@@ -1980,6 +2143,12 @@ pub async fn vpn_start(
             });
         }
 
+        let auth_guard = REFRESH_LOCK.lock().await;
+        if let Err(error) = require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst)) {
+            drop(auth_guard);
+            stop_failed_tun(&mut child, &config_path).await?;
+            return Err(error);
+        }
         let server_port = session
             .get("port")
             .and_then(Value::as_u64)
@@ -2032,7 +2201,16 @@ pub async fn vpn_start(
         if let Ok(dir) = app.path().app_data_dir() {
             let _ = fs::remove_file(dir.join("active_tunnel.json"));
         }
-        let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+        let _ = request_in_session(
+            &app,
+            Method::DELETE,
+            "/vpn/session",
+            None,
+            true,
+            false,
+            Some(generation),
+        )
+        .await;
     } else if let Ok(mut reconnect) = state.reconnect.lock() {
         reconnect.connected(reconnect_node);
     }
@@ -2472,6 +2650,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn renewal_changes_are_accepted_only_with_explicit_server_confirmation() {
+        assert_eq!(renewal_status(&json!({"auto_renew": true})).unwrap(), true);
+        assert!(renewal_status(&json!({"auto_renew": "false"})).is_err());
+        assert!(confirm_renewal_cancellation(
+            &json!({"cancelled": true, "auto_renew": false, "paid_access_preserved": true})
+        )
+        .is_ok());
+        assert!(
+            confirm_renewal_cancellation(&json!({"cancelled": true, "auto_renew": false})).is_err()
+        );
+    }
+
+    #[test]
+    fn protected_retry_rejects_a_changed_account_session() {
+        assert!(require_same_session(7, 7).is_ok());
+        assert!(require_same_session(7, 8).is_err());
+    }
+
+    #[test]
     fn tunnel_recovery_ignores_one_probe_miss_but_keeps_routing_leaks_fail_closed() {
         let mut failures = 0;
         assert!(!should_restart_after_health_probe(
@@ -2723,12 +2920,6 @@ mod tests {
         assert_eq!(found[0]["purchase_enabled"], false);
         assert_eq!(mobile_plan_duration("3m_d5", 5), Some(120));
         assert_eq!(mobile_plan_duration("3m_d2", 5), None);
-    }
-
-    #[test]
-    fn telegram_legacy_ticket_query_is_percent_encoded() {
-        let encoded: String = url::form_urlencoded::byte_serialize(b"ab+c/=token").collect();
-        assert_eq!(encoded, "ab%2Bc%2F%3Dtoken");
     }
 
     #[test]

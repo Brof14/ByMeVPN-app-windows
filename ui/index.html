@@ -112,6 +112,7 @@
                 <input type="password" id="login-password" data-i18n-placeholder="password_placeholder" placeholder="Пароль" required autocomplete="current-password" />
                 <button type="button" class="btn-password-toggle" aria-label="Показать пароль" aria-pressed="false">👁</button>
               </div>
+              <button type="button" id="btn-reset-password" class="neon-link auth-reset" data-i18n="reset_password">Забыли пароль?</button>
               <button type="submit" id="btn-submit-login" class="btn-primary auth-submit-btn">
                 <span data-i18n="sign_in">Войти</span>
                 <span class="btn-arrow">›</span>
@@ -713,6 +714,8 @@
                   Условия продления определяются при оплате. Если управление недоступно в приложении, обратитесь в поддержку.
                 </p>
                 <div class="renewal-actions">
+                  <button type="button" id="btn-renewal-cancel" class="btn-secondary hidden" data-i18n="renewal_cancel">Отключить автопродление</button>
+                  <button type="button" id="btn-renewal-refresh" class="btn-secondary" data-i18n="renewal_refresh">Обновить статус</button>
                   <button type="button" id="btn-renewal-switch-pricing" class="btn-primary" style="height: 46px;">
                     <span data-i18n="renewal_select_plan">Выбрать или продлить тариф</span>
                     <span class="btn-arrow">›</span>

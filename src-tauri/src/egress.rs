@@ -193,13 +193,24 @@ pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
         return false;
     };
     tokio::time::timeout(Duration::from_secs(10), async move {
-        if probe_https_reachability(client.clone()).await {
-            return true;
-        }
-        probe_egress(client).await.is_some()
+        first_successful_preflight(probe_https_reachability(client.clone()), async move {
+            probe_egress(client).await.is_some()
+        })
+        .await
     })
     .await
     .is_ok_and(|reachable| reachable)
+}
+
+async fn first_successful_preflight(
+    first: impl std::future::Future<Output = bool>,
+    second: impl std::future::Future<Output = bool>,
+) -> bool {
+    tokio::pin!(first, second);
+    tokio::select! {
+        result = &mut first => result || second.await,
+        result = &mut second => result || first.await,
+    }
 }
 
 /// End-to-end evidence using Xray's authenticated loopback HTTP inbound.
@@ -466,6 +477,18 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn preflight_does_not_wait_for_blocked_connectivity_checks_when_ip_probe_succeeds() {
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            first_successful_preflight(std::future::pending(), async { true }),
+        )
+        .await;
+        assert_eq!(result, Ok(true));
+        assert!(first_successful_preflight(async { false }, async { true }).await);
+        assert!(!first_successful_preflight(async { false }, async { false }).await);
+    }
 
     #[tokio::test]
     async fn confirmed_ip_result_does_not_wait_for_unresponsive_generic_probe() {

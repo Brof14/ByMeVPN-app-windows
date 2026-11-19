@@ -97,6 +97,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             api_transport::api_transport_encrypted,
             service::auth_login,
+            service::auth_request_password_reset,
             service::auth_register,
             service::auth_google,
             service::auth_google_desktop,
@@ -108,6 +109,8 @@ fn main() {
             service::account_snapshot,
             service::get_servers,
             service::get_plans,
+            service::get_auto_renewal,
+            service::cancel_auto_renewal,
             service::activate_trial,
             service::create_payment,
             service::check_payment,

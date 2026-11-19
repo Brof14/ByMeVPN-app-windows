@@ -44,6 +44,7 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {
   assert.match(native, /spawn_blocking\(move \|\| \{/);
   assert.match(native, /Semaphore::new\(6\)/);
+  assert.match(native, /let tcp_probe_supported = supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
   assert.match(native, /if should_probe\s*&& tcp_probe_supported\s*&& cached_ping\.is_none\(\)/);
   assert.match(native, /SERVER_PING_CACHE_TTL: Duration = Duration::from_secs\(600\)/);
   assert.match(native, /protocol\.eq_ignore_ascii_case\("hysteria2"\)/);

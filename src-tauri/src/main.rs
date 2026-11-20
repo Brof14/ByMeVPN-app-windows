@@ -67,6 +67,7 @@ fn main() {
                 if stale_config.exists() {
                     let _ = std::fs::remove_file(stale_config);
                 }
+                service::cleanup_stale_server_ping_configs(&dir);
             }
             #[cfg(all(debug_assertions, windows))]
             app.deep_link().register_all()?;

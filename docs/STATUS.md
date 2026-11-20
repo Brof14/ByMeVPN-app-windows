@@ -1,42 +1,27 @@
 # ByMeVPN Windows — implementation status
 
-**Updated:** 2026-11-15
-**Current build:** `1.2.15` (Windows TCP receive-buffer optimization; live speed acceptance pending). Connection status synchronization release is `1.2.14`.
-**Development branch:** `codex/windows-trial-eligibility-runtime-pin`
-**Release classification:** Experimental / NOT production-ready.
+**Updated:** 2026-11-20
+**Source version:** `1.2.20`
+**Release classification:** Experimental / **NOT production-ready**. The current source is newer than the existing GitHub draft and remains subject to the production release gate.
 
-## Verified in source and automated tests
+## Implemented and source-verified
 
-- Tauri 2 + Rust desktop UI, Windows Credential Manager-backed tokens and HTTPS API transport.
-- Login/register, Telegram session create/check; the Windows parser recognizes the server's `authenticated` status.
-- Server DTO normalization from `node_code`, `display_name`, `config.server`, flag/country; parallel TCP reachability probes; unsupported protocols disabled.
-- Tariffs come from `/plans`, including 2/5/10-device variants and promotional days. Checkout is disabled without a valid server catalogue.
-- Payment request forwards canonical price/days and the **server PR** rejects mismatched terms. Browser return does not independently confirm a new payment.
-- Xray configuration validation, pinned runtime SHA-256 check, serialization of connection requests and process-exit detection.
-- Connection startup requires a real HTTPS response, Windows selecting the TUN route, DNS resolution and a live Xray process. An observed exit IP is required before the UI reports verified protection; a working path without that IP evidence stays explicitly unverified.
-- If IP-check providers are unavailable, ordinary HTTPS traffic can be observed through both Xray and Windows TUN; the tunnel remains explicitly unverified unless the IP and route checks pass.
-- Logout, manual disconnect and normal application exit use the same ByMeVPN-adapter-only route/DNS recovery path. This is best-effort process cleanup, not crash-proof service ownership.
-- A failed server-catalog refresh retains a sanitized display-only last-known list; connection still requires a live API session.
-- Automatic server-selection text now describes service assignment without claiming lowest latency.
-- Unsupported device management and Kill Switch no longer claim to be operational. The tray can hide the current process, but no independent Windows service keeps VPN alive after the app exits.
-- Node-based frontend syntax/contract tests and Rust checks are configured in CI.
-- VLESS TCP outbounds use a Windows-only 2 MiB receive buffer in Xray. Synthetic config and the pinned Xray parser accept it; no real throughput comparison has been run.
+- Tauri 2 + Rust client with Credential Manager-backed account tokens and asynchronous API calls.
+- Email, Telegram and desktop Google authentication flows; trial eligibility checks; subscription, device, pricing and checkout screens. Production backend/payment behavior has not been fully revalidated from this build.
+- Server catalog normalization and supported-protocol filtering. TCP protocols use bounded TCP reachability checks; Hysteria2 uses a short-lived Xray outbound and a real HTTPS request over QUIC. Both results are cached for ten minutes by node and full config. Hysteria HTTPS timing and TCP handshake time are different measures and are not mixed for automatic ranking.
+- Distribution is now a single NSIS `.exe` installer plus SHA-256 checksum; MSI and portable ZIP are excluded. CI installs the package on its disposable runner, checks Xray/Wintun/database hashes at the app-relative path, then uninstalls it.
+- With a fresh catalog, automatic selection follows Android's strategy: choose the fastest measured Reality server, otherwise the fastest measured TCP server, then fall back to a Reality server or the first supported one. A stale catalog leaves selection to the backend. The actual connected node is displayed after connection.
+- Rust configuration generation/validation covers supported VLESS Reality/TCP/gRPC variants and Hysteria2 inputs. Synthetic parser checks do not establish real protocol interoperability.
+- Tunnel process monitoring, reconnect backoff, session cleanup and explicit verified/unverified connection states. These paths have not been validated through real Windows traffic in this release cycle.
+- RU/EN interface, responsive desktop screens, settings, account/device flows and Android-aligned pricing/subscription states. Visual and accessibility parity has not been comprehensively measured against Android.
 
-## Critical outstanding release blockers
+## Release blockers
 
-1. **No Windows network acceptance**: TUN adapter, route/dns lifecycle, IPv4/IPv6 leaks, gateway changes and crash recovery have not been measured end to end on a freshly installed Windows VM.
-2. **Elevated UI architecture**: `build.rs` still uses `requireAdministrator` for the entire app. Production requires unprivileged Tauri UI and a narrowly privileged service/helper with secure IPC.
-3. **Kill Switch / DNS / IPv6**: full leak-proof behavior and a user-controllable WFP policy are not implemented and verified.
-4. **Tray and startup**: a true system background service is not integrated.
-5. **Hysteria2**: configuration conversion exists for the pinned Windows Xray runtime, but real Hysteria2 network acceptance has not been run; support is not yet production-verified.
-6. **Google sign-in**: safely unavailable until server-side OIDC verification and Windows PKCE login exist.
-7. **Account lifecycle**: devices, device revocation, and account erasure are not real API workflows yet. The API PR makes unsupported operations return explicit errors.
-8. **Secure deployment**: API requires a strong persistent `JWT_SECRET` environment variable. Old default-signed tokens must be invalidated. Deployment requires a coordinated rollout of both PRs.
-9. **Invoices and recurring payments**: current `/payment/check` is entitlement-level; true invoice-specific webhook reconciliation, refunds and recurring control must be verified.
-10. **Release engineering**: verified code signing, installer/uninstaller route restoration, updater rollback and real Windows 10/11 DPI tests are incomplete.
+1. No end-to-end Windows 10/11 acceptance for each protocol, IPv4/IPv6 routes, DNS behavior, actual egress, network handover, crash cleanup or sustained reconnects. The user has explicitly deferred real VPN connection testing.
+2. Tauri UI still launches with `requireAdministrator`; least-privilege UI plus a signed privileged VPN service and authenticated IPC are not implemented. Do not remove the manifest requirement without that broker.
+3. DNS/IPv6 leak protection and a fail-closed Windows kill switch are not proven. Current cleanup is best-effort application-owned route/DNS restoration.
+4. Android-equivalent per-outbound latency is still incomplete for TCP protocols; those show TCP handshake time. Hysteria2 uses a real HTTPS-over-QUIC request. No throughput comparison or connection-speed superiority is established.
+5. Authenticode-signed packages, clean-machine install/uninstall and rollback, Microsoft Store compliance, and staged production rollout are not complete.
+6. Account, device-limit, trial, renewal and payment flows still require end-to-end acceptance against the intended backend and payment provider.
 
-## Release gate
-
-Do not merge or publish as stable simply because CI passed. Acceptance requires successful traffic and leak tests, real test-account login, trial/payment flows, reboots, process crashes and cleanup on a Windows 10/11 machine. Public `v1.2.0` predates the hardening PR. Future generated releases are draft/prerelease by default.
-
-The actionable tracker is [Windows issue #3](https://github.com/Brof14/ByMeVPN-app-windows/issues/3) and [backend issue #15](https://github.com/Brof14/ByMeVPN_bot/issues/15).
+See [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md) and [AUDIT_2026-11-15.md](AUDIT_2026-11-15.md) for the complete acceptance criteria. Passing CI or creating a GitHub artifact does not clear these blockers. Keep generated releases as drafts/prereleases until the gate is evidenced.

@@ -4,9 +4,9 @@ A Windows desktop client for the ByMeVPN service, built with **Tauri 2**, **Rust
 
 > **Status:** Experimental, NOT production-ready. Xray launch and a fail-closed egress probe are implemented; real Windows routing, IPv4/IPv6/DNS leak behavior, elevated service isolation and crash recovery still require full end-to-end acceptance. Do not rely on this build for privacy until those tests pass.
 
-## Download installers (.exe / .msi)
+## Download installer (.exe)
 
-The current source is built on Windows by GitHub Actions after frontend contract tests, Rust tests, and an MSI extraction check.
+The current source is built on Windows by GitHub Actions after frontend contract tests, Rust tests, and an NSIS install/runtime/uninstall smoke check. Releases contain one complete `.exe` installer and its SHA-256 checksum.
 
 - **Public release:** Not yet available for paid customers. Preview releases generated from `main` are saved as **drafts** until Windows network/security acceptance has been completed.
 - **Builds for open pull requests:** [Actions → CI](https://github.com/Brof14/ByMeVPN-app-windows/actions/workflows/ci.yml). Open a successful run, then download the `ByMeVPN-Windows-Installers` artifact (GitHub downloads Actions artifacts as a ZIP).

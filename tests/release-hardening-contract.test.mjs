@@ -28,6 +28,13 @@ test('VPN session is revoked on all post-creation start failures', () => {
   assert.match(native, /request\(&app, Method::DELETE, "\/vpn\/session", None, true, false\)\.await/);
 });
 
+test('stale credential-bearing Hysteria ping configs are cleaned on startup', () => {
+  const cleanup = native.split('pub fn cleanup_stale_server_ping_configs(')[1].split('\n}\n')[0];
+  assert.match(cleanup, /extension\(\)/);
+  assert.match(cleanup, /starts_with\("server-ping-"\)/);
+  assert.match(main, /cleanup_stale_server_ping_configs\(&dir\)/);
+});
+
 test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and can reconnect', () => {
   assert.match(native, /let mut revoke_session = false;/);
   assert.match(native, /should_restart_after_health_probe\(/);
@@ -44,10 +51,15 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
 test('nonblocking validation and capped ping probes protect responsiveness', () => {
   assert.match(native, /spawn_blocking\(move \|\| \{/);
   assert.match(native, /Semaphore::new\(6\)/);
-  assert.match(native, /if should_probe\s*&& supported\s*&& protocol_supports_tcp_ping\(config\)\s*&& !host\.is_empty\(\)/);
+  assert.match(native, /let hysteria_ping_slots = .*Semaphore::new\(2\)/);
+  assert.match(native, /if should_probe && probe_supported && cached_ping\.is_none\(\)/);
+  assert.match(native, /measure_hysteria_latency\(runtime, directory, session\)/);
+  assert.match(native, /measure_xray_server_latency\(port, &password\)/);
+  assert.match(native, /JoinSet::new\(\)/);
+  assert.match(native, /SERVER_PING_CACHE_TTL: Duration = Duration::from_secs\(600\)/);
   assert.match(native, /protocol\.eq_ignore_ascii_case\("hysteria2"\)/);
-  assert.match(native, /tokio::time::timeout_at\(deadline, &mut task\)/);
-  assert.match(native, /task\.abort\(\)/);
+  assert.match(native, /tokio::time::timeout_at\(deadline, ping_tasks\.join_next\(\)\)/);
+  assert.match(native, /ping_tasks\.abort_all\(\)/);
 });
 
 test('experimental builds are not auto published to paying clients', () => {

@@ -130,3 +130,41 @@ Public stable release is not proven ready. Existing release audit: `docs/AUDIT_2
 - Do not call the product ready for general clients: live Windows traffic/route/DNS acceptance, signed installers, least-privilege service, and Android full parity remain unverified or incomplete.
 - `v1.2.18` Actions run `44550737954` completed successfully. It passed 70 Rust CI tests, Tauri EXE/MSI build, MSI runtime smoke check, portable ZIP packaging and SHA-256 generation. GitHub created a draft prerelease with four assets (about 59.7 MB total). The release is not publicly published because its required draft policy and explicit audit blockers remain.
 - The user request to upload to GitHub/releases is fulfilled as a pushed branch, pushed version tag, and populated draft release; publishing it publicly would contradict the existing draft-only release invariant. The earlier attempt to change that invariant was reverted before commit/tag.
+
+## 2026-11-19 Android selection parity and ping cache
+- Updated server TCP reachability cache: config-scoped SHA-256 key, ten-minute expiry, stores failed probes too, bounded to 512 records, and reuses results on subsequent catalog loads. This remains TCP endpoint connection time, not Android's configured-outbound tunnel latency. Hysteria2 remains excluded from TCP probes.
+- Matched Android `20c76df` automatic-selection feedback: while automatic mode is connected, Windows now displays the assigned server and country in Home; the server picker subtitle updates with the assigned server and falls back to the original automatic-selection description when disconnected.
+- Refreshed `docs/STATUS.md` for source version 1.2.18 and current release blockers.
+- Added a bilingual behavior test for automatic-selection text. Corrected the frontend test DOM stub to implement `querySelector` required by account refresh rendering, and updated the release contract to assert the new cache-aware probe condition.
+- Passed: all 71 Rust tests (`cargo test --locked`), full Node suite (`node --test --test-reporter=dot tests/*.test.mjs`), focused Rust cache test, focused UI parity suite, Rust formatting and `git diff --check`.
+- Fresh `cargo build --locked --release` succeeded for current source. Tauri produced NSIS and MSI packages; MSI administrative extraction smoke-check verified Xray and Wintun assets at the runtime path used by the app. The packages are unsigned and are not being presented as public stable release artifacts.
+- Full locked Rust tests (71) and the full Node suite passed after correcting two stale test harness expectations. Rust formatting, frontend syntax and whitespace checks passed.
+- No live VPN, external server probes, Android device, route/DNS/proxy changes or account mutations were used.
+- Stable/public release remains NO-GO under `docs/PRODUCTION_RELEASE_GATE.md`: privileged service/secure IPC, signed distribution and live protocol/network acceptance are still open. Existing v1.2.18 draft remains untouched; do not publish stable without evidence and do not claim Android tunnel-latency parity.
+
+## 2026-11-19 EXE-only 1.2.19 packaging
+- Bumped source version consistently to 1.2.19 (Cargo, Cargo.lock, Tauri and visible UI).
+- Changed Tauri bundle target and CI/release artifacts to one complete NSIS `.exe` installer plus `SHA256SUMS.txt`; removed MSI and portable ZIP from both preview and release assets. Generated releases remain gated as drafts/prereleases.
+- Replaced MSI extraction with a Windows-CI-only NSIS install/runtime-hash/uninstall smoke check. It never launches the app or VPN. Local install smoke was not run because the installer is per-machine/elevated; no local UAC or network changes were initiated.
+- Hardened `scripts/package-installers.ps1`: it no longer recursively deletes `dist`, refuses to overwrite non-empty output, accepts `BYMEVPN_DIST_DIR`, and selects the exact versioned installer so stale `target` artifacts cannot be packaged. Existing ignored `dist` contents were preserved.
+- Built `ByMeVPN_1.2.19_x64-setup.exe` and packaged it under `src-tauri/target/release-artifacts-v1.2.19/` with SHA-256 `3b82c98dc0cc44d858373bda90bc8f83d20d83321d949862ce4cbc503a393594`.
+- Full Rust test suite: 71 passed. Full Node suite and focused packaging contract passed after the exact packaging-version filter; PowerShell parser, Rust formatting, JavaScript syntax and whitespace checks also passed.
+- Packaged installer SHA-256 was rechecked and matches the recorded value. Authenticode status is `NotSigned`; release code signing remains unresolved.
+- No live VPN session, real server probe, Android device/USB, account mutation, route/DNS/proxy change or local installer execution. Public stable release remains blocked by the production gate; do not tag/publish v1.2.19 as stable or change the draft policy.
+
+## 2026-11-20 VPN probe and Hysteria latency fix
+- Added Cloudflare and Google 204 endpoints to the paired HTTPS egress check so `probe_unavailable` is less dependent on Google connectivity-check and Microsoft endpoints alone.
+- Hysteria2/Hy2 server ping now launches a short-lived, authenticated loopback-only Xray probe and measures a real HTTPS request through the configured QUIC/TLS outbound. It does not use TCP connect time as a Hysteria latency and owns the temporary process with a Windows kill-on-close job. Probe parallelism is capped at two, failed results are cached for 10 minutes, and the server catalog still has a four-second overall cap.
+- App startup now deletes only stale `server-ping-*.json` temporary configs from its own app-data directory, preserving unrelated settings/files after a forced process exit.
+- Ping tooltip distinguishes protocol-level HTTPS latency for Hysteria2 from TCP handshake time for TCP protocols. Cache retains only this safe method label and clears stale ping values.
+- Verified offline: Cargo check; targeted Hysteria/UDP ping eligibility and stale-config cleanup tests; bundled Xray accepted synthetic Hysteria2 configuration test; focused Node contracts (62 passed); formatting, JavaScript syntax and `git diff --check`.
+- No server, account, VPN session, system route, DNS, proxy, adapter, or Android device was touched. Automatic choice logic is covered offline, but actual selected-server reachability, Hysteria server latency, and the screenshot's environment-specific `probe_unavailable` symptom remain unverified until live connectivity can be tested.
+
+## 2026-11-20 startup verification errors and automatic selection display
+- Increased the preflight loopback-listener grace from 2s to 5s and replaced the single generic safe-check error with separate core-exit, listener-timeout, and remote HTTPS-probe errors; all occur before TUN routes are changed.
+- Increased the bounded full TUN handoff window from 9s to 12s and its end-to-end HTTPS-path verification from 6s to 8s to accommodate slower Windows DNS startup without accepting a failed proof.
+- The automatic-server card now retains and displays the locally selected server name even if the preflight attempt fails, so users can see which node was attempted.
+- Bumped source/package version to 1.2.20 for this release candidate. Stable release remains blocked by the production release gate; an authorized tag would create only a draft prerelease under repository policy.
+- Offline checks passed: Cargo check, 48 focused UI/startup Node checks, format and whitespace checks. No live VPN or system network settings were touched.
+- Final v1.2.20 release build succeeded: Tauri produced `ByMeVPN_1.2.20_x64-setup.exe` (15,934,976 bytes). Packaged under `src-tauri/target/release-artifacts-v1.2.20/` with SHA-256 `4c560a47b3e0b3e8cc0d82f7dd03b574f9eec4c4f307eab78be7890729e3720b`; Authenticode reports `NotSigned`.
+- Additional release-hardening contract checks passed (8 tests). Live tunnel, route/DNS behavior and external IP proof remain intentionally untested; this candidate must remain draft/prerelease under `docs/PRODUCTION_RELEASE_GATE.md`.

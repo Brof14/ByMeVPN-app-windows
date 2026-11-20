@@ -59,6 +59,10 @@ jobs:
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/diagnose-vpn.ps1), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/smoke-nsis.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/package-installers.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
 
       - name: Check Rust formatting
         run: cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
@@ -79,7 +83,7 @@ jobs:
           cargo test --release --manifest-path src-tauri/Cargo.toml
 
   package-windows:
-    name: Build installers (.exe and .msi)
+    name: Build the Windows .exe installer
     needs: [frontend, test]
     runs-on: windows-latest
     permissions:
@@ -98,19 +102,21 @@ jobs:
       - name: Verify VPN runtime assets
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/setup-runtime.ps1
-      - name: Build Tauri NSIS installer and MSI
+      - name: Build Tauri NSIS installer
         shell: pwsh
         run: npx --yes @tauri-apps/cli@2 build
-      - name: Verify MSI can be extracted and carries the VPN runtime
+      - name: Install, verify runtime hashes and uninstall NSIS package
         shell: pwsh
-        run: ./scripts/smoke-msi.ps1
-      - name: Package validated installers
+        run: ./scripts/smoke-nsis.ps1
+      - name: Package the installer and checksum only
         shell: pwsh
         run: ./scripts/package-installers.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ByMeVPN-Windows-Installers
-          path: dist/*
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -138,7 +144,7 @@ jobs:
           fail_on_unmatched_files: true
           body: |
             ## Windows preview — checked CI build
-            Download the NSIS .exe installer for normal installation or the .msi for managed deployments. Both include the verified Xray/Wintun runtime and routing databases.
+            Download the NSIS `.exe` installer. It includes the verified Xray/Wintun runtime and routing databases; a SHA-256 file is provided for verification.
 
             WARNING: This is an experimental preview, not an independently verified leak-proof VPN. Real Windows 10/11 network tests, DNS/IPv6 checks, true Kill Switch, sleep/reconnect and code-signing acceptance remain incomplete.
             The current desktop executable requests Administrator privileges. Never disable Windows security controls to install it.
@@ -146,5 +152,4 @@ jobs:
             See [release blockers](https://github.com/Brof14/ByMeVPN-app-windows/blob/main/docs/RELEASE_BLOCKERS.md).
           files: |
             dist/*.exe
-            dist/*.msi
             dist/SHA256SUMS.txt

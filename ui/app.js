@@ -30,6 +30,7 @@ const state = {
     flag: '🌐',
     ping: 0
   },
+  autoSelectedServer: null,
   selectedDevicesCount: 2,
   selectedPlanCode: 'year',
   vpnConnected: false,
@@ -786,7 +787,8 @@ async function loadAvailableServers() {
 
 const SERVER_CATALOG_CACHE_KEY = 'bymevpn.server-catalog.v1';
 const SERVER_CATALOG_FIELDS = [
-  'name', 'name_en', 'country', 'country_en', 'country_code', 'city', 'city_en', 'flag'
+  'name', 'name_en', 'country', 'country_en', 'country_code', 'city', 'city_en', 'flag',
+  'protocol', 'security'
 ];
 
 function sanitizeCachedServerCatalog(value) {
@@ -799,8 +801,11 @@ function sanitizeCachedServerCatalog(value) {
     for (const field of SERVER_CATALOG_FIELDS) {
       if (typeof server[field] === 'string') safe[field] = server[field].slice(0, 100);
     }
+    if (server.ping_method === 'vpn_https' || server.ping_method === 'tcp_connect') {
+      safe.ping_method = server.ping_method;
+    }
     // Cached catalog entries can outlive the network and server settings.
-    // Never show an old TCP measurement as a current latency.
+    // Never show an old measurement as current latency.
     safe.ping = 0;
     return [safe];
   });
@@ -1185,6 +1190,7 @@ function setupEventListeners() {
     }
   });
   document.getElementById('recommended-server-auto')?.addEventListener('click', () => {
+    state.autoSelectedServer = null;
     void selectServer({ code: 'auto', name: 'Автоматически', country: '', flag: '🌐', ping: 0 });
   });
   // The quick bypass strip must not be a dead end: Android exposes the
@@ -1836,7 +1842,14 @@ async function toggleVpn(allowServerSwitch = false) {
 
     showToast('Запуск туннеля Xray + Wintun...');
     try {
-      const code = state.selectedServer.code === 'auto' ? null : state.selectedServer.code;
+      const autoTarget = state.selectedServer.code === 'auto' && !state.serversStale
+        ? chooseAutomaticServer(state.servers)
+        : null;
+      state.autoSelectedServer = autoTarget || null;
+      updateVpnUi();
+      const code = state.selectedServer.code === 'auto'
+        ? (autoTarget?.code || null)
+        : state.selectedServer.code;
       const metrics = await invoke('vpn_start', { nodeCode: code });
       state.vpnConnected = metrics?.connected === true;
       if (!state.vpnConnected) throw new Error('Движок не подтвердил соединение');
@@ -2234,6 +2247,9 @@ function updateVpnUi() {
   const homeFlag = document.getElementById('home-server-flag');
   const homeCountry = document.getElementById('home-server-country');
   const homeCity = document.getElementById('home-server-city');
+  const automaticConnected = isConn && s.code === 'auto' && !!state.metrics?.server_name;
+  const automaticSubtitle = document.querySelector('#recommended-server-auto .rec-server-info span');
+  if (automaticSubtitle) automaticSubtitle.textContent = automaticServerSubtitle();
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
   if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
@@ -2253,10 +2269,10 @@ function updateVpnUi() {
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
   if (homeFlag) homeFlag.textContent = s.flag || '🌐';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
-    uiText('Автоматически', 'Automatic') :
+    (automaticConnected && state.metrics?.country ? state.metrics.country : uiText('Автоматически', 'Automatic')) :
     (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
-    uiText('Автовыбор', 'Auto select') :
+    (automaticConnected ? state.metrics.server_name : uiText('Автовыбор', 'Auto select')) :
     ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
 
   updateMetricsUi();
@@ -2654,7 +2670,17 @@ function serverDisplayName(server) {
   return server.city_en ? country + ' • ' + server.city_en : country;
 }
 
+function automaticServerSubtitle() {
+  const selectedName = state.vpnConnected && state.selectedServer.code === 'auto'
+    ? String(state.metrics?.server_name || '').trim()
+    : String(state.autoSelectedServer?.name || '').trim();
+  if (!selectedName) return uiText('Система назначит доступный сервер', 'The service will assign an available server');
+  return uiText(`Выбран сервер: ${selectedName}`, `Selected server: ${selectedName}`);
+}
+
 function renderServersList(filter = '') {
+  const autoSubtitle = document.querySelector('#recommended-server-auto .rec-server-info span');
+  if (autoSubtitle) autoSubtitle.textContent = automaticServerSubtitle();
   const container = document.getElementById('servers-dynamic-list');
   if (!container) return;
   container.replaceChildren();
@@ -2695,8 +2721,11 @@ function renderServersList(filter = '') {
     const ping = document.createElement('span');
     ping.className = 'server-ping-badge';
     ping.textContent = srv.ping > 0 ? (srv.ping + ' ms') : '—';
+    const pingMethod = srv.ping_method === 'vpn_https'
+      ? uiText('Время HTTPS-запроса через Hysteria 2', 'HTTPS request time through Hysteria 2')
+      : uiText('Время TCP-соединения с сервером, не задержка через VPN', 'TCP connection time to the server, not latency through VPN');
     ping.title = srv.ping > 0
-      ? uiText('Время TCP-соединения с сервером, не задержка через VPN', 'TCP connection time to the server, not latency through VPN')
+      ? pingMethod
       : uiText('Задержка неизвестна', 'Latency unavailable');
     ping.setAttribute('aria-label', srv.ping > 0 ? `${ping.title}: ${srv.ping} ms` : ping.title);
     const dot = document.createElement('span');
@@ -2735,6 +2764,7 @@ async function selectServer(server) {
     if (epoch !== state.sessionEpoch) return;
     state.preferredServerCode = server.code;
     state.selectedServer = server;
+    state.autoSelectedServer = null;
     const autoButton = document.getElementById('recommended-server-auto');
     autoButton?.classList.toggle('selected', server.code === 'auto');
     autoButton?.setAttribute('aria-pressed', String(server.code === 'auto'));
@@ -2757,6 +2787,21 @@ async function selectServer(server) {
     // Re-enable the main connect control after a completed or failed switch.
     updateVpnUi();
   }
+}
+
+// Match Android's automatic choice: prefer the quickest reachable Reality
+// node; otherwise use the quickest measured TCP endpoint, then a Reality node.
+// Hysteria's HTTPS-through-QUIC measurement is useful to display, but is not
+// directly comparable to TCP handshake times for automatic ranking.
+function chooseAutomaticServer(servers) {
+  const supported = (Array.isArray(servers) ? servers : [])
+    .filter(server => server && server.supported !== false);
+  const isReality = server => String(server.security || '').toLowerCase() === 'reality';
+  const measuredTcp = server => server.ping_method === 'tcp_connect' && Number(server.ping) > 0;
+  const quickest = list => list.slice().sort((a, b) => Number(a.ping) - Number(b.ping))[0] || null;
+  return quickest(supported.filter(server => isReality(server) && measuredTcp(server))) ||
+    quickest(supported.filter(measuredTcp)) ||
+    supported.find(isReality) || supported[0] || null;
 }
 
 function filterServers(query) {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createContext, runInContext } from 'node:vm';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const js = read('ui/app.js');
@@ -48,4 +49,33 @@ test('no invented German server or unsupported no-advertising promise on the hom
   assert.match(html, /id="home-server-country">Автоматически/);
   assert.doesNotMatch(html, /id="home-server-country">Германия/);
   assert.doesNotMatch(html, /<span>Без рекламы<\/span>/);
+});
+
+test('automatic selection shows the server actually assigned by the backend', () => {
+  const context = createContext({
+    document: {
+      documentElement: { lang: 'ru' },
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      addEventListener() {}
+    },
+    window: {},
+    navigator: { language: 'ru-RU' },
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval
+  });
+  runInContext(js, context);
+  runInContext("state.vpnConnected = true; state.selectedServer.code = 'auto'; state.metrics.server_name = 'deGermany';", context);
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Выбран сервер: deGermany');
+  runInContext("state.settings.language = 'en';", context);
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: deGermany');
+  runInContext('state.vpnConnected = false;', context);
+  runInContext("state.autoSelectedServer = {name:'Germany'};", context);
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: Germany');
+  runInContext('state.autoSelectedServer = null;', context);
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'The service will assign an available server');
 });

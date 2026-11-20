@@ -243,7 +243,9 @@ pub async fn verify_tunnel_path(
     let pair = resolve_probe_results(ip_paths, generic_paths);
     // A bounded failure remains fail-closed; no process or route is accepted
     // based only on an accepted CONNECT or an unanswered request.
-    tokio::time::timeout(Duration::from_secs(6), pair)
+    // Give slow Windows DNS/TUN resolution a little longer than the per-host
+    // request deadline before declaring the whole path unavailable.
+    tokio::time::timeout(Duration::from_secs(8), pair)
         .await
         .unwrap_or(TunnelProof::ProbeUnavailable)
 }
@@ -320,9 +322,11 @@ async fn probe_ip_paths(
     }
 }
 
-const HTTPS_REACHABILITY_ENDPOINTS: [&str; 2] = [
+const HTTPS_REACHABILITY_ENDPOINTS: [&str; 4] = [
     "https://connectivitycheck.gstatic.com/generate_204",
     "https://www.msftconnecttest.com/connecttest.txt",
+    "https://cp.cloudflare.com/generate_204",
+    "https://www.google.com/generate_204",
 ];
 
 async fn probe_https_reachability(client: reqwest::Client) -> bool {
@@ -383,6 +387,35 @@ async fn probe_https_endpoint(client: reqwest::Client, endpoint: &'static str) -
         }
     }
     body == b"Microsoft Connect Test"
+}
+
+/// Measures a real HTTPS transaction through Xray's authenticated local
+/// inbound. This works for UDP-only outbounds such as Hysteria2; a TCP port
+/// connect would measure an unrelated service or fail on the same endpoint.
+pub async fn measure_xray_server_latency(port: u16, password: &str) -> Option<u32> {
+    let client = authenticated_proxy_client(port, password).ok()?;
+    let mut probes = JoinSet::new();
+    for endpoint in HTTPS_REACHABILITY_ENDPOINTS {
+        let client = client.clone();
+        probes.spawn(async move {
+            let started = tokio::time::Instant::now();
+            probe_https_endpoint(client, endpoint)
+                .await
+                .then(|| started.elapsed().as_millis().max(1).min(9999) as u32)
+        });
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(result) = probes.join_next().await {
+            if let Ok(Some(ms)) = result {
+                probes.abort_all();
+                return Some(ms);
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn parse_ip(body: &str) -> Result<IpAddr, String> {

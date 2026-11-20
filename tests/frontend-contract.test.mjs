@@ -45,6 +45,15 @@ test('all external links pass through the validated native Tauri broker', () => 
   assert.match(source, /invoke\('open_external_url'/);
 });
 
+test('session recovery retries only a transient API outage once', () => {
+  const app = harness();
+  assert.equal(app.eval("isTransientSessionRestoreError('Не удалось связаться с ByMeVPN API: истекло время ожидания ответа')"), true);
+  assert.equal(app.eval("isTransientSessionRestoreError('Запрос завершился ошибкой (HTTP 503)')"), true);
+  assert.equal(app.eval("isTransientSessionRestoreError('Сеанс истёк. Войдите в аккаунт снова.')"), false);
+  assert.match(source, /await new Promise\(resolve => setTimeout\(resolve, 450\)\)/);
+  assert.match(source, /sessionRestoreErrorMessage\(restoreError\)/);
+});
+
 test('pending invoice survives app restart and is bound to the backend invoice', () => {
   const native = readFileSync(new URL('../src-tauri/src/service.rs', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8');

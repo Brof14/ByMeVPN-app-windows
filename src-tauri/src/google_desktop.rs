@@ -14,6 +14,56 @@ use uuid::Uuid;
 
 const CALLBACK_PATH: &str = "/oauth2/callback";
 const AUTH_TIMEOUT: Duration = Duration::from_secs(180);
+const CALLBACK_ACCEPTED_HTML: &str = r#"<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ByMeVPN — вход через Google</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #090f1d; color: #eef4f4; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #142638 0, #090f1d 66%); }
+    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #263647; border-radius: 24px; background: linear-gradient(145deg, #142638, #121c2b 62%, #101e1d); text-align: center; box-shadow: 0 24px 72px #02060d80; }
+    .mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #69d3bc80; border-radius: 50%; background: #69d3bc18; color: #69d3bc; font-size: 28px; font-weight: 700; }
+    .brand { margin: 0 0 22px; font-size: 15px; font-weight: 750; letter-spacing: -.2px; }
+    .brand span { color: #79d9bc; }
+    h1 { margin: 0 0 10px; font-size: clamp(23px, 5vw, 28px); line-height: 1.2; }
+    p { margin: 0; color: #9cacbd; font-size: 15px; line-height: 1.65; }
+    .hint { margin-top: 22px; padding-top: 18px; border-top: 1px solid #263647; color: #7d94a8; font-size: 12px; }
+    @media (max-width: 420px) { main { padding: 30px 22px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">✓</div>
+    <p class="brand">ByMe<span>VPN</span></p>
+    <h1>Вход через Google подтверждён</h1>
+    <p>Вернитесь в ByMeVPN — приложение завершит вход в аккаунт.</p>
+    <p class="hint">Google approved sign-in. Return to ByMeVPN to finish signing in.</p>
+  </main>
+</body>
+</html>"#;
+const CALLBACK_REJECTED_HTML: &str = r#"<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ByMeVPN — вход не подтверждён</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #090f1d; color: #eef4f4; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #142638 0, #090f1d 66%); }
+    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #263647; border-radius: 24px; background: #121c2b; text-align: center; }
+    .mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #e8bc8480; border-radius: 50%; background: #e8bc8418; color: #e8bc84; font-size: 28px; font-weight: 700; }
+    h1 { margin: 0 0 10px; font-size: 25px; }
+    p { margin: 0; color: #9cacbd; font-size: 15px; line-height: 1.65; }
+  </style>
+</head>
+<body><main><div class="mark" aria-hidden="true">×</div><h1>Вход не подтверждён</h1><p>Вернитесь в ByMeVPN и попробуйте ещё раз.<br>Google sign-in was not accepted. Return to ByMeVPN and try again.</p></main></body>
+</html>"#;
 
 fn valid_client_id(id: &str) -> bool {
     id.len() <= 200
@@ -41,8 +91,7 @@ fn oauth_url(client_id: &str, redirect: &str, nonce: &str, state: &str, challeng
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", state)
-        .append_pair("nonce", nonce)
-        .append_pair("prompt", "select_account");
+        .append_pair("nonce", nonce);
     url
 }
 
@@ -116,17 +165,20 @@ fn parse_callback(first_line: &str, expected_state: &str) -> Callback {
     Callback::Code(codes[0].clone())
 }
 
-async fn respond(stream: &mut TcpStream, ok: bool) {
-    let body = if ok {
-        "ByMeVPN: Google authorization received. Return to the app to finish sign-in."
+fn callback_response(ok: bool) -> String {
+    let (status, body) = if ok {
+        ("200 OK", CALLBACK_ACCEPTED_HTML)
     } else {
-        "ByMeVPN: this request was not accepted."
+        ("400 Bad Request", CALLBACK_REJECTED_HTML)
     };
-    let status = if ok { "200 OK" } else { "400 Bad Request" };
-    let response = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
         body.len()
-    );
+    )
+}
+
+async fn respond(stream: &mut TcpStream, ok: bool) {
+    let response = callback_response(ok);
     let _ = stream.write_all(response.as_bytes()).await;
     let _ = stream.shutdown().await;
 }
@@ -329,5 +381,19 @@ mod tests {
         assert!(!valid_client_id(
             "bad.apps.googleusercontent.com.attacker.invalid"
         ));
+    }
+
+    #[test]
+    fn callback_page_matches_app_theme_and_never_injects_content() {
+        let accepted = callback_response(true);
+        assert!(accepted.starts_with("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8"));
+        assert!(accepted.contains("Вход через Google подтверждён"));
+        assert!(accepted.contains("Google approved sign-in"));
+        assert!(accepted.contains("#090f1d"));
+        assert!(accepted.contains("#69d3bc"));
+        assert!(accepted.contains("Content-Security-Policy: default-src 'none'"));
+        assert!(!accepted.contains("<script"));
+        assert!(!accepted.contains("https://"));
+        assert!(callback_response(false).contains("Вход не подтверждён"));
     }
 }

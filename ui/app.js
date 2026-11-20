@@ -696,6 +696,32 @@ function setupWindowControls() {
 }
 
 // Initial Data Loader
+function isTransientSessionRestoreError(error) {
+  const message = String(typeof error === 'string' ? error : error?.message || '');
+  return /HTTP (?:429|5\d\d)|timeout|истекло время ожидания|не удалось установить защищённое TLS-соединение|ошибка сетевого обмена|не удалось связаться с ByMeVPN API/i.test(message);
+}
+
+function sessionRestoreErrorMessage(error) {
+  const message = String(typeof error === 'string' ? error : error?.message || '');
+  const status = message.match(/HTTP (\d{3})/i)?.[1];
+  if (/timeout|истекло время ожидания|TLS|ошибка сетевого обмена|не удалось связаться с ByMeVPN API/i.test(message)) {
+    return uiText(
+      'Не удалось связаться с сервером авторизации. Проверьте интернет и повторите проверку аккаунта.',
+      'Could not reach the sign-in server. Check your internet connection and retry account verification.'
+    );
+  }
+  if (status && (status === '429' || Number(status) >= 500)) {
+    return uiText(
+      `Сервер авторизации временно не ответил (HTTP ${status}). Повторите проверку аккаунта.`,
+      `The sign-in server did not respond (HTTP ${status}). Retry account verification.`
+    );
+  }
+  return uiText(
+    'Не удалось проверить сохранённый сеанс. Повторите проверку аккаунта.',
+    'Could not verify the saved session. Retry account verification.'
+  );
+}
+
 async function loadInitialData() {
   const epoch = state.sessionEpoch;
   // Autostart is owned by the Windows Run registry key, not by settings.json.
@@ -719,10 +745,23 @@ async function loadInitialData() {
   // Pricing is nonessential for login: never delay startup on /plans timeout.
   let session = null;
   let restoreFailed = false;
+  let restoreError = null;
   try {
     session = await invoke('restore_session');
-  } catch (err) {
+  } catch (error) {
     restoreFailed = true;
+    restoreError = error;
+    if (isTransientSessionRestoreError(error)) {
+      await new Promise(resolve => setTimeout(resolve, 450));
+      if (epoch !== state.sessionEpoch) return;
+      try {
+        session = await invoke('restore_session');
+        restoreFailed = false;
+        restoreError = null;
+      } catch (retryError) {
+        restoreError = retryError;
+      }
+    }
   }
   if (epoch !== state.sessionEpoch) return;
   if (session?.user) {
@@ -733,7 +772,7 @@ async function loadInitialData() {
     showAuthScreen('login');
     const retry = document.getElementById('btn-retry-session');
     retry?.classList.toggle('hidden', !restoreFailed);
-    if (restoreFailed) showToast('Сервер недоступен. Вы можете повторить проверку сеанса.', true);
+    if (restoreFailed) showToast(sessionRestoreErrorMessage(restoreError), true);
   }
   await checkVpnStatus();
   if (state.user && state.settings.autoConnect && !state.vpnConnected) {

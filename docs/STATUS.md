@@ -1,7 +1,7 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-20
-**Source version:** `1.2.20`
+**Source version:** `1.2.21`
 **Release classification:** Experimental / **NOT production-ready**. The current source is newer than the existing GitHub draft and remains subject to the production release gate.
 
 ## Implemented and source-verified

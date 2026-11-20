@@ -9,6 +9,7 @@ const probes = read('src-tauri/src/egress.rs');
 const ui = read('ui/app.js');
 const css = read('ui/styles.css');
 const main = read('src-tauri/src/main.rs');
+const html = read('ui/index.html');
 
 test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /enum EgressFailure/);
@@ -65,6 +66,18 @@ test('Google login never sends raw tokens through UI and uses native PKCE S256',
   assert.doesNotMatch(ui, /invoke\('auth_google',\s*\{\s*idToken/);
   assert.ok(!ui.includes('Google-вход пока недоступен. Используйте Telegram или Email.'));
   assert.doesNotMatch(css, /display: none; \/\* Google OAuth remains disabled/);
+});
+
+test('Google callback uses the ByMeVPN theme and does not force the account chooser', () => {
+  assert.match(oauth, /text\/html; charset=utf-8/);
+  assert.match(oauth, /Вход через Google подтверждён/);
+  assert.match(oauth, /Google approved sign-in/);
+  assert.match(oauth, /Content-Security-Policy/);
+  assert.match(oauth, /#090f1d/i);
+  assert.match(oauth, /#69d3bc/i);
+  assert.doesNotMatch(oauth, /append_pair\("prompt", "select_account"\)/);
+  assert.equal((html.match(/class="google-g-icon" viewBox="0 0 24 24"/g) || []).length, 2);
+  assert.doesNotMatch(html, /<span class="google-g-icon">G<\/span>/);
 });
 
 

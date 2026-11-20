@@ -168,3 +168,9 @@ Public stable release is not proven ready. Existing release audit: `docs/AUDIT_2
 - Offline checks passed: Cargo check, 48 focused UI/startup Node checks, format and whitespace checks. No live VPN or system network settings were touched.
 - Final v1.2.20 release build succeeded: Tauri produced `ByMeVPN_1.2.20_x64-setup.exe` (15,934,976 bytes). Packaged under `src-tauri/target/release-artifacts-v1.2.20/` with SHA-256 `4c560a47b3e0b3e8cc0d82f7dd03b574f9eec4c4f307eab78be7890729e3720b`; Authenticode reports `NotSigned`.
 - Additional release-hardening contract checks passed (8 tests). Live tunnel, route/DNS behavior and external IP proof remain intentionally untested; this candidate must remain draft/prerelease under `docs/PRODUCTION_RELEASE_GATE.md`.
+
+## 2026-11-20 Google sign-in UX and session-recovery retry
+- Google OAuth no longer explicitly forces `select_account`; returning browser sessions can complete without a redundant chooser when Google already has consent. Loopback callback now displays a self-contained bilingual ByMeVPN success/error page using the Android dark/mint palette, restrictive CSP, no external resources, and no-store headers. Login/register buttons use the same multicolor Google SVG treatment as Android.
+- Saved-session startup now makes one 450 ms retry only after a transient timeout/TLS/429/5xx failure; it avoids retrying expired/invalid sessions and reports a localized reason instead of discarding the native error into one generic toast.
+- Focused Node contracts and the Rust callback-page unit test passed; JS syntax, Rust formatting and whitespace checks passed. No account, browser OAuth, VPN, route, DNS, or proxy action was run.
+- Bumped source to `1.2.21`. If an authorized GitHub tag is pushed, repository workflow creates a draft prerelease only. Public stable release remains blocked by the production gate and live VPN acceptance is still intentionally unverified.

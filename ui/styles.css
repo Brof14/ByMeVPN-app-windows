@@ -354,13 +354,11 @@ html, body {
 }
 
 .google-g-icon {
+  display: block;
+  flex: 0 0 22px;
   width: 22px;
-  font-size: 18px;
-  font-weight: 900;
-  background: conic-gradient(#4285F4 0 28%, #34A853 28% 52%, #FBBC05 52% 73%, #EA4335 73%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-right: 10px;
+  height: 22px;
+  margin-right: 14px;
 }
 
 .btn-google span:nth-child(2) {

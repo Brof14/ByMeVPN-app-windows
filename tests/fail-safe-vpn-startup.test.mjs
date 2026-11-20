@@ -14,7 +14,8 @@ test('selected VPN endpoint must respond before Xray takes over Windows TUN', ()
   const tunLaunch = start.indexOf('.arg(&config_path)', preflight);
   assert.ok(preflight > 0 && tunLaunch > preflight, 'preflight must finish before full tunnel starts');
   assert.match(start, /preflight_attestation_config\(&xray_config\)/);
-  assert.match(start, /if !preflight_ok \{/);
+  assert.match(start, /if !preflight_server_reachable \{/);
+  assert.match(start, /Duration::from_secs\(5\)/);
   assert.match(start, /preflight_child\.kill\(\)/);
   assert.match(start, /preflight_child\.wait\(\)/);
   assert.match(tunConfig, /fn preflight_attestation_config\(/);
@@ -29,7 +30,7 @@ test('observed traffic without IP proof stays unverified; failed TUN proof is ro
   assert.match(start, /let verified_ip = tunnel_ready\.then\(\|\| proof\.verified_ip\(\)\)\.flatten\(\)/);
   assert.match(start, /if !tunnel_ready \{/);
   assert.match(start, /stop_failed_tun\(&mut child, &config_path\)\.await/);
-  assert.match(start, /tokio::time::timeout\(Duration::from_secs\(9\)/);
+  assert.match(start, /tokio::time::timeout\(Duration::from_secs\(12\)/);
   assert.match(start, /return Err\(/);
   assert.ok(start.indexOf('if !tunnel_ready') < start.indexOf('*lock = Some(ActiveTunnel {'));
   assert.match(egress, /TrafficObservedUnverified/);

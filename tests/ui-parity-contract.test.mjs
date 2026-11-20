@@ -70,9 +70,12 @@ test('automatic selection shows the server actually assigned by the backend', ()
   });
   runInContext(js, context);
   runInContext("state.vpnConnected = true; state.selectedServer.code = 'auto'; state.metrics.server_name = 'deGermany';", context);
-  assert.equal(runInContext('automaticServerSubtitle()', context), 'Выбран: deGermany');
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Выбран сервер: deGermany');
   runInContext("state.settings.language = 'en';", context);
-  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected: deGermany');
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: deGermany');
   runInContext('state.vpnConnected = false;', context);
+  runInContext("state.autoSelectedServer = {name:'Germany'};", context);
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: Germany');
+  runInContext('state.autoSelectedServer = null;', context);
   assert.equal(runInContext('automaticServerSubtitle()', context), 'The service will assign an available server');
 });

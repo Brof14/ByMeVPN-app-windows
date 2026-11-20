@@ -108,6 +108,24 @@ impl Drop for TemporaryConfig {
     }
 }
 
+pub fn cleanup_stale_server_ping_configs(app_dir: &std::path::Path) {
+    let Ok(entries) = fs::read_dir(app_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_probe_config = path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("server-ping-"));
+        if is_probe_config {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 async fn stop_failed_tun(
     child: &mut std::process::Child,
     config_path: &std::path::Path,
@@ -1140,7 +1158,11 @@ fn tcp_ping_target(host: &str, port: u16) -> String {
 }
 
 fn protocol_supports_tcp_ping(config: &Value) -> bool {
-    !config
+    !is_hysteria_protocol(config)
+}
+
+fn is_hysteria_protocol(config: &Value) -> bool {
+    config
         .get("protocol")
         .and_then(Value::as_str)
         .is_some_and(|protocol| {
@@ -1160,6 +1182,94 @@ pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
         }
     }
     0
+}
+
+struct ProbeChild {
+    child: std::process::Child,
+    #[cfg(windows)]
+    _job: crate::windows_job::ChildJob,
+}
+
+impl Drop for ProbeChild {
+    fn drop(&mut self) {
+        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
+            let _ = self.child.kill();
+        }
+        let _ = self.child.wait();
+    }
+}
+
+fn spawn_probe_child(
+    runtime_dir: &std::path::Path,
+    config_path: &std::path::Path,
+) -> Option<ProbeChild> {
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let mut command = std::process::Command::new(runtime_dir.join("xray.exe"));
+    command
+        .current_dir(runtime_dir)
+        .env("XRAY_LOCATION_ASSET", runtime_dir)
+        .args(["run", "-config"])
+        .arg(config_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let mut child = command.spawn().ok()?;
+    #[cfg(windows)]
+    let job = match crate::windows_job::ChildJob::attach(&child) {
+        Ok(job) => job,
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+    };
+    Some(ProbeChild {
+        child,
+        #[cfg(windows)]
+        _job: job,
+    })
+}
+
+/// Hysteria2 latency must include its QUIC/TLS/auth handshake and a real
+/// request through the outbound. The temporary Xray process has no TUN,
+/// system routes, DNS changes, or listener beyond authenticated loopback.
+async fn measure_hysteria_latency(
+    runtime_dir: PathBuf,
+    app_dir: PathBuf,
+    session: Value,
+) -> Option<u32> {
+    let mut config = build_tun_config_ext(&session, false, "none", "cloudflare").ok()?;
+    let reservation = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
+    let port = reservation.local_addr().ok()?.port();
+    let password = Uuid::new_v4().simple().to_string();
+    add_attestation_http_inbound(&mut config, port, "bymevpn-ping", &password).ok()?;
+    let preflight = preflight_attestation_config(&config).ok()?;
+    fs::create_dir_all(&app_dir).ok()?;
+    let config_path = app_dir.join(format!("server-ping-{}.json", Uuid::new_v4()));
+    let _temporary_config = TemporaryConfig(config_path.clone());
+    fs::write(&config_path, serde_json::to_vec(&preflight).ok()?).ok()?;
+    drop(reservation);
+
+    let runtime_for_spawn = runtime_dir.clone();
+    let config_for_spawn = config_path.clone();
+    let mut process = tauri::async_runtime::spawn_blocking(move || {
+        spawn_probe_child(&runtime_for_spawn, &config_for_spawn)
+    })
+    .await
+    .ok()??;
+    if !crate::egress::wait_for_attestation_listener(port, Duration::from_millis(1200)).await {
+        return None;
+    }
+    let ping = crate::egress::measure_xray_server_latency(port, &password).await?;
+    process
+        .child
+        .try_wait()
+        .ok()
+        .is_some_and(|status| status.is_none())
+        .then_some(ping)
 }
 
 fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
@@ -1203,7 +1313,19 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
     // Avoid spawning an unbounded number of blocking DNS/TCP probes when
     // the server catalog grows. Rendering remains responsive under load.
     let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
-    let mut tasks = Vec::with_capacity(servers.len());
+    let hysteria_ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
+    let needs_hysteria_probe = should_probe
+        && servers.iter().any(|server| {
+            let config = server.get("config").unwrap_or(server);
+            supports_windows_session(config) && is_hysteria_protocol(config)
+        });
+    let runtime_dir = needs_hysteria_probe
+        .then(|| get_runtime_dir(&app).ok())
+        .flatten();
+    let app_dir = needs_hysteria_probe
+        .then(|| app.path().app_data_dir().ok())
+        .flatten();
+    let mut ping_tasks = tokio::task::JoinSet::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
         let config = server.get("config").unwrap_or(server);
@@ -1274,6 +1396,11 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
             .unwrap_or(country_en);
+        let protocol = config
+            .get("protocol")
+            .and_then(Value::as_str)
+            .unwrap_or("vless");
+        let security = config.get("security").and_then(Value::as_str).unwrap_or("");
         // Use the normalized ISO-3166 alpha-2 code so newly added server
         // countries get a flag without requiring a Windows-client release.
         let flag_fallback = country_flag(&code_upper);
@@ -1290,46 +1417,64 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
             .to_string();
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
         let supported = supports_windows_session(config);
-        // Hysteria2 is UDP-only; a TCP connect is not its latency and
-        // just delays the server list by waiting for a closed TCP port.
-        let tcp_probe_supported = supported
-            && protocol_supports_tcp_ping(config)
-            && !host.is_empty()
-            && (1..=65535).contains(&port);
-        let cache_key = tcp_probe_supported.then(|| server_ping_cache_key(code, config));
+        let valid_endpoint = !host.is_empty() && (1..=65535).contains(&port);
+        let hysteria = is_hysteria_protocol(config);
+        let probe_supported = supported && valid_endpoint;
+        let cache_key = probe_supported.then(|| server_ping_cache_key(code, config));
         let cached_ping = cache_key.as_deref().and_then(cached_server_ping);
-        let task = if should_probe && tcp_probe_supported && cached_ping.is_none() {
-            let slots = ping_slots.clone();
-            let key = cache_key.expect("eligible TCP probes have a cache key");
-            Some(tauri::async_runtime::spawn(async move {
-                let _permit = slots.acquire_owned().await.ok()?;
-                let ping = tauri::async_runtime::spawn_blocking(move || {
-                    measure_real_ping(&host, port as u16)
-                })
-                .await
-                .ok()?;
-                Some((key, ping))
-            }))
-        } else {
-            None
-        };
-        tasks.push(task);
+        if should_probe && probe_supported && cached_ping.is_none() {
+            let index = normalized.len();
+            let key = cache_key.expect("eligible probes have a cache key");
+            if hysteria {
+                if let (Some(runtime), Some(directory)) = (runtime_dir.clone(), app_dir.clone()) {
+                    let slots = hysteria_ping_slots.clone();
+                    let session = config.clone();
+                    ping_tasks.spawn(async move {
+                        let _permit = slots.acquire_owned().await.ok()?;
+                        // Cache failed measurements too; repeatedly creating
+                        // QUIC processes for an offline node would slow refresh.
+                        let ping = measure_hysteria_latency(runtime, directory, session)
+                            .await
+                            .unwrap_or(0);
+                        Some((index, key, ping))
+                    });
+                }
+            } else if protocol_supports_tcp_ping(config) {
+                let slots = ping_slots.clone();
+                ping_tasks.spawn(async move {
+                    let _permit = slots.acquire_owned().await.ok()?;
+                    let ping = tauri::async_runtime::spawn_blocking(move || {
+                        measure_real_ping(&host, port as u16)
+                    })
+                    .await
+                    .ok()?;
+                    Some((index, key, ping))
+                });
+            }
+        }
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
+            "protocol":protocol, "security":security,
+            "ping_method": if hysteria { "vpn_https" } else { "tcp_connect" },
             "flag":flag, "supported":supported, "ping":cached_ping.unwrap_or(0)}));
     }
     // Bound the entire catalog loading delay, even with dozens of blocked
     // endpoints. Unknown latency stays 0 rather than becoming a fake ping.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
-    for (server, task) in normalized.iter_mut().zip(tasks) {
-        if let Some(mut task) = task {
-            match tokio::time::timeout_at(deadline, &mut task).await {
-                Ok(Ok(Some((key, ping)))) => {
-                    cache_server_ping(key, ping);
+    while !ping_tasks.is_empty() {
+        match tokio::time::timeout_at(deadline, ping_tasks.join_next()).await {
+            Ok(Some(Ok(Some((index, key, ping))))) => {
+                cache_server_ping(key, ping);
+                if let Some(server) = normalized.get_mut(index) {
                     server["ping"] = json!(ping);
                 }
-                _ => task.abort(),
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(_) => {
+                ping_tasks.abort_all();
+                break;
             }
         }
     }
@@ -2213,20 +2358,28 @@ async fn vpn_start_inner(
                 return Err(error);
             }
         };
-        let preflight_ok = matches!(preflight_child.try_wait(), Ok(None))
+        let preflight_process_running = matches!(preflight_child.try_wait(), Ok(None));
+        let preflight_listener_ready = preflight_process_running
             && crate::egress::wait_for_attestation_listener(
                 probe_port,
-                Duration::from_secs(2),
+                Duration::from_secs(5),
             )
-            .await
+            .await;
+        let preflight_server_reachable = preflight_listener_ready
             && preflight_xray_server(probe_port, &probe_password).await;
         // Shut down the process with NO TUN before enabling the system route.
         let _ = preflight_child.kill();
         let _ = preflight_child.wait();
         #[cfg(windows)]
         drop(preflight_job);
-        if !preflight_ok {
-            return Err("VPN-сервер не прошёл безопасную проверку. Системные маршруты Windows не изменены. Проверьте сервер и параметры подключения.".into());
+        if !preflight_process_running {
+            return Err("Xray завершился во время локальной проверки сервера. Маршруты Windows не менялись. Откройте диагностику подключения.".into());
+        }
+        if !preflight_listener_ready {
+            return Err("Xray не открыл локальный порт проверки за 5 секунд. Маршруты Windows не менялись. Проверьте журнал диагностики.".into());
+        }
+        if !preflight_server_reachable {
+            return Err("Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол. Маршруты Windows не менялись. Попробуйте другой сервер или проверьте его параметры.".into());
         }
 
         // Preserve bounded, local diagnostics for failures that happen only
@@ -2272,8 +2425,8 @@ async fn vpn_start_inner(
         };
 
         // Bound the ENTIRE period that Windows routes through an unverified
-        // TUN. Includes route inspection and DNS, not just the HTTPS probe.
-        let handoff = tokio::time::timeout(Duration::from_secs(9), async {
+        // TUN. Includes the full HTTPS probe, route inspection and DNS.
+        let handoff = tokio::time::timeout(Duration::from_secs(12), async {
             if !crate::egress::wait_for_attestation_listener(
                 probe_port,
                 Duration::from_secs(2),
@@ -2969,9 +3122,30 @@ mod tests {
             &json!({"protocol":"hysteria2"})
         ));
         assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
+        assert!(is_hysteria_protocol(&json!({"protocol":"Hysteria2"})));
+        assert!(is_hysteria_protocol(&json!({"protocol":"hy2"})));
         assert!(!protocol_supports_tcp_ping(
             &json!({"protocol":"HYSTERIA2"})
         ));
+    }
+
+    #[test]
+    fn startup_cleanup_removes_only_stale_server_ping_configs() {
+        let dir = std::env::temp_dir().join(format!("bymevpn-ping-cleanup-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let stale = dir.join("server-ping-old.json");
+        let unrelated = dir.join("settings.json");
+        let other_extension = dir.join("server-ping-old.txt");
+        fs::write(&stale, "secret probe config").unwrap();
+        fs::write(&unrelated, "user settings").unwrap();
+        fs::write(&other_extension, "keep").unwrap();
+
+        cleanup_stale_server_ping_configs(&dir);
+
+        assert!(!stale.exists());
+        assert!(unrelated.exists());
+        assert!(other_extension.exists());
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

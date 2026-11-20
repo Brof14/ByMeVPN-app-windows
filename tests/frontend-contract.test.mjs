@@ -438,8 +438,22 @@ test('server catalog does not retry authorization errors and explains recovery',
 
 test('cached server catalogs do not present stale latency as current', () => {
   const app = harness();
-  const result = app.eval("sanitizeCachedServerCatalog([{code:'node-a',supported:true,ping:42}])");
+  const result = app.eval("sanitizeCachedServerCatalog([{code:'node-a',supported:true,ping:42,ping_method:'vpn_https'}])");
   assert.equal(result[0].ping, 0);
+  assert.equal(result[0].ping_method, 'vpn_https');
+});
+
+test('automatic server choice prefers the quickest measured Reality node and ignores incomparable Hysteria delay', () => {
+  const app = harness();
+  const result = app.eval(`chooseAutomaticServer([
+    {code:'hy2',supported:true,security:'tls',ping_method:'vpn_https',ping:20},
+    {code:'reality-slow',supported:true,security:'reality',ping_method:'tcp_connect',ping:80},
+    {code:'reality-fast',supported:true,security:'reality',ping_method:'tcp_connect',ping:35},
+    {code:'tls-fast',supported:true,security:'tls',ping_method:'tcp_connect',ping:10}
+  ])`);
+  assert.equal(result.code, 'reality-fast');
+  assert.match(source, /chooseAutomaticServer\(state\.servers\)/);
+  assert.match(source, /state\.selectedServer\.code === 'auto'[\s\S]{0,180}autoTarget\?\.code/);
 });
 
 test('account deletion requires an explicit warning before invoking native IPC', () => {

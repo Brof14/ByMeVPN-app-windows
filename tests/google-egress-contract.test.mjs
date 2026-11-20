@@ -16,6 +16,9 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /Unchanged/);
   assert.match(probes, /https:\/\/www\.cloudflare\.com\/cdn-cgi\/trace/);
   assert.match(probes, /https:\/\/checkip\.amazonaws\.com/);
+  assert.match(probes, /https:\/\/cp\.cloudflare\.com\/generate_204/);
+  assert.match(probes, /https:\/\/www\.google\.com\/generate_204/);
+  assert.match(probes, /pub async fn measure_xray_server_latency\(/);
   assert.match(probes, /JoinSet::new\(\)/);
   assert.match(probes, /PROBES\.iter\(\)\.take\(3\)/);
   assert.match(probes, /PROBES\.iter\(\)\.skip\(3\)/);

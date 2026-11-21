@@ -5,13 +5,13 @@
 ## Architecture gate (P0)
 
 - [x] App manifest requests `asInvoker`; a local release installer was rebuilt from this manifest source. Standard-user launch still needs acceptance on a clean Windows machine.
-- [ ] Install a dedicated, signed Windows VPN Service with elevated permissions **once during installation**. Service source, per-machine NSIS hooks and service packaging are implemented; disposable-runner install/uninstall and Authenticode checks are still pending. The service is designed to own Xray/Wintun, routes and DNS.
+- [ ] Install a dedicated, signed Windows VPN Service with elevated permissions **once during installation**. Service source, per-machine NSIS hooks and service packaging are implemented; the disposable GitHub runner verified install/start/state/runtime files/removal in run `44897301963`. Authenticode signing and clean-machine standard-user acceptance remain open. The service is designed to own Xray/Wintun, routes and DNS.
 - [ ] Restrict IPC to verified user/session SIDs with named-pipe ACLs and impersonation or explicit OS-token identity checks. Never use world-writable pipes, plaintext files, command-line tokens or shell interpolation.
 - [ ] Service independently authorizes each connect operation against live backend entitlements. UI cannot submit arbitrary executable paths, unvalidated raw Xray configs, routes or WFP commands.
 - [ ] Handle simultaneous users, service restart/crash, Windows Update, uninstall and failure rollback. A UI crash must not leave an unprotected routing state; a service crash must fail closed or unmistakably report disconnection.
 - [ ] Install and uninstall service/driver without permanent admin privileges for the UI. An occasional UAC during trusted installation or service repair is acceptable; repeated UAC at application launch is not.
 
-The app no longer requests Administrator at launch. Do not distribute this build yet: it still needs a successful hosted NSIS service install/uninstall smoke test, an Authenticode signature, and live Windows network acceptance. The UI and service have not been tested together under a standard user account.
+The app no longer requests Administrator at launch. Hosted NSIS service install/uninstall smoke passed in run `44897301963`; this is not standard-user UI/service acceptance. Do not distribute this build as stable: it still needs Authenticode signing, clean-machine acceptance, and live Windows network acceptance.
 
 ## Network correctness gate (P0)
 
@@ -41,7 +41,7 @@ Suggested acceptance targets, **not measured results**: cold start p95 under 2 s
 
 ## Distribution gate (P0)
 
-- [ ] CI frontend and native tests green, NSIS `.exe` install + uninstall smoke test green.
+- [x] CI frontend and native tests green, NSIS `.exe` install + uninstall smoke test green (GitHub Actions run `44897301963`).
 - [ ] Microsoft Authenticode-signed executables/installers with publicly verifiable certificate, verified Xray/Wintun provenance and pinned checksums; package manifest/resources tested.
 - [ ] Clean machine installation and rollback, without disabling SmartScreen, UAC, Defender or AV.
 - [ ] Controlled staged rollout, signed release notes, reproducible versioned release and support rollback path.

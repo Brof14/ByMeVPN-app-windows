@@ -1,9 +1,9 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.22`
+**Source version:** `1.2.23`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The 1.2.23 source has not been packaged into a signed installer. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -26,6 +26,17 @@
 - Built `ByMeVPN_1.2.22_x64-setup.exe` (16,214,284 bytes) under `src-tauri/target/release-artifacts-v1.2.22-github-candidate-2026-11-21/`. SHA-256: `e48f6fde19e4aa7f841818ee98da85fe1925f016ce632ef4cccffba9cf021124`.
 - GitHub Actions run [44883989247](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44883989247) completed successfully: 77 Rust tests, release build, NSIS install/runtime-hash/uninstall smoke check, and upload all passed. The draft [v1.2.22 release](https://github.com/Brof14/ByMeVPN-app-windows/releases/tag/untagged-2596f65f514fe051ff92) contains `ByMeVPN_1.2.22_x64-setup.exe` (16,223,133 bytes) and `SHA256SUMS.txt`; CI installer SHA-256: `41cc13c4324956f656f1ed86553fe5d8b274387df6ff01dc900a8b7c0f72e52c`.
 - The local installer is **not Authenticode-signed** and was not launched. CI's disposable-runner smoke test checked install/uninstall and packaged runtime hashes only; no real VPN session, internet/DNS/route test, or release-owner acceptance was run. This does not clear the release blockers below.
+
+## 1.2.23 desktop, authentication and interaction pass (2026-11-21)
+
+Source-only changes; no live VPN, account, route, DNS or installer action was performed in this workspace.
+
+- **Desktop window** opens at 1080×720 logical pixels, still capped to 70% of the monitor work area. The two-column Home layout now activates from 1060 CSS pixels, so the default window reaches the workstation layout on a 1920-wide monitor instead of staying in a tablet-width column. Small monitors keep the existing compact arrangement.
+- **Server latency updates** no longer rebuild the complete server catalog and the full VPN UI for every probe result. A latency event patches only its own row, and remaining UI work is coalesced into one animation frame. The server search query is stored in state and survives latency updates, language changes and catalog refreshes.
+- **Account refreshes** are single-flight for a session: startup, window focus, subscription expiry and the retry button share one native request instead of racing device-list generations. Switching accounts also drops the previous account's cached server catalog.
+- **Authentication UI** now renders inline field errors (email, password, confirmation and a form-level server error) that clear as the field is corrected; the session-recovery panel and its retry button are actually shown after a failed restore. The password eye control keeps its SVG instead of replacing it with a platform emoji. The login/registration slogan is mode-specific instead of showing both lines, and the registration Telegram action is a full-width secondary button rather than an unstyled link.
+- **Checks:** `node --check ui/app.js` and the full Node suite passed — 155 tests, including six new behavior/contract tests for search preservation, per-row latency updates, single-flight refreshes, inline auth errors and bounded auth icons. The login, registration, Home and server-picker screens were rendered in a browser against the current CSS at a 1100 px desktop viewport (fake Tauri bridge; no real API). Rust was not recompiled locally because this workspace has no Rust/Windows toolchain; the Windows CI job runs `cargo test` and the NSIS build after this branch is pushed.
+- **Not verified:** a real tunnel, live sign-in, real server latency, DPI scaling on Windows, and installer packaging. Render measurements in a Linux Chromium instance do not prove Windows WebView2 behaviour.
 
 ## Release blockers
 

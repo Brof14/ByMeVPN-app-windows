@@ -2,8 +2,10 @@
 // a phone viewport. Never cover more than 70% of the monitor's usable *area*.
 const MAX_MONITOR_AREA_SHARE: f64 = 0.70;
 const MAX_MONITOR_AXIS_SHARE: f64 = 0.90;
-const TARGET_WIDTH: f64 = 960.0;
-const TARGET_HEIGHT: f64 = 660.0;
+// 1080x720 opens the desktop two-column workspace instead of a tablet-width
+// column on large monitors; fit_to_monitor still shrinks it on small screens.
+const TARGET_WIDTH: f64 = 1080.0;
+const TARGET_HEIGHT: f64 = 720.0;
 
 // Pure geometry is independently tested; Windows DPI scaling is handled once
 // at the boundary in fit_to_monitor.
@@ -65,7 +67,7 @@ mod tests {
 
     #[test]
     fn desktop_default_is_readable_not_a_phone_sized_viewport() {
-        assert_eq!(initial_window_size(1920.0, 1040.0), (960.0, 660.0));
+        assert_eq!(initial_window_size(1920.0, 1080.0), (1080.0, 720.0));
         let (w, h) = initial_window_size(1366.0, 728.0);
         assert!(w >= 900.0 && h >= 620.0);
     }

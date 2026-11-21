@@ -106,7 +106,7 @@ test('VPN startup is bounded, logs native TUN failures, and avoids an eager extr
 test('desktop opens in a compact resizable window and UI polls conservatively', () => {
   const config = JSON.parse(read('src-tauri/tauri.conf.json'));
   const w = config.app.windows[0];
-  assert.ok(w.width <= 1000 && w.height <= 750);
+  assert.ok(w.width <= 1100 && w.height <= 760);
   assert.ok(w.minWidth <= w.width && w.minHeight <= w.height);
   assert.notEqual(w.maximized, true);
   assert.match(ui, /\}, 5000\);\s*state\.pollInterval = interval;\s*\}\s*\/\/ Pause heavy polling/);

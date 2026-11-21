@@ -653,7 +653,7 @@
   #view-auth .auth-card:hover { border-color: var(--border-neon-green); }
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1060px) {
   :root { --desktop-sidebar-width: 232px; }
 
   .app-shell-layout .app-tab-pages { padding: 28px clamp(28px, 4vw, 56px) 40px; }

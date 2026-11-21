@@ -13,7 +13,7 @@ test('desktop shell uses persistent workstation navigation and full-width conten
   assert.match(desktop, /\.app-shell-layout\s+\.app-sidebar\s*\{[^}]*position:\s*relative/s);
   assert.match(desktop, /\.app-shell-layout\s+\.sidebar-nav\s*\{[^}]*flex-direction:\s*column/s);
   assert.match(desktop, /\.app-shell-layout\s+\.app-main-frame\s*\{[^}]*flex:\s*1\s+1\s+auto/s);
-  assert.match(desktop, /@media\s*\(min-width:\s*1180px\)[\s\S]*?#tab-home\.active\s*\{[^}]*grid-template-columns/s);
+  assert.match(desktop, /@media\s*\(min-width:\s*1060px\)[\s\S]*?#tab-home\.active\s*\{[^}]*grid-template-columns/s);
 });
 
 test('desktop server selection is a centered dialog with search available', () => {

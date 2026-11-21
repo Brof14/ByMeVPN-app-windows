@@ -16,7 +16,7 @@ Status: engineering implementation and automated verification, **not a live Wind
 | Server cannot connect even with nominal protocol support | `api_router.parse_single_node_line` discarded the gRPC service, HTTP paths/hosts, ALPN, transport mode, Hysteria2 obfuscation and sometimes assigned Vision flow when absent | PR #86 adds transport-preserving parser and URI tests including IPv6 |
 | UI says Xray started but no proven VPN | Windows treated a long-running Xray process as `connected` even when egress verification returned unavailable | On startup, inspect Windows ByMeVPN TUN adapter and default routes; reject consistently missing IPv4 route; expose redacted diagnostics. Distinguish Unknown from observed leak |
 | Red error toast overlaps navigation | Global fixed bottom toast used Android-sized bottom navigation space | Transient toasts move to upper-right and are size bounded; persistent VPN warnings live under VPN status with a Diagnostics action |
-| Windows looked like a tiny phone | Layout forced a 480×720 portrait, single-column mobile WebView | Initial 960×660 logical landscape, auto fit to <=70% usable monitor *area*, resizable; desktop left nav, two-column Home, responsive account/pricing/settings, desktop auth grid |
+| Windows looked like a tiny phone | Layout forced a 480×720 portrait, single-column mobile WebView | Initial 1080×720 logical landscape, auto fit to <=70% usable monitor *area*, resizable; desktop left nav, two-column Home, responsive account/pricing/settings, desktop auth grid |
 
 ## TDD / implementation order
 

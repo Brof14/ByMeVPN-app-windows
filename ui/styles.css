@@ -284,6 +284,13 @@ html, body {
   margin-bottom: 30px;
 }
 
+/* Login and registration share one hero; only the active mode's slogan may
+   be visible. Both used to render stacked above the form. */
+#view-auth[data-auth-mode="login"] .auth-register-slogan,
+#view-auth[data-auth-mode="register"] .auth-login-slogan {
+  display: none;
+}
+
 .auth-perks-row {
   display: flex;
   gap: 14px;
@@ -424,10 +431,16 @@ html, body {
 }
 
 .field-icon {
-  font-size: 15px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   color: var(--text-muted);
   margin-right: 10px;
-  flex-shrink: 0;
 }
 
 .input-field-box input {
@@ -451,9 +464,45 @@ html, body {
   font-size: 15px;
   padding: 4px;
 }
+.btn-password-toggle svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.btn-password-toggle .auth-eye-slash { display: none; }
+.btn-password-toggle[aria-pressed="true"] { color: var(--neon-cyan); }
+.btn-password-toggle[aria-pressed="true"] .auth-eye-slash { display: inline; }
 .btn-password-toggle:hover {
   color: var(--text-secondary);
 }
+.btn-password-toggle:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Inline authentication feedback matches the fields it belongs to. */
+.auth-field-error,
+.auth-form-error {
+  margin: -4px 2px 9px;
+  color: #f0a3a9;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: left;
+}
+.auth-form-error {
+  padding: 9px 11px;
+  border: 1px solid rgba(224, 116, 124, 0.3);
+  border-radius: 10px;
+  background: rgba(198, 84, 92, 0.1);
+}
+.input-field-box input[aria-invalid="true"] { color: #f4c3c7; }
+.input-field-box:has(input[aria-invalid="true"]) { border-color: rgba(224, 116, 124, 0.55); }
 
 .btn-primary {
   height: 48px;
@@ -539,6 +588,37 @@ html, body {
 
 .btn-telegram-inner:hover {
   background: rgba(0, 136, 204, 0.3);
+}
+
+/* Registration exposes the same Telegram sign-in path as login. The bare
+   .neon-link made it look like a stray underlined word at the form bottom. */
+.auth-register-telegram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  margin: 14px 0 2px;
+  padding: 0 16px;
+  border: 1px solid rgba(100, 192, 212, 0.35);
+  border-radius: 12px;
+  background: rgba(0, 136, 204, 0.16);
+  color: #55d5ff;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.auth-register-telegram:hover {
+  background: rgba(0, 136, 204, 0.28);
+  border-color: rgba(100, 192, 212, 0.5);
+}
+
+.auth-register-telegram:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
 }
 
 .auth-switch-link {

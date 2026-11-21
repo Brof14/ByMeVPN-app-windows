@@ -90,6 +90,8 @@ const state = {
     language: 'system'
   },
   currentTab: 'tab-home',
+  serverSearchQuery: '',
+  activeAccountId: null,
   timerInterval: null,
   pollInterval: null
 };
@@ -877,24 +879,26 @@ async function setupServerLatencyListener() {
       const result = event?.payload;
       if (!state.user || Number(result?.epoch) !== state.sessionEpoch ||
           typeof result?.code !== 'string' || !Number.isInteger(result?.ping)) return;
-      const hasServer = state.servers.some(server => server.code === result.code);
-      if (!hasServer) return;
-      state.servers = state.servers.map(server => server.code === result.code
-        ? { ...server, ping: result.ping } : server);
+      const index = state.servers.findIndex(server => server.code === result.code);
+      if (index < 0) return;
+      const updated = { ...state.servers[index], ping: result.ping };
+      state.servers = state.servers.map((server, i) => i === index ? updated : server);
       if (state.selectedServer.code === result.code) {
         state.selectedServer = { ...state.selectedServer, ping: result.ping };
       }
       if (state.autoSelectedServer?.code === result.code) {
         state.autoSelectedServer = { ...state.autoSelectedServer, ping: result.ping };
       }
+      // Patch only the affected card. Rebuilding the full list for every
+      // server probe stalled the WebView on PCs with long catalogs.
+      updateServerLatencyCard(updated);
       if (!state.vpnConnected && !state.connectionBusy && state.selectedServer.code === 'auto') {
         state.autoSelectedServer = chooseAutomaticServer(state.servers);
       }
-      renderServersList();
       if (state.latencyRefreshing && !state.servers.some(server => [-3, -4].includes(Number(server.ping)))) {
         state.latencyRefreshing = false;
       }
-      updateVpnUi();
+      scheduleVpnUiUpdate();
     });
   } catch (_) { /* A missing event bridge must not block app startup. */ }
 }
@@ -981,8 +985,14 @@ async function loadInitialData() {
     showAppShell();
   } else {
     showAuthScreen('login');
-    const retry = document.getElementById('btn-retry-session');
-    retry?.classList.toggle('hidden', !restoreFailed);
+    // The retry control lives inside a recovery panel; toggling only the
+    // button left it invisible whenever a saved session could not be checked.
+    const recovery = document.getElementById('auth-session-recovery');
+    recovery?.classList.toggle('hidden', !restoreFailed);
+    document.getElementById('btn-retry-session')?.classList.remove('hidden');
+    const recoveryMessage = document.getElementById('auth-session-message');
+    if (recoveryMessage) recoveryMessage.textContent = restoreFailed
+      ? sessionRestoreErrorMessage(restoreError) : '';
     if (restoreFailed) showToast(sessionRestoreErrorMessage(restoreError), true);
   }
   await checkVpnStatus();
@@ -1300,7 +1310,13 @@ function setSubscription(value) {
 function showAuthScreen(box = 'login') {
   clearServerCatalogRetry();
   document.getElementById('view-auth')?.classList.remove('hidden');
+  document.getElementById('view-auth')?.setAttribute('data-auth-mode', box);
   document.getElementById('view-app-shell')?.classList.add('hidden');
+  // Do not carry a previous session-recovery warning into a fresh sign-in.
+  document.getElementById('auth-session-recovery')?.classList.add('hidden');
+  document.getElementById('btn-retry-session')?.classList.remove('hidden');
+  const recoveryMessage = document.getElementById('auth-session-message');
+  if (recoveryMessage) recoveryMessage.textContent = '';
   
   if (box === 'login') {
     document.getElementById('auth-box-login')?.classList.remove('hidden');
@@ -1313,6 +1329,15 @@ function showAuthScreen(box = 'login') {
 
 function showAppShell() {
   state.sessionEpoch += 1;
+  const accountId = String(state.user?.id ?? '');
+  if (state.activeAccountId && accountId && state.activeAccountId !== accountId) {
+    // A cached catalog belongs to the account that loaded it; never show it
+    // to a different account during an in-session account switch.
+    state.servers = [];
+    state.serversStale = false;
+    try { localStorage.removeItem(SERVER_CATALOG_CACHE_KEY); } catch (_) { /* optional cache */ }
+  }
+  state.activeAccountId = accountId || null;
   clearServerCatalogRetry();
   state.devicesRefreshGeneration += 1;
   state.devices = [];
@@ -1511,7 +1536,8 @@ function setupEventListeners() {
     });
   });
 
-  // Password visibility toggles
+  // Password visibility toggles. Keep the SVG intact and express the state
+  // with aria-pressed so the icon cannot degrade to a platform emoji.
   document.querySelectorAll('.btn-password-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1520,14 +1546,27 @@ function setupEventListeners() {
       if (input) {
         const visible = input.type === 'password';
         input.type = visible ? 'text' : 'password';
-        btn.textContent = visible ? '🙈' : '👁';
         btn.setAttribute('aria-pressed', String(visible));
         btn.setAttribute('aria-label', visible
           ? uiText('Скрыть пароль', 'Hide password')
           : uiText('Показать пароль', 'Show password'));
+        input.focus({ preventScroll: true });
       }
     });
   });
+
+  // Clear a field error as soon as the user corrects that field.
+  for (const [inputId, errorId] of [
+    ['login-email', 'login-email-error'],
+    ['login-password', 'login-password-error'],
+    ['register-email', 'register-email-error'],
+    ['register-password', 'register-password-error'],
+    ['register-password-confirm', 'register-password-confirm-error']
+  ]) {
+    document.getElementById(inputId)?.addEventListener('input', () => {
+      setFieldError(errorId, '', inputId);
+    });
+  }
 
   // Forms submission
   document.getElementById('form-login')?.addEventListener('submit', handleLogin);
@@ -1804,8 +1843,33 @@ function setAuthPending(pending) {
   state.authBusy = pending;
   for (const id of ['btn-submit-login', 'btn-submit-register', 'btn-tg-login-modal', 'btn-tg-register-modal', 'btn-google-login', 'btn-google-register', 'btn-reset-password']) {
     const el = document.getElementById(id);
-    if (el) el.disabled = pending;
+    if (el) {
+      el.disabled = pending;
+      el.setAttribute('aria-busy', String(pending));
+    }
   }
+}
+
+function setFieldError(errorId, message, inputId = '') {
+  const el = document.getElementById(errorId);
+  if (el) {
+    el.textContent = message || '';
+    el.classList.toggle('hidden', !message);
+  }
+  const input = inputId ? document.getElementById(inputId) : null;
+  if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+}
+
+function clearAuthErrors(mode = 'login') {
+  const prefix = mode === 'register' ? 'register' : 'login';
+  for (const field of ['email', 'password', 'password-confirm']) {
+    setFieldError(`${prefix}-${field}-error`, '', `${prefix}-${field}`);
+  }
+  setFieldError(`${prefix}-auth-error`, '');
+}
+
+function validEmailFormat(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
 }
 
 async function handlePasswordReset() {
@@ -1872,24 +1936,39 @@ async function handleCopyAccountId() {
 async function handleLogin(e) {
   e.preventDefault();
   if (state.authBusy) return;
+  clearAuthErrors('login');
   const email = document.getElementById('login-email')?.value?.trim();
   const password = document.getElementById('login-password')?.value;
-  if (!email || !password) {
-    showToast('Введите email и пароль', true);
+  if (!email) {
+    setFieldError('login-email-error', uiText('Введите email.', 'Enter your email.'), 'login-email');
+    document.getElementById('login-email')?.focus();
+    return;
+  }
+  if (!validEmailFormat(email)) {
+    setFieldError('login-email-error', uiText('Введите корректный email.', 'Enter a valid email address.'), 'login-email');
+    document.getElementById('login-email')?.focus();
+    return;
+  }
+  if (!password) {
+    setFieldError('login-password-error', uiText('Введите пароль.', 'Enter your password.'), 'login-password');
+    document.getElementById('login-password')?.focus();
     return;
   }
   setAuthPending(true);
   try {
     const res = await invoke('auth_login', { email, password });
-    if (!res?.user?.id) throw new Error('Сервер не подтвердил вход в аккаунт');
+    if (!res?.user?.id) throw new Error(uiText('Сервер не подтвердил вход в аккаунт', 'The server did not confirm the sign-in.'));
     state.sessionEpoch += 1;
     state.user = res.user;
     setSubscription(res.subscription);
     showAppShell();
-    showToast('Вход выполнен');
-    document.getElementById('login-password').value = '';
+    showToast(uiText('Вход выполнен', 'Signed in successfully.'));
+    const passwordInput = document.getElementById('login-password');
+    if (passwordInput) passwordInput.value = '';
   } catch (err) {
-    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось войти', true);
+    const message = typeof err === 'string' ? err : err?.message || uiText('Не удалось войти', 'Sign-in failed.');
+    setFieldError('login-auth-error', message);
+    showToast(message, true);
   } finally {
     setAuthPending(false);
   }
@@ -1898,26 +1977,53 @@ async function handleLogin(e) {
 async function handleRegister(e) {
   e.preventDefault();
   if (state.authBusy) return;
-  const name = document.getElementById('register-name')?.value?.trim() || 'Пользователь';
+  clearAuthErrors('register');
+  const name = document.getElementById('register-name')?.value?.trim() || uiText('Пользователь', 'User');
   const email = document.getElementById('register-email')?.value?.trim();
   const password = document.getElementById('register-password')?.value;
   const confirm = document.getElementById('register-password-confirm')?.value;
-  if (!email || !password) return showToast('Заполните обязательные поля', true);
-  if (password.length < 6) return showToast('Минимальная длина пароля — 6 символов', true);
-  if (password !== confirm) return showToast('Пароли не совпадают', true);
+  if (!email) {
+    setFieldError('register-email-error', uiText('Введите email.', 'Enter your email.'), 'register-email');
+    document.getElementById('register-email')?.focus();
+    return;
+  }
+  if (!validEmailFormat(email)) {
+    setFieldError('register-email-error', uiText('Введите корректный email.', 'Enter a valid email address.'), 'register-email');
+    document.getElementById('register-email')?.focus();
+    return;
+  }
+  if (!password) {
+    setFieldError('register-password-error', uiText('Введите пароль.', 'Enter a password.'), 'register-password');
+    document.getElementById('register-password')?.focus();
+    return;
+  }
+  if (password.length < 6) {
+    setFieldError('register-password-error', uiText('Минимальная длина пароля — 6 символов', 'Use a password of at least 6 characters.'), 'register-password');
+    document.getElementById('register-password')?.focus();
+    return;
+  }
+  if (password !== confirm) {
+    setFieldError('register-password-confirm-error', uiText('Пароли не совпадают', 'Passwords do not match.'), 'register-password-confirm');
+    document.getElementById('register-password-confirm')?.focus();
+    return;
+  }
   setAuthPending(true);
   try {
     const res = await invoke('auth_register', { email, password, name });
-    if (!res?.user?.id) throw new Error('Сервер не подтвердил регистрацию');
+    if (!res?.user?.id) throw new Error(uiText('Сервер не подтвердил регистрацию', 'The server did not confirm the registration.'));
     state.sessionEpoch += 1;
     state.user = res.user;
     setSubscription(res.subscription);
     showAppShell();
-    showToast('Аккаунт создан');
-    document.getElementById('register-password').value = '';
-    document.getElementById('register-password-confirm').value = '';
+    showToast(uiText('Аккаунт создан', 'Account created.'));
+    const passwordInput = document.getElementById('register-password');
+    const confirmInput = document.getElementById('register-password-confirm');
+    if (passwordInput) passwordInput.value = '';
+    if (confirmInput) confirmInput.value = '';
   } catch (err) {
-    showToast(typeof err === 'string' ? err : err?.message || 'Не удалось зарегистрироваться', true);
+    const message = typeof err === 'string' ? err : err?.message || uiText('Не удалось зарегистрироваться', 'Could not create your account.');
+    setFieldError('register-auth-error', message);
+    showToast(message, true);
   } finally {
     setAuthPending(false);
   }
@@ -3566,13 +3672,67 @@ function automaticServerSubtitle() {
   return uiText(`Выбран сервер: ${selectedName}`, `Selected server: ${selectedName}`);
 }
 
-function renderServersList(filter = '') {
+function serverLatencyPresentation(server) {
+  const latency = Number(server?.ping) || 0;
+  const tone = latency > 0 ? 'measured'
+    : latency === -2 ? 'failed'
+      : latency === -3 ? 'checking'
+        : latency === -4 ? 'queued' : 'unknown';
+  const label = latency > 0 ? `${latency} ms`
+    : latency === -2 ? uiText('Не удалось измерить', 'Could not measure')
+      : latency === -3 ? uiText('Проверяем…', 'Checking…')
+        : latency === -4 ? uiText('В очереди', 'Queued')
+          : uiText('Не проверен', 'Not tested');
+  const title = latency > 0
+    ? uiText('Время HTTPS-запроса через выбранный VPN-сервер', 'HTTPS request time through the selected VPN server')
+    : label;
+  return { latency, tone, label, title, aria: latency > 0 ? `${title}: ${latency} ms` : label };
+}
+
+// Update a single rendered server row in place without touching the rest of
+// the list, the search field or keyboard focus.
+function updateServerLatencyCard(server) {
+  const container = document.getElementById('servers-dynamic-list');
+  if (!container || !Array.isArray(container.children)) return;
+  const card = Array.from(container.children)
+    .find(child => child?.dataset?.code === server.code);
+  if (!card?.querySelector) return;
+  const info = serverLatencyPresentation(server);
+  const ping = card.querySelector('.server-latency-label');
+  const dot = card.querySelector('.server-latency-dot');
+  if (ping) {
+    ping.className = `server-latency-label ${info.tone}`;
+    ping.textContent = info.label;
+    ping.title = info.title;
+    ping.setAttribute('aria-label', info.aria);
+  }
+  if (dot) dot.className = `server-latency-dot ${info.tone}`;
+  const protocol = card.querySelector('.server-protocol-badge');
+  card.setAttribute('aria-label',
+    `${serverDisplayName(server)}, ${protocol?.textContent || serverProtocolLabel(server)}, ${info.label}`);
+}
+
+// Several probes can finish inside one display frame. Collapse their UI work
+// into a single update so latency checks do not block interaction.
+let vpnUiFrame = null;
+function scheduleVpnUiUpdate() {
+  if (vpnUiFrame !== null) return;
+  const run = () => {
+    vpnUiFrame = null;
+    updateVpnUi();
+  };
+  vpnUiFrame = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame(run)
+    : setTimeout(run, 16);
+}
+
+function renderServersList(filter = state.serverSearchQuery) {
   const autoSubtitle = document.querySelector('#recommended-server-auto .rec-server-info span');
   if (autoSubtitle) autoSubtitle.textContent = automaticServerSubtitle();
   const container = document.getElementById('servers-dynamic-list');
   if (!container) return;
   container.replaceChildren();
-  const q = filter.toLocaleLowerCase().trim();
+  const q = String(filter ?? '').toLocaleLowerCase().trim();
   const list = state.servers.filter(s =>
     !q || [s.name, s.name_en, s.country, s.country_en, s.city, s.city_en, s.code]
       .some(value => String(value || '').toLocaleLowerCase().includes(q))
@@ -3607,21 +3767,13 @@ function renderServersList(filter = '') {
         uiText('Доступная локация', 'Available location'));
     details.append(title, subtitle);
     const ping = document.createElement('span');
-    const latency = Number(srv.ping) || 0;
-    const latencyState = latency > 0 ? 'measured' : latency === -2 ? 'failed' : latency === -3 ? 'checking' : latency === -4 ? 'queued' : 'unknown';
-    const latencyLabel = latency > 0 ? `${latency} ms`
-      : latency === -2 ? uiText('Не удалось измерить', 'Could not measure')
-      : latency === -3 ? uiText('Проверяем…', 'Checking…')
-      : latency === -4 ? uiText('В очереди', 'Queued')
-      : uiText('Не проверен', 'Not tested');
-    ping.className = `server-latency-label ${latencyState}`;
-    ping.textContent = latencyLabel;
-    ping.title = latency > 0
-      ? uiText('Время HTTPS-запроса через выбранный VPN-сервер', 'HTTPS request time through the selected VPN server')
-      : latencyLabel;
-    ping.setAttribute('aria-label', latency > 0 ? `${ping.title}: ${latency} ms` : latencyLabel);
+    const latencyInfo = serverLatencyPresentation(srv);
+    ping.className = `server-latency-label ${latencyInfo.tone}`;
+    ping.textContent = latencyInfo.label;
+    ping.title = latencyInfo.title;
+    ping.setAttribute('aria-label', latencyInfo.aria);
     const latencyDot = document.createElement('span');
-    latencyDot.className = `server-latency-dot ${latencyState}`;
+    latencyDot.className = `server-latency-dot ${latencyInfo.tone}`;
     latencyDot.setAttribute('aria-hidden', 'true');
     const protocol = document.createElement('span');
     const security = String(srv.security || '').toLowerCase();
@@ -3635,7 +3787,7 @@ function renderServersList(filter = '') {
     dot.className = 'radio-selection-dot';
     details.append(meta);
     card.append(flag, details, dot);
-    card.setAttribute('aria-label', `${serverDisplayName(srv)}, ${protocol.textContent}, ${latencyLabel}`);
+    card.setAttribute('aria-label', `${serverDisplayName(srv)}, ${protocol.textContent}, ${latencyInfo.label}`);
     card.addEventListener('click', () => void selectServer(srv));
     container.appendChild(card);
   });
@@ -3716,7 +3868,8 @@ function isRetryableAutomaticServerFailure(error) {
 }
 
 function filterServers(query) {
-  renderServersList(query);
+  state.serverSearchQuery = String(query ?? '');
+  renderServersList();
 }
 
 // Payment & Trial
@@ -4066,9 +4219,31 @@ function applyLanguage(lang) {
 }
 
 // Refresh Account Snapshot
+let accountSnapshotInFlight = null;
+
 async function refreshAccountSnapshot(notify = false) {
   if (!state.user) return;
   const epoch = state.sessionEpoch;
+  const pending = accountSnapshotInFlight;
+  if (pending?.epoch === epoch) {
+    // Startup, window focus, subscription expiry and the retry button can all
+    // request a snapshot at once. Coalesce them into one request instead of
+    // racing device generations and discarding each other's result.
+    if (notify) pending.notify = true;
+    return pending.promise;
+  }
+  const entry = { epoch, notify, promise: null };
+  entry.promise = performAccountSnapshot(entry);
+  accountSnapshotInFlight = entry;
+  try {
+    return await entry.promise;
+  } finally {
+    if (accountSnapshotInFlight === entry) accountSnapshotInFlight = null;
+  }
+}
+
+async function performAccountSnapshot(entry) {
+  const { epoch } = entry;
   const devicesGeneration = ++state.devicesRefreshGeneration;
   state.devicesRefreshing = true;
   updateDevicesUi();
@@ -4093,7 +4268,7 @@ async function refreshAccountSnapshot(notify = false) {
       updateSubscriptionUi();
       updateDevicesUi();
       updateVpnUi();
-      if (notify) showToast('Данные аккаунта обновлены');
+      if (entry.notify) showToast('Данные аккаунта обновлены');
     } else if (devicesGeneration === state.devicesRefreshGeneration) {
       state.devices = [];
       state.devicesSupported = false;
@@ -4109,7 +4284,7 @@ async function refreshAccountSnapshot(notify = false) {
       state.devicesLoaded = true;
       updateDevicesUi();
     }
-    if (notify && epoch === state.sessionEpoch) {
+    if (entry.notify && epoch === state.sessionEpoch) {
       showToast(typeof err === 'string' ? err : 'Не удалось обновить аккаунт', true);
     }
   } finally {

@@ -7,8 +7,8 @@ const win = JSON.parse(read('src-tauri/tauri.conf.json')).app.windows[0];
 const source = read('src-tauri/src/window_layout.rs');
 
 test('desktop launches wide and remains resizable', () => {
-  assert.equal(win.width, 960);
-  assert.equal(win.height, 660);
+  assert.equal(win.width, 1080);
+  assert.equal(win.height, 720);
   assert.ok(win.width > win.height);
   assert.ok(win.minWidth <= win.width);
   assert.ok(win.minHeight <= win.height);

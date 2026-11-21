@@ -2216,7 +2216,7 @@ async function refreshVpnHealth() {
     };
     const lines = [
       uiText('Процесс Xray: ', 'Xray process: ') +
-        checked(report?.process_tracked, uiText('запущен приложением', 'managed by app'), uiText('не запущен', 'not running')),
+        checked(report?.process_tracked, uiText('запущен службой ByMeVPN', 'managed by ByMeVPN service'), uiText('не запущен', 'not running')),
       uiText('Адаптер TUN: ', 'TUN adapter: ') + adapter,
       uiText('Маршрут IPv4: ', 'IPv4 route: ') +
         checked(report?.ipv4_default, uiText('установлен', 'installed'), uiText('отсутствует', 'missing')),

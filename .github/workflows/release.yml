@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag / Release version (e.g. v1.2.22)'
+        description: 'Tag / Release version (e.g. v1.2.23)'
         required: false
-        default: 'v1.2.22'
+        default: 'v1.2.23'
       create_release:
         description: 'Publish as GitHub Release'
         type: boolean
@@ -49,14 +49,17 @@ jobs:
 
       - name: Run Unit Tests
         shell: powershell
-        run: |
-          $env:BYMEVPN_NO_ADMIN_MANIFEST = "1"
-          cargo test --release --manifest-path src-tauri/Cargo.toml
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Build privileged VPN service
+        shell: powershell
+        run: cargo build --locked --release --manifest-path src-tauri/Cargo.toml --bin bymevpn-service
 
       - name: Build Tauri NSIS installer
         shell: powershell
         run: |
-          npx --yes @tauri-apps/cli@2 build
+          $env:TAURI_CONFIG = '{"bundle":{"resources":{"target/release/bymevpn-service.exe":"bymevpn-service.exe"}}}'
+          npx --yes @tauri-apps/cli@2 build --config src-tauri/tauri.service-bundle.conf.json
 
       - name: Install, verify runtime hashes and uninstall NSIS package
         shell: pwsh
@@ -93,14 +96,14 @@ jobs:
             ### Основные возможности:
             * Экспериментальный клиент Xray/Wintun: запуск и проверка конфигурации реализованы, реальные сетевые сценарии требуют проверки.
             * Вход через email и Telegram; Google OAuth доступен при настройке серверной интеграции.
-            * Закрытие окна скрывает клиент в системный трей; фоновое соединение и автопереподключение работают, пока приложение запущено.
+            * Tauri-интерфейс запускается без прав администратора; установщик один раз устанавливает VPN-службу ByMeVPN. Служба держит туннель при закрытом окне, восстанавливает соединение с ограниченной задержкой и отключает сессию при выходе пользователя из Windows.
             * Автоматическое восстановление соединения после подтверждённого обрыва с увеличением интервалов повторных попыток.
             * Сбой IP-check сайтов переключает проверку на точные HTTPS-ответы. Трафик может остаться подключённым, но защита не будет подтверждена без проверки IP и маршрута TUN.
             * Проверки выхода VPN ограничены по параллельности; подтверждённый HTTPS-трафик не ждёт недоступные IP-сервисы.
             * Выход из аккаунта, отключение, восстановление при запуске и штатный выход используют общую очистку маршрутов и DNS только адаптера ByMeVPN.
             * При сбое каталога сохраняется очищенный список локаций для показа; для подключения всё ещё требуется актуальная API-сессия.
             * Один пропуск проверки здоровья не останавливает туннель; доказанный обход маршрута остаётся причиной немедленно закрыть соединение.
-            * Отдельная Windows-служба, Kill Switch, IPv6/DNS leak protection и проверка безошибочного восстановления маршрутов не прошли Windows acceptance.
+            * Код службы и ACL-защищённого IPC реализован. Реальная установка службы, сетевые сценарии Windows, Kill Switch, IPv6/DNS leak protection и восстановление маршрутов требуют ещё проверки в CI/на отдельной чистой машине.
             * Не использовать как подтверждённое средство защиты до прохождения полного набора сетевых тестов.
             
             ### Контрольные суммы (SHA-256):

@@ -300,30 +300,23 @@ test('Android account places devices, plans, and renewal in the management group
 });
 
 test('VPN captures original egress before starting the full tunnel and rolls back failed sessions', () => {
-  const rust = read('src-tauri/src/service.rs');
-  const start = rust.indexOf('pub async fn vpn_start(');
-  const startupHeader = rust.slice(start, rust.indexOf('let connection_result:', start));
-  assert.ok(start > 0);
-  const baselineStart = startupHeader.indexOf('let baseline_task = tauri::async_runtime::spawn');
-  const session = rust.indexOf('"/vpn/session"', start);
-  const startup = rust.slice(session, rust.indexOf('pub async fn vpn_stop', session));
-  const baselineAwait = startup.indexOf('let baseline_ip = baseline_task.await');
-  const preflightEnd = startup.indexOf('if !preflight_server_reachable');
-  const fullTunnelStart = startup.indexOf(
-    'let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))', baselineAwait
-  );
-  assert.ok(baselineStart >= 0 && baselineStart < session - start,
-    'capture baseline while session and no-TUN preflight start');
+  const engine = read('src-tauri/src/vpn_service_engine.rs');
+  const connect = engine.slice(engine.indexOf('async fn connect('), engine.indexOf('fn api_client('));
+  const start = engine.slice(engine.indexOf('async fn start_tunnel('), engine.indexOf('#[cfg(windows)]\nfn spawn_xray'));
+  assert.ok(connect.length > 0 && start.length > 0);
+  const baselineStart = start.indexOf('let baseline_task = tauri::async_runtime::spawn');
+  const preflight = start.indexOf('spawn_xray(&runtime, &preflight_path)');
+  const preflightEnd = start.indexOf('if !reachable');
+  const baselineAwait = start.indexOf('let baseline = baseline_task.await');
+  const fullTunnelStart = start.indexOf('let mut child = spawn_xray(&runtime, &config_path)');
+  assert.ok(baselineStart >= 0 && baselineStart < preflight,
+    'capture baseline concurrently with the no-TUN endpoint preflight');
   assert.ok(preflightEnd >= 0 && baselineAwait > preflightEnd,
-    'await baseline after no-TUN preflight to keep setup responsive');
+    'finish the independent server check before waiting for baseline egress');
   assert.ok(fullTunnelStart > baselineAwait,
-    'never start the TUN until the original egress capture has completed');
-  assert.ok(session > start);
-  // Any post-session failure, including invalid Xray config, must revoke it.
-  assert.ok(startup.includes('let mut xray_config = build_tun_config_ext('));
-  assert.ok(startup.includes('add_attestation_http_inbound('));
-  assert.ok(startup.includes('let connection_result: Result<TunnelMetrics, String> = async {'));
-  const rollback = startup.indexOf('if connection_result.is_err() {');
-  assert.ok(rollback > 0, 'missing shared startup-failure handler');
-  assert.match(startup.slice(rollback), /request_in_session\([\s\S]*?Method::DELETE,\s*"\/vpn\/session"[\s\S]*?Some\(generation\)/);
+    'never start the TUN until original egress capture has completed');
+  assert.match(connect, /Method::POST,[\s\S]*?"\/vpn\/session"/);
+  assert.match(connect, /let active = match start_tunnel\(/);
+  const rollback = connect.slice(connect.indexOf('let active = match start_tunnel('));
+  assert.match(rollback, /Err\(error\) => \{[\s\S]*cleanup_bymevpn_routes_after_exit_sync[\s\S]*Method::DELETE,[\s\S]*"\/vpn\/session"/);
 });

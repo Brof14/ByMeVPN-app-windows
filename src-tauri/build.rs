@@ -30,19 +30,12 @@ fn verified_build_runtime_hash() -> String {
 }
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=BYMEVPN_NO_ADMIN_MANIFEST");
     println!("cargo:rerun-if-changed=runtime_integrity.rs");
     println!("cargo:rerun-if-changed=../vendor/runtime/windows-x64/xray.exe");
     println!(
         "cargo:rustc-env=BYMEVPN_XRAY_SHA256={}",
         verified_build_runtime_hash()
     );
-    let execution_level = if std::env::var("BYMEVPN_NO_ADMIN_MANIFEST").is_ok() {
-        "asInvoker"
-    } else {
-        "requireAdministrator"
-    };
-
     let manifest = format!(
         r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <dependency>
@@ -60,7 +53,7 @@ fn main() {
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="{execution_level}" uiAccess="false" />
+      <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

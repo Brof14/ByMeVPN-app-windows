@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "target/release/bymevpn-service.exe": "bymevpn-service.exe"
+    }
+  }
+}

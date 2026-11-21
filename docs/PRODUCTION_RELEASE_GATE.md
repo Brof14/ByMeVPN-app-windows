@@ -1,17 +1,17 @@
-# Production release gate — Windows (2026-11-06)
+# Production release gate — Windows (updated 2026-11-21)
 
 **Current decision: NO-GO for paying customers.** Source-level fixes and passing CI, if achieved, do not demonstrate a secure working VPN on a Windows host. Do not publish a stable release or claim leak-free protection until all P0 gates are evidenced.
 
 ## Architecture gate (P0)
 
-- [ ] UI and Tauri WebView launch with `asInvoker`, never with `requireAdministrator`.
-- [ ] Install a dedicated, signed Windows VPN Service with elevated permissions **once during installation**. Service is the sole owner of Xray/Wintun, routes, DNS and WFP rules.
+- [x] App manifest requests `asInvoker`; a local release installer was rebuilt from this manifest source. Standard-user launch still needs acceptance on a clean Windows machine.
+- [ ] Install a dedicated, signed Windows VPN Service with elevated permissions **once during installation**. Service source, per-machine NSIS hooks and service packaging are implemented; disposable-runner install/uninstall and Authenticode checks are still pending. The service is designed to own Xray/Wintun, routes and DNS.
 - [ ] Restrict IPC to verified user/session SIDs with named-pipe ACLs and impersonation or explicit OS-token identity checks. Never use world-writable pipes, plaintext files, command-line tokens or shell interpolation.
 - [ ] Service independently authorizes each connect operation against live backend entitlements. UI cannot submit arbitrary executable paths, unvalidated raw Xray configs, routes or WFP commands.
 - [ ] Handle simultaneous users, service restart/crash, Windows Update, uninstall and failure rollback. A UI crash must not leave an unprotected routing state; a service crash must fail closed or unmistakably report disconnection.
 - [ ] Install and uninstall service/driver without permanent admin privileges for the UI. An occasional UAC during trusted installation or service repair is acceptable; repeated UAC at application launch is not.
 
-The current app still requires Administrator on launch. **Do not flip the app manifest to asInvoker alone**: Wintun routing would then fail or silently degrade. A separately authenticated privileged broker must be implemented and tested first.
+The app no longer requests Administrator at launch. Do not distribute this build yet: it still needs a successful hosted NSIS service install/uninstall smoke test, an Authenticode signature, and live Windows network acceptance. The UI and service have not been tested together under a standard user account.
 
 ## Network correctness gate (P0)
 

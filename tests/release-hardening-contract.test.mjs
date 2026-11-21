@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const native = read('src-tauri/src/service.rs');
+const engine = read('src-tauri/src/vpn_service_engine.rs');
+const vpnService = read('src-tauri/src/vpn_service.rs');
 const main = read('src-tauri/src/main.rs');
 const job = read('src-tauri/src/windows_job.rs');
 const cargo = read('src-tauri/Cargo.toml');
@@ -16,17 +18,18 @@ test('Windows VPN process is owned by kill-on-close Job Object', () => {
   assert.match(job, /AssignProcessToJobObject/);
   assert.match(job, /impl Drop for ChildJob/);
   assert.match(job, /closing_job_handle_terminates_tracked_child/);
-  assert.match(native, /ChildJob::attach\(&child\)/);
-  assert.match(native, /_job: child_job/);
+  assert.match(engine, /ChildJob::attach\(&child\)/);
+  assert.match(engine, /_job: job/);
   assert.match(cargo, /Win32_System_JobObjects/);
   assert.match(main, /mod windows_job;/);
 });
 
 test('VPN session is revoked on all post-creation start failures', () => {
-  assert.match(native, /let connection_result: Result<TunnelMetrics, String> = async \{/);
-  assert.match(native, /if connection_result\.is_err\(\) \{/);
-  assert.match(native, /remove_file\(dir\.join\("active_tunnel\.json"\)\)/);
-  assert.match(native, /request\(&app, Method::DELETE, "\/vpn\/session", None, true, false\)\.await/);
+  const connect = engine.slice(engine.indexOf('async fn connect('), engine.indexOf('fn api_client('));
+  const startup = connect.slice(connect.indexOf('let active = match start_tunnel('));
+  assert.match(startup, /Err\(error\) => \{/);
+  assert.match(startup, /cleanup_bymevpn_routes_after_exit_sync/);
+  assert.match(startup, /Method::DELETE,[\s\S]*?"\/vpn\/session"/);
 });
 
 test('stale credential-bearing Hysteria ping configs are cleaned on startup', () => {
@@ -37,17 +40,17 @@ test('stale credential-bearing Hysteria ping configs are cleaned on startup', ()
 });
 
 test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and can reconnect', () => {
-  assert.match(native, /let mut revoke_session = false;/);
-  assert.match(native, /should_restart_after_health_probe\(/);
-  assert.match(native, /proof == TunnelProof::RoutingBypass/);
-  assert.match(native, /\*consecutive_failures >= 2/);
-  assert.match(native, /if restart \{/);
-  assert.match(native, /cleanup_bymevpn_routes_after_exit\(\)\.await/);
-  assert.match(native, /revoke_session = true;/);
-  assert.match(native, /if revoke_session \{/);
-  assert.match(main, /vpn_status\(\s*watchdog\.clone\(\),\s*watchdog\.state/);
-  assert.match(main, /auto_reconnect_if_due\(watchdog\.clone\(\)\)/);
-  assert.match(main, /interval\(std::time::Duration::from_secs\(2\)\)/);
+  assert.match(engine, /fn should_disconnect_after_health\(/);
+  assert.match(engine, /proof == TunnelProof::RoutingBypass/);
+  assert.match(engine, /\*failures >= 2/);
+  assert.match(engine, /async fn disconnect_lost_tunnel\(/);
+  assert.match(engine, /stop_active\(active, true\)/);
+  assert.match(engine, /pub async fn watchdog\(\)/);
+  assert.match(engine, /plan\.auto_reconnect/);
+  assert.match(engine, /const DELAYS: \[u64; 5\] = \[2, 4, 8, 16, 30\]/);
+  assert.match(vpnService, /for _ in 0\.\.20/);
+  assert.match(vpnService, /Duration::from_millis\(100\)/);
+  assert.doesNotMatch(main, /auto_reconnect_if_due/);
 });
 
 test('protocol latency probes run asynchronously and never delay server catalog delivery', () => {

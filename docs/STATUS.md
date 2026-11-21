@@ -1,9 +1,9 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.22`
+**Source version:** `1.2.23`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Existing `v1.2.22` is an older draft without the privileged service. The `v1.2.23` service candidate must remain a draft prerelease pending CI install smoke, signing, and live acceptance.
 
 ## Implemented and source-verified
 
@@ -20,7 +20,22 @@
 - Server-list loading coalesces concurrent requests and retries transient empty/error results at bounded delays, scoped to the same signed-in account and entitlement.
 - The home recovery panel follows Android's unknown/inactive/trial-used states and offers Telegram account recovery where eligible; its loading state is reflected accessibly while sign-in starts.
 
-## Local 1.2.22 candidate
+## Privileged service work — 2026-11-21
+
+- The desktop executable now embeds an `asInvoker` manifest. VPN startup, backend entitlement/session creation, Xray, route/DNS recovery, supervision and bounded reconnect are hosted in a separate LocalSystem Windows service. The service accepts bounded connection intent through a local named pipe, verifies the caller's SID/session, and disconnects that session on Windows logoff.
+- The NSIS `.exe` is configured to install/start the service once during elevated per-machine installation, stop it before upgrades, and remove it on uninstall. The service refuses registration from outside Program Files. A CI smoke script checks installation, service state, packaged runtime hashes and removal, and is restricted to GitHub Actions.
+- Focused local verification: `cargo fmt --check`, `cargo check --locked --bins`, one IPC validation unit test, release build of `bymevpn-service.exe`, full Node contract suite (157 passed), and Tauri NSIS installer build passed. The startup baseline-IP measurement now overlaps the no-TUN server preflight instead of delaying it sequentially. Latest `ByMeVPN_1.2.23_x64-setup.exe` is 17,228,160 bytes; SHA-256 `B99E5BB4DAE9861874425462E26530653CC16B7CD654824E5263D845CE42D924`. Installer, UI executable and service all report `NotSigned`.
+- The local installer is unsigned. It was not installed or launched; service/installer install smoke has not yet run in hosted CI. No VPN session, routes, DNS, proxy, or other VPN process was touched. The older GitHub `v1.2.22` draft predates this service build and does not include it.
+- Source compilation is not operational acceptance: standard-user app launch, service IPC permissions, upgrade/uninstall, actual route/DNS/IPv4/IPv6/egress recovery, and all protocol behavior remain unverified on a clean Windows host.
+
+## Local 1.2.23 service candidate
+
+- Tauri built the versioned NSIS `.exe` with the service resource overlay. It was not installed or launched; package inclusion and the stop/start/uninstall hooks still need the hosted smoke job to verify them.
+- `cargo check --locked --bins`, `cargo build --locked --release --bin bymevpn-service`, the focused IPC validation unit test (1 passed), Rust formatting, JavaScript syntax, PowerShell parser and `git diff --check` passed.
+- Authenticode is absent from all three executable layers. The installer hash above applies to this local unsigned candidate; the CI-built artifact may have a different hash and must be recorded separately.
+- No real connection was attempted, and no routes, DNS, proxy settings, adapter, app process or other VPN process were touched.
+
+## Earlier 1.2.22 candidate (before privileged service)
 
 - Frontend contract suite passed; release-mode Rust suite passed **77/77**. Rust formatting, JavaScript syntax and `git diff --check` passed.
 - Built `ByMeVPN_1.2.22_x64-setup.exe` (16,214,284 bytes) under `src-tauri/target/release-artifacts-v1.2.22-github-candidate-2026-11-21/`. SHA-256: `e48f6fde19e4aa7f841818ee98da85fe1925f016ce632ef4cccffba9cf021124`.
@@ -30,10 +45,10 @@
 ## Release blockers
 
 1. No end-to-end Windows 10/11 acceptance for each protocol, IPv4/IPv6 routes, DNS behavior, actual egress, network handover, crash cleanup or sustained reconnects. The user has explicitly deferred real VPN connection testing.
-2. Tauri UI still launches with `requireAdministrator`; least-privilege UI plus a signed privileged VPN service and authenticated IPC are not implemented. Do not remove the manifest requirement without that broker.
-3. DNS/IPv6 leak protection and a fail-closed Windows kill switch are not proven. Current cleanup is best-effort application-owned route/DNS restoration.
+2. The least-privilege service implementation is present but not yet validated by hosted install/uninstall smoke or clean-machine standard-user acceptance; the service binary and installer also need Authenticode signing.
+3. DNS/IPv6 leak protection and a fail-closed Windows kill switch are not proven. Service cleanup targets only the ByMeVPN adapter, but real restoration behavior remains unverified.
 4. Live Windows-to-Android latency, throughput, packet-loss and connection-time comparisons are not measured. Source behavior now uses protocol-outbound HTTPS probes for supported transports, but no claim of maximum speed, equivalent real-world performance, or uninterrupted service is established.
-5. Authenticode-signed packages, clean-machine install/uninstall and rollback, Microsoft Store compliance, and staged production rollout are not complete.
+5. Authenticode-signed packages, live clean-machine install/uninstall and rollback, Microsoft Store compliance, and staged production rollout are not complete.
 6. Account, device-limit, trial, renewal and payment flows still require end-to-end acceptance against the intended backend and payment provider.
 
 See [PRODUCTION_RELEASE_GATE.md](PRODUCTION_RELEASE_GATE.md) and [AUDIT_2026-11-15.md](AUDIT_2026-11-15.md) for the complete acceptance criteria. Passing CI or creating a GitHub artifact does not clear these blockers. Keep generated releases as drafts/prereleases until the gate is evidenced.

@@ -1,6 +1,7 @@
 [package]
 name = "bymevpn"
-version = "1.2.22"
+version = "1.2.23"
+default-run = "bymevpn"
 description = "ByMeVPN Windows desktop client"
 authors = ["ByMeVPN"]
 edition = "2021"
@@ -24,7 +25,8 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
-windows-sys = { version = "0.60.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-service = "0.8.1"
+windows-sys = { version = "0.60.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [profile.release]
 opt-level = 3

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const rust = read('src-tauri/src/service.rs');
+const engine = read('src-tauri/src/vpn_service_engine.rs');
 const oauth = read('src-tauri/src/google_desktop.rs');
 const probes = read('src-tauri/src/egress.rs');
 const ui = read('ui/app.js');
@@ -28,15 +29,15 @@ test('external IP probe outage is not a proven leak', () => {
   assert.match(probes, /probe_https_reachability\(client\.clone\(\)\)/);
   assert.match(probes, /TrafficObservedUnverified/);
   assert.match(probes, /pub fn traffic_confirmed\(/);
-  assert.match(rust, /verify_tunnel_path\(/);
-  assert.match(rust, /active\.egress_verified = path_ready && result\.verified_ip\(\)\.is_some\(\)/);
-  assert.match(rust, /if !proof\.traffic_confirmed\(\) \{/);
-  assert.match(rust, /if !tunnel_ready \{/);
-  assert.match(rust, /stop_failed_tun\(&mut child, &config_path\)\.await/);
-  assert.match(rust, /let _ = active\.child\.kill\(\)/);
+  assert.match(engine, /verify_tunnel_path\(/);
+  assert.match(engine, /active\.verified_ip = if path_healthy/);
+  assert.match(engine, /if !proof\.traffic_confirmed\(\) \{/);
+  assert.match(engine, /if !healthy \|\| !matches!\(child\.try_wait\(\), Ok\(None\)\)/);
+  assert.match(engine, /let _ = active\.child\.kill\(\)/);
   assert.match(rust, /async fn stop_tunnel_and_restore_network\(/);
-  assert.match(rust, /\.manually_stopped\(\);/);
-  assert.match(main, /cleanup_bymevpn_routes_after_exit_sync\(\)/);
+  assert.match(engine, /state\.reconnect = None/);
+  assert.match(engine, /cleanup_bymevpn_routes_after_exit_sync/);
+  assert.match(main, /mod vpn_broker;/);
 });
 
 test('VPN UI only claims protection when native egress verification passed', () => {
@@ -92,12 +93,12 @@ test('native Google token failures report OAuth codes without echoing upstream d
   assert.doesNotMatch(oauth, /Google отклонил авторизацию\. Проверьте OAuth Client ID/);
 });
 
-test('VPN startup is bounded, logs native TUN failures, and avoids an eager extra ping', () => {
-  assert.match(rust, /add_attestation_http_inbound\(/);
-  assert.match(rust, /verify_tunnel_path\(baseline_ip, probe_port, &probe_password\)/);
-  assert.match(rust, /xray_startup\.log/);
-  assert.match(rust, /cached_ping_ms/);
-  const status = rust.split('pub async fn vpn_status(')[1].split('pub async fn auto_reconnect_if_due')[0];
+test('VPN startup is bounded and avoids an eager extra ping', () => {
+  assert.match(engine, /add_attestation_http_inbound\(/);
+  assert.match(engine, /verify_tunnel_path\(baseline, probe_port, &probe_password\)/);
+  assert.match(engine, /tokio::time::timeout\(Duration::from_secs\(12\)/);
+  assert.match(engine, /preflight_xray_server\(probe_port, &probe_password\)/);
+  const status = engine.split('async fn status(')[1].split('async fn disconnect(')[0];
   assert.doesNotMatch(status, /measure_real_ping\(/);
   assert.match(rust, /static API_CLIENT: OnceLock<Client>/);
   assert.match(probes, /timeout\(Duration::from_millis\(4500\)\)/);

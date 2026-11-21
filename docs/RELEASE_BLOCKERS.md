@@ -16,7 +16,8 @@ The matching backend PR is [Brof14/ByMeVPN_bot#14](https://github.com/Brof14/ByM
 
 ## Windows desktop
 
-- Tauri WebView must run without administrative privileges; isolate elevation in a Windows Service/helper with ACL-protected IPC.
+- The application now requests `asInvoker`; the VPN service, typed named-pipe IPC, session identity checks, backend subscription check, and per-machine NSIS install/uninstall hooks are implemented in source. Hosted install/uninstall smoke and clean-machine standard-user acceptance are still pending.
+- The installer/service is not Authenticode-signed. Keep distribution in draft/prerelease until signing and verification are configured.
 - Xray and Wintun are hash-pinned, but actual network routing and traffic must be tested with a legitimate account on Windows.
 - Full TUN lifecycle, IPv4/IPv6/DNS leak protection, proper Kill Switch, route rollback, network/sleep recovery, background tray, and installer cleanup are unverified.
 - Hysteria2 requires a compatible, proven engine; hide/disable those servers until supported.

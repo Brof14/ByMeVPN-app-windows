@@ -1,7 +1,6 @@
-//! Own the Xray subprocess with a Windows Job Object. Even if the UI is
-//! terminated by Task Manager, the OS closes our job handle and terminates
-//! its members. This is not a substitute for a privileged service or route
-//! restoration; it prevents one common orphan-process failure mode.
+//! Own an Xray child with a Windows Job Object. If the owning process exits,
+//! Windows closes its job handle and terminates only that child; the VPN
+//! service separately performs adapter-scoped stale-route cleanup on restart.
 use std::{io, mem, os::windows::io::AsRawHandle, process::Child, ptr};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},

@@ -39,12 +39,38 @@ test('unknown auto-renewal is neutral and does not imply disabled payments', () 
 
 test('account settings remain functionally complete and accessible', () => {
   const section = html.split('id="modal-account-settings"')[1]?.split('id="modal-language"')[0] || '';
-  for (const id of ['btn-account-refresh','btn-account-copy-id','btn-acc-manage',
-    'btn-account-app-settings','btn-account-advanced','btn-acc-open-support',
-    'btn-acc-logout','btn-acc-delete']) {
+  for (const id of ['btn-account-refresh','btn-account-copy-id','btn-acc-open-support',
+    'btn-acc-logout','btn-acc-delete','btn-account-password-reset']) {
     assert.match(section, new RegExp('id="' + id + '"'));
   }
+  const accountScreen = html.split('id="tab-account"')[1]?.split('id="tab-settings"')[0] || '';
+  for (const id of ['btn-acc-open-devices','btn-account-open-pricing',
+    'btn-account-open-renewal','btn-account-settings-open']) {
+    assert.match(accountScreen, new RegExp('id="' + id + '"'));
+  }
+  assert.match(section, /data-i18n="account_id_label"[\s\S]*?id="btn-account-copy-id"[^>]*data-i18n="account_copy_id"/);
+  assert.match(app, /btn-account-copy-id'\)\?\.addEventListener\('click', handleCopyAccountId\)/);
   assert.match(desktop, /\.account-settings-section/);
+});
+
+test('account ID copy uses the signed-in user and leaves the action enabled afterward', async () => {
+  let copied = null;
+  const attrs = new Map();
+  const button = {
+    disabled: false,
+    setAttribute(name, value) { attrs.set(name, value); }
+  };
+  const context = createContext({
+    navigator: { clipboard: { async writeText(value) { copied = value; } } },
+    document: { addEventListener(){}, getElementById: id => id === 'btn-account-copy-id' ? button : null },
+    setTimeout, clearTimeout
+  });
+  runInContext(app, context);
+  runInContext("state.user = { id: 'account-42' }", context);
+  await runInContext('handleCopyAccountId()', context);
+  assert.equal(copied, 'account-42');
+  assert.equal(button.disabled, false);
+  assert.equal(attrs.get('aria-busy'), 'false');
 });
 
 test('VPN health reports real DNS resolution result, not a stale log keyword', () => {
@@ -63,7 +89,7 @@ test('unknown auto-renewal stays neutral in the rendered Account and Renewal vie
     if (!nodes.has(id)) nodes.set(id, {
       textContent:'', className:'hidden', disabled:false,
       classList:{toggle(){},add(){},remove(){}},
-      querySelector(){return null}
+      querySelector(){return null}, setAttribute(){}
     });
     return nodes.get(id);
   };
@@ -73,15 +99,14 @@ test('unknown auto-renewal stays neutral in the rendered Account and Renewal vie
     document:{addEventListener(){},querySelectorAll(){return[]},getElementById:node}
   });
   runInContext(app, context);
-  runInContext("state.subscription={status:'active',auto_renew:null,plan_name:'Pro',seconds_remaining:86400};updateSubscriptionUi()",context);
+  runInContext("state.subscription={status:'active',auto_renew:null,plan_name:'Pro',seconds_remaining:86400};state.renewalChecked=true;updateSubscriptionUi()",context);
   assert.equal(node('acc-autorenew-badge').className,'hidden');
-  assert.equal(node('renewal-current-status-badge').className,'renewal-status-neutral');
-  assert.equal(node('renewal-current-status-badge').textContent,'Информация недоступна');
+  assert.equal(node('renewal-status-line').textContent,'Статус: Не удалось проверить');
   runInContext("state.subscription.auto_renew=false;updateSubscriptionUi()",context);
   assert.equal(node('acc-autorenew-badge').className,'renewal-status-neutral');
-  assert.equal(node('renewal-current-status-badge').textContent,'Отключено');
+  assert.equal(node('renewal-status-line').textContent,'Статус: Отключено');
   runInContext("state.subscription.auto_renew=true;updateSubscriptionUi()",context);
-  assert.equal(node('renewal-current-status-badge').textContent,'Включено');
+  assert.equal(node('renewal-status-line').textContent,'Статус: Включено');
   assert.equal(node('acc-autorenew-badge').className,'badge-auto-renew');
 });
 

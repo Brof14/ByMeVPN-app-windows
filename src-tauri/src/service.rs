@@ -20,7 +20,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
@@ -43,8 +43,14 @@ static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(())
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
 static API_CLIENT: OnceLock<Client> = OnceLock::new();
 static SERVER_PING_CACHE: OnceLock<Mutex<ServerPingCache>> = OnceLock::new();
+static SERVER_PING_IN_FLIGHT: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+static SERVER_PING_EPOCH: AtomicU64 = AtomicU64::new(0);
 const SERVER_PING_CACHE_TTL: Duration = Duration::from_secs(600);
 const SERVER_PING_CACHE_LIMIT: usize = 512;
+
+fn cancel_server_ping_probes() {
+    SERVER_PING_EPOCH.fetch_add(1, Ordering::SeqCst);
+}
 
 #[derive(Default)]
 struct ServerPingCache {
@@ -74,6 +80,49 @@ impl ServerPingCache {
             }
         }
         self.entries.insert(key, (now, ping));
+    }
+}
+
+enum ProbeRegistration {
+    Started,
+    Existing(bool),
+    Unavailable,
+}
+
+fn register_server_ping(key: &str) -> ProbeRegistration {
+    let flights = SERVER_PING_IN_FLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut flights) = flights.lock() else {
+        return ProbeRegistration::Unavailable;
+    };
+    if let Some(running) = flights.get(key) {
+        ProbeRegistration::Existing(*running)
+    } else {
+        flights.insert(key.to_string(), false);
+        ProbeRegistration::Started
+    }
+}
+
+fn set_server_ping_running(key: &str, running: bool) {
+    if let Ok(mut flights) = SERVER_PING_IN_FLIGHT
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        if let Some(status) = flights.get_mut(key) {
+            *status = running;
+        }
+    }
+}
+
+struct ServerPingFlight(String);
+
+impl Drop for ServerPingFlight {
+    fn drop(&mut self) {
+        if let Ok(mut flights) = SERVER_PING_IN_FLIGHT
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+        {
+            flights.remove(&self.0);
+        }
     }
 }
 
@@ -290,6 +339,8 @@ pub struct Subscription {
     #[serde(default)]
     pub trial_available: bool,
     #[serde(default)]
+    pub trial_unavailable_reason: Option<String>,
+    #[serde(default)]
     pub max_devices: i64,
     #[serde(default)]
     pub active_devices: i64,
@@ -335,6 +386,7 @@ fn save_secret(name: &str, value: &str) -> Result<(), String> {
 
 fn clear_secrets() {
     AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
+    cancel_server_ping_probes();
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
@@ -657,6 +709,7 @@ async fn store_auth(value: Value, generation: u64) -> Result<AuthResult, String>
     let _guard = REFRESH_LOCK.lock().await;
     require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
+    cancel_server_ping_probes();
     // A newly authenticated identity must not inherit another account's invoice.
     clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
@@ -816,6 +869,7 @@ pub async fn telegram_check_session(
         // Telegram may switch the active account. Invalidate any previous
         // identity's invoice before saving the new signed-in credentials.
         AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
+        cancel_server_ping_probes();
         clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
             .and_then(|_| save_secret(ACCESS_KEY, access_token))
@@ -1149,41 +1203,6 @@ fn server_array(data: &Value) -> Option<&Vec<Value>> {
         .or_else(|| data.get("raw_array").and_then(Value::as_array))
 }
 
-fn tcp_ping_target(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
-fn protocol_supports_tcp_ping(config: &Value) -> bool {
-    !is_hysteria_protocol(config)
-}
-
-fn is_hysteria_protocol(config: &Value) -> bool {
-    config
-        .get("protocol")
-        .and_then(Value::as_str)
-        .is_some_and(|protocol| {
-            protocol.eq_ignore_ascii_case("hysteria2") || protocol.eq_ignore_ascii_case("hy2")
-        })
-}
-
-pub fn measure_real_ping(host: &str, default_port: u16) -> u32 {
-    use std::net::{TcpStream, ToSocketAddrs};
-    let target = tcp_ping_target(host, default_port);
-    if let Ok(addrs) = target.to_socket_addrs() {
-        for addr in addrs {
-            let start = std::time::Instant::now();
-            if TcpStream::connect_timeout(&addr, Duration::from_millis(1800)).is_ok() {
-                return (start.elapsed().as_millis().max(1) as u32).min(9999);
-            }
-        }
-    }
-    0
-}
-
 struct ProbeChild {
     child: std::process::Child,
     #[cfg(windows)]
@@ -1233,10 +1252,10 @@ fn spawn_probe_child(
     })
 }
 
-/// Hysteria2 latency must include its QUIC/TLS/auth handshake and a real
-/// request through the outbound. The temporary Xray process has no TUN,
-/// system routes, DNS changes, or listener beyond authenticated loopback.
-async fn measure_hysteria_latency(
+/// Measure latency through the server's configured Xray outbound. The
+/// temporary process has no TUN, system routes, DNS changes, or listener
+/// beyond the authenticated loopback HTTP proxy.
+async fn measure_proxy_latency(
     runtime_dir: PathBuf,
     app_dir: PathBuf,
     session: Value,
@@ -1272,6 +1291,12 @@ async fn measure_hysteria_latency(
         .then_some(ping)
 }
 
+async fn wait_for_server_probe_cancellation(epoch: u64) {
+    while SERVER_PING_EPOCH.load(Ordering::SeqCst) == epoch {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
     let serialized = serde_json::to_vec(config).unwrap_or_default();
     let mut digest = Sha256::new();
@@ -1299,7 +1324,13 @@ fn cache_server_ping(key: String, ping: u32) {
 }
 
 #[tauri::command]
-pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Value>, String> {
+pub async fn get_servers(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    force_probe: Option<bool>,
+    client_epoch: Option<u64>,
+) -> Result<Vec<Value>, String> {
+    let probe_epoch = SERVER_PING_EPOCH.load(Ordering::SeqCst);
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
     // Catalog refreshes must not create extra probes while a connection is
@@ -1310,22 +1341,20 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
             .lock()
             .map(|tunnel| tunnel.is_none())
             .unwrap_or(false);
-    // Avoid spawning an unbounded number of blocking DNS/TCP probes when
-    // the server catalog grows. Rendering remains responsive under load.
-    let ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
-    let hysteria_ping_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
-    let needs_hysteria_probe = should_probe
+    // Each measurement runs a short-lived Xray outbound, so bound concurrent
+    // processes even when the server catalog grows.
+    let needs_proxy_probe = should_probe
         && servers.iter().any(|server| {
             let config = server.get("config").unwrap_or(server);
-            supports_windows_session(config) && is_hysteria_protocol(config)
+            supports_windows_session(config)
         });
-    let runtime_dir = needs_hysteria_probe
+    let runtime_dir = needs_proxy_probe
         .then(|| get_runtime_dir(&app).ok())
         .flatten();
-    let app_dir = needs_hysteria_probe
+    let app_dir = needs_proxy_probe
         .then(|| app.path().app_data_dir().ok())
         .flatten();
-    let mut ping_tasks = tokio::task::JoinSet::new();
+    let mut pending_probes = Vec::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
         let config = server.get("config").unwrap_or(server);
@@ -1418,65 +1447,105 @@ pub async fn get_servers(app: AppHandle, state: State<'_, AppState>) -> Result<V
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
         let supported = supports_windows_session(config);
         let valid_endpoint = !host.is_empty() && (1..=65535).contains(&port);
-        let hysteria = is_hysteria_protocol(config);
         let probe_supported = supported && valid_endpoint;
         let cache_key = probe_supported.then(|| server_ping_cache_key(code, config));
         let cached_ping = cache_key.as_deref().and_then(cached_server_ping);
-        if should_probe && probe_supported && cached_ping.is_none() {
-            let index = normalized.len();
-            let key = cache_key.expect("eligible probes have a cache key");
-            if hysteria {
-                if let (Some(runtime), Some(directory)) = (runtime_dir.clone(), app_dir.clone()) {
-                    let slots = hysteria_ping_slots.clone();
-                    let session = config.clone();
-                    ping_tasks.spawn(async move {
-                        let _permit = slots.acquire_owned().await.ok()?;
-                        // Cache failed measurements too; repeatedly creating
-                        // QUIC processes for an offline node would slow refresh.
-                        let ping = measure_hysteria_latency(runtime, directory, session)
-                            .await
-                            .unwrap_or(0);
-                        Some((index, key, ping))
-                    });
+        let mut ping = cached_ping
+            .map(|value| if value > 0 { value as i64 } else { -2 })
+            .unwrap_or(0);
+        if should_probe
+            && probe_supported
+            && (force_probe == Some(true) || cached_ping.is_none())
+            && runtime_dir.is_some()
+            && app_dir.is_some()
+        {
+            if let Some(key) = cache_key {
+                match register_server_ping(&key) {
+                    ProbeRegistration::Started => {
+                        ping = -4;
+                        pending_probes.push((code.to_string(), key, config.clone()));
+                    }
+                    ProbeRegistration::Existing(running) => ping = if running { -3 } else { -4 },
+                    ProbeRegistration::Unavailable => {}
                 }
-            } else if protocol_supports_tcp_ping(config) {
-                let slots = ping_slots.clone();
-                ping_tasks.spawn(async move {
-                    let _permit = slots.acquire_owned().await.ok()?;
-                    let ping = tauri::async_runtime::spawn_blocking(move || {
-                        measure_real_ping(&host, port as u16)
-                    })
-                    .await
-                    .ok()?;
-                    Some((index, key, ping))
-                });
             }
         }
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
             "protocol":protocol, "security":security,
-            "ping_method": if hysteria { "vpn_https" } else { "tcp_connect" },
-            "flag":flag, "supported":supported, "ping":cached_ping.unwrap_or(0)}));
+            "ping_method": "vpn_https",
+            "flag":flag, "supported":supported,
+            "ping":ping}));
     }
-    // Bound the entire catalog loading delay, even with dozens of blocked
-    // endpoints. Unknown latency stays 0 rather than becoming a fake ping.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
-    while !ping_tasks.is_empty() {
-        match tokio::time::timeout_at(deadline, ping_tasks.join_next()).await {
-            Ok(Some(Ok(Some((index, key, ping))))) => {
-                cache_server_ping(key, ping);
-                if let Some(server) = normalized.get_mut(index) {
-                    server["ping"] = json!(ping);
-                }
+    // Return the server list immediately. Each protocol-aware latency check
+    // runs independently so startup, refresh and Connect never wait for probes.
+    if !pending_probes.is_empty() {
+        let app = app.clone();
+        let runtime_dir = runtime_dir.expect("probe runtime checked above");
+        let app_dir = app_dir.expect("probe app directory checked above");
+        let client_epoch = client_epoch.unwrap_or(0);
+        tauri::async_runtime::spawn(async move {
+            let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
+            let mut tasks = tokio::task::JoinSet::new();
+            for (code, key, session) in pending_probes {
+                let app = app.clone();
+                let runtime_dir = runtime_dir.clone();
+                let app_dir = app_dir.clone();
+                let slots = slots.clone();
+                let probe_epoch = probe_epoch;
+                tasks.spawn(async move {
+                    let _flight = ServerPingFlight(key.clone());
+                    let Ok(_permit) = slots.acquire_owned().await else {
+                        return;
+                    };
+                    let can_probe = {
+                        let state = app.state::<AppState>();
+                        let available = state.connection_gate.try_lock().map(|gate| {
+                            let disconnected = state
+                                .tunnel
+                                .lock()
+                                .map(|tunnel| tunnel.is_none())
+                                .unwrap_or(false);
+                            drop(gate);
+                            disconnected
+                        });
+                        available.unwrap_or(false)
+                    };
+                    if !can_probe {
+                        let _ = app.emit(
+                            "server-latency-update",
+                            json!({"epoch":client_epoch, "code":code, "ping":0}),
+                        );
+                        return;
+                    }
+                    set_server_ping_running(&key, true);
+                    let _ = app.emit(
+                        "server-latency-update",
+                        json!({"epoch":client_epoch, "code":code, "ping":-3}),
+                    );
+                    let (measured, cancelled) = tokio::select! {
+                        result = tokio::time::timeout(
+                            Duration::from_secs(7),
+                            measure_proxy_latency(runtime_dir, app_dir, session),
+                        ) => (result.ok().flatten().unwrap_or(0), false),
+                        _ = wait_for_server_probe_cancellation(probe_epoch) => (0, true),
+                    };
+                    if !cancelled {
+                        cache_server_ping(key.clone(), measured);
+                    }
+                    let _ = app.emit(
+                        "server-latency-update",
+                        json!({
+                            "epoch":client_epoch,
+                            "code":code,
+                            "ping":if cancelled { 0 } else if measured > 0 { measured as i64 } else { -2 }
+                        }),
+                    );
+                });
             }
-            Ok(Some(_)) => {}
-            Ok(None) => break,
-            Err(_) => {
-                ping_tasks.abort_all();
-                break;
-            }
-        }
+            while tasks.join_next().await.is_some() {}
+        });
     }
     Ok(normalized)
 }
@@ -1585,7 +1654,11 @@ pub async fn get_plans(app: AppHandle) -> Result<Vec<Value>, String> {
 }
 
 #[tauri::command]
-pub async fn delete_device(app: AppHandle, device_id: String) -> Result<(), String> {
+pub async fn delete_device(
+    app: AppHandle,
+    device_id: String,
+    generation: u64,
+) -> Result<(), String> {
     if device_id.is_empty()
         || device_id.len() > 80
         || !device_id
@@ -1594,13 +1667,14 @@ pub async fn delete_device(app: AppHandle, device_id: String) -> Result<(), Stri
     {
         return Err("Некорректный идентификатор устройства.".into());
     }
-    request(
+    request_in_session(
         &app,
         Method::DELETE,
         &format!("/devices/{device_id}"),
         None,
         true,
         false,
+        Some(generation),
     )
     .await?;
     Ok(())
@@ -1745,7 +1819,23 @@ pub async fn get_auto_renewal(app: AppHandle) -> Result<Value, String> {
     )
     .await?;
     let enabled = renewal_status(&value)?;
-    Ok(json!({"enabled": enabled, "generation": generation}))
+    let can_enable = renewal_can_enable(&value)?;
+    Ok(json!({"enabled": enabled, "can_enable": can_enable, "generation": generation}))
+}
+
+#[tauri::command]
+pub async fn enable_auto_renewal(app: AppHandle, generation: u64) -> Result<(), String> {
+    let value = request_in_session(
+        &app,
+        Method::POST,
+        "/mobile/v2/renewal/enable",
+        Some(json!({"confirm": true})),
+        true,
+        false,
+        Some(generation),
+    )
+    .await?;
+    confirm_renewal_activation(&value)
 }
 
 #[tauri::command]
@@ -1768,6 +1858,22 @@ fn renewal_status(value: &Value) -> Result<bool, String> {
         .get("auto_renew")
         .and_then(Value::as_bool)
         .ok_or_else(|| "Сервер не подтвердил статус автопродления.".into())
+}
+
+fn renewal_can_enable(value: &Value) -> Result<bool, String> {
+    value
+        .get("can_enable")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "Сервер не подтвердил возможность включения автопродления.".into())
+}
+
+fn confirm_renewal_activation(value: &Value) -> Result<(), String> {
+    if value.get("enabled").and_then(Value::as_bool) != Some(true)
+        || value.get("auto_renew").and_then(Value::as_bool) != Some(true)
+    {
+        return Err("Сервер не подтвердил включение автопродления. Обновите статус.".into());
+    }
+    Ok(())
 }
 
 fn confirm_renewal_cancellation(value: &Value) -> Result<(), String> {
@@ -2126,6 +2232,7 @@ async fn vpn_start_inner(
     node_code: Option<String>,
     automatic: bool,
 ) -> Result<TunnelMetrics, String> {
+    cancel_server_ping_probes();
     let _connection_guard = state.connection_gate.lock().await;
     if automatic {
         let enabled = load_settings(&app)
@@ -2204,28 +2311,30 @@ async fn vpn_start_inner(
     let reconnect_node = chosen_node.clone();
     let id = install_id(&app)?;
 
-    // Capture the pre-VPN egress while opening the server session. Both happen
-    // before Windows routes change, so serializing them only adds startup time.
-    let (baseline_result, session_result) = tokio::join!(
-        crate::egress::public_egress_ip(),
-        request_in_session(
-            &app,
-            Method::POST,
-            "/vpn/session",
-            Some(json!({
-                "node_code": chosen_node,
-                "install_id": id
-            })),
-            true,
-            false,
-            Some(generation),
-        )
-    );
-    // External egress services may be blocked independently of the VPN. That
-    // must not prevent a safe attempt, but without a baseline we cannot report
-    // the tunnel as verified.
-    let baseline_ip = baseline_result.ok();
-    let session_val = session_result.map_err(|e| format!("Не удалось открыть сессию VPN: {e}"))?;
+    // Start the baseline check before session/config validation, then await it
+    // after the real-server preflight. This keeps the comparison before any
+    // Windows route change while overlapping it with Xray startup work.
+    let baseline_task = tauri::async_runtime::spawn(crate::egress::public_egress_ip());
+    let session_val = match request_in_session(
+        &app,
+        Method::POST,
+        "/vpn/session",
+        Some(json!({
+            "node_code": chosen_node,
+            "install_id": id
+        })),
+        true,
+        false,
+        Some(generation),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            baseline_task.abort();
+            return Err(format!("Не удалось открыть сессию VPN: {error}"));
+        }
+    };
 
     // Every failure after creating a server session must revoke the session.
     // This prevents exhausted device slots after invalid configs, missing
@@ -2381,6 +2490,11 @@ async fn vpn_start_inner(
         if !preflight_server_reachable {
             return Err("Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол. Маршруты Windows не менялись. Попробуйте другой сервер или проверьте его параметры.".into());
         }
+
+        // A missing external baseline is not a tunnel failure by itself, but
+        // it must remain explicitly unverified. Join before TUN route changes
+        // so this request can never accidentally measure the VPN egress.
+        let baseline_ip = baseline_task.await.ok().and_then(Result::ok);
 
         // Preserve bounded, local diagnostics for failures that happen only
         // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
@@ -2940,20 +3054,73 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+pub fn open_support_email(is_russian: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", support_mailto(is_russian)])
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "Не удалось открыть почтовое приложение.".to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Открытие почтового приложения поддерживается в Windows.".into())
+    }
+}
+
+fn support_mailto(is_russian: bool) -> &'static str {
+    if is_russian {
+        "mailto:support@bymevpn.com?subject=%D0%9F%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%BA%D0%B0%20ByMeVPN"
+    } else {
+        "mailto:support@bymevpn.com?subject=ByMeVPN%20support"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn server_probe_cancellation_advances_the_generation() {
+        let previous = SERVER_PING_EPOCH.load(Ordering::SeqCst);
+        cancel_server_ping_probes();
+        assert_eq!(
+            SERVER_PING_EPOCH.load(Ordering::SeqCst),
+            previous.wrapping_add(1)
+        );
+    }
+
+    #[test]
     fn renewal_changes_are_accepted_only_with_explicit_server_confirmation() {
         assert_eq!(renewal_status(&json!({"auto_renew": true})).unwrap(), true);
         assert!(renewal_status(&json!({"auto_renew": "false"})).is_err());
+        assert!(renewal_can_enable(&json!({"can_enable": true})).unwrap());
+        assert!(!renewal_can_enable(&json!({"can_enable": false})).unwrap());
+        assert!(renewal_can_enable(&json!({"can_enable": 1})).is_err());
+        assert!(confirm_renewal_activation(&json!({"enabled": true, "auto_renew": true})).is_ok());
+        assert!(
+            confirm_renewal_activation(&json!({"enabled": true, "auto_renew": false})).is_err()
+        );
         assert!(confirm_renewal_cancellation(
             &json!({"cancelled": true, "auto_renew": false, "paid_access_preserved": true})
         )
         .is_ok());
         assert!(
             confirm_renewal_cancellation(&json!({"cancelled": true, "auto_renew": false})).is_err()
+        );
+    }
+
+    #[test]
+    fn support_email_subject_matches_selected_language() {
+        assert_eq!(
+            support_mailto(true),
+            "mailto:support@bymevpn.com?subject=%D0%9F%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%BA%D0%B0%20ByMeVPN"
+        );
+        assert_eq!(
+            support_mailto(false),
+            "mailto:support@bymevpn.com?subject=ByMeVPN%20support"
         );
     }
 
@@ -3110,26 +3277,6 @@ mod tests {
     }
 
     #[test]
-    fn ping_probe_handles_ipv6_and_skips_udp_only_hysteria() {
-        assert_eq!(
-            tcp_ping_target("vpn.example.com", 443),
-            "vpn.example.com:443"
-        );
-        assert_eq!(tcp_ping_target("2001:db8::1", 443), "[2001:db8::1]:443");
-        assert_eq!(tcp_ping_target("[2001:db8::1]", 443), "[2001:db8::1]:443");
-        assert!(protocol_supports_tcp_ping(&json!({"protocol":"vless"})));
-        assert!(!protocol_supports_tcp_ping(
-            &json!({"protocol":"hysteria2"})
-        ));
-        assert!(!protocol_supports_tcp_ping(&json!({"protocol":"hy2"})));
-        assert!(is_hysteria_protocol(&json!({"protocol":"Hysteria2"})));
-        assert!(is_hysteria_protocol(&json!({"protocol":"hy2"})));
-        assert!(!protocol_supports_tcp_ping(
-            &json!({"protocol":"HYSTERIA2"})
-        ));
-    }
-
-    #[test]
     fn startup_cleanup_removes_only_stale_server_ping_configs() {
         let dir = std::env::temp_dir().join(format!("bymevpn-ping-cleanup-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
@@ -3193,13 +3340,18 @@ mod tests {
         let auth = parse_auth(&json!({
             "access":"access", "refresh":"refresh",
             "user":{"user_id":42, "email":"tester@example.com","name":null},
-            "subscription":{"status":"active","plan_code":"12m_d5","auto_renew":true}
+            "subscription":{"status":"active","plan_code":"12m_d5","auto_renew":true,
+                "trial_unavailable_reason":"trial_already_used"}
         }))
         .unwrap();
         assert_eq!(auth.user.id, json!(42));
         let sub = auth.subscription.unwrap();
         assert_eq!(sub.max_devices, 5);
         assert_eq!(sub.auto_renew, Some(true));
+        assert_eq!(
+            sub.trial_unavailable_reason.as_deref(),
+            Some("trial_already_used")
+        );
         let invalid = normalized_subscription_value(&json!({
             "status":"active", "plan_code":"abc_d999"
         }));

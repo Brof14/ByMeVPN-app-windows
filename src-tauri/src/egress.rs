@@ -329,6 +329,28 @@ const HTTPS_REACHABILITY_ENDPOINTS: [&str; 4] = [
     "https://www.google.com/generate_204",
 ];
 
+// Match Android's tunnel-latency signal: two independent, tiny HTTPS probes
+// through the selected outbound, averaged when both respond. The broader set
+// above remains for reachability/egress verification where any success is enough.
+const SERVER_LATENCY_ENDPOINTS: [&str; 2] = [
+    "https://cp.cloudflare.com/generate_204",
+    "https://www.google.com/generate_204",
+];
+
+fn average_server_latency_ms(samples: &[u32]) -> Option<u32> {
+    let mut valid = samples
+        .iter()
+        .copied()
+        .filter(|sample| *sample > 0)
+        .collect::<Vec<_>>();
+    if valid.is_empty() {
+        return None;
+    }
+    valid.sort_unstable();
+    let total = valid.iter().map(|sample| u64::from(*sample)).sum::<u64>();
+    Some((total / valid.len() as u64).min(u64::from(u32::MAX)) as u32)
+}
+
 async fn probe_https_reachability(client: reqwest::Client) -> bool {
     let mut probes = JoinSet::new();
     for endpoint in HTTPS_REACHABILITY_ENDPOINTS {
@@ -395,7 +417,7 @@ async fn probe_https_endpoint(client: reqwest::Client, endpoint: &'static str) -
 pub async fn measure_xray_server_latency(port: u16, password: &str) -> Option<u32> {
     let client = authenticated_proxy_client(port, password).ok()?;
     let mut probes = JoinSet::new();
-    for endpoint in HTTPS_REACHABILITY_ENDPOINTS {
+    for endpoint in SERVER_LATENCY_ENDPOINTS {
         let client = client.clone();
         probes.spawn(async move {
             let started = tokio::time::Instant::now();
@@ -405,13 +427,13 @@ pub async fn measure_xray_server_latency(port: u16, password: &str) -> Option<u3
         });
     }
     tokio::time::timeout(Duration::from_secs(5), async {
+        let mut measurements = Vec::with_capacity(SERVER_LATENCY_ENDPOINTS.len());
         while let Some(result) = probes.join_next().await {
             if let Ok(Some(ms)) = result {
-                probes.abort_all();
-                return Some(ms);
+                measurements.push(ms);
             }
         }
-        None
+        average_server_latency_ms(&measurements)
     })
     .await
     .ok()
@@ -511,6 +533,18 @@ pub async fn public_egress_ip() -> Result<IpAddr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_latency_averages_available_outbound_https_samples() {
+        assert_eq!(average_server_latency_ms(&[]), None);
+        assert_eq!(average_server_latency_ms(&[0, 0]), None);
+        assert_eq!(average_server_latency_ms(&[42, 0]), Some(42));
+        assert_eq!(average_server_latency_ms(&[80, 20]), Some(50));
+        assert_eq!(
+            average_server_latency_ms(&[u32::MAX, u32::MAX]),
+            Some(u32::MAX)
+        );
+    }
 
     #[tokio::test]
     async fn preflight_does_not_wait_for_blocked_connectivity_checks_when_ip_probe_succeeds() {

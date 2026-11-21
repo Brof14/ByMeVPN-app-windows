@@ -368,14 +368,28 @@
               </div>
 
               <div id="home-shared-dock" class="mobile-home-dock hidden">
+                <button type="button" id="home-error-support" class="mobile-error-support hidden">
+                  <span class="mobile-error-support-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.6 2.6 0 1 1 4.3 2c-1 .8-1.8 1.2-1.8 2.5M12 17h.01"/></svg>
+                  </span>
+                  <span class="mobile-error-support-copy">
+                    <strong data-i18n="error_support_title">Не получается подключиться?</strong>
+                    <span data-i18n="error_support_desc">Напишите нам — поможем разобраться</span>
+                  </span>
+                  <span class="mobile-card-chevron mobile-error-support-arrow" aria-hidden="true">›</span>
+                </button>
                 <div class="mobile-server-card">
                   <div id="row-server-info" class="mobile-location-content" role="button" tabindex="0">
-                    <span class="mobile-location-title" data-i18n="home_location_title">МЕСТОПОЛОЖЕНИЕ</span>
+                    <span id="home-server-card-title" class="mobile-location-title" data-i18n="home_location_title">МЕСТОПОЛОЖЕНИЕ</span>
                     <div class="mobile-location-row">
                       <span id="home-server-flag" class="chip-flag" aria-hidden="true">🌐</span>
                       <span class="mobile-server-copy">
                         <strong id="home-server-country">Автоматически</strong>
                         <span id="home-server-city"></span>
+                        <span id="home-server-status" class="mobile-server-status hidden">
+                          <span id="home-server-protocol" class="mobile-server-protocol"></span>
+                          <span id="home-server-connected" class="mobile-server-connected hidden" data-i18n="home_server_connected">Подключено</span>
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -828,7 +842,7 @@
                 <div class="android-support-card-group">
                   <button type="button" class="android-support-row" id="card-support-about">
                     <span class="android-support-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg></span>
-                    <span class="android-support-row-copy"><strong data-i18n="support_about">О приложении</strong><span class="version-num" data-app-version="1.2.26">Версия 1.2.26</span></span>
+                    <span class="android-support-row-copy"><strong data-i18n="support_about">О приложении</strong><span class="version-num" data-app-version="1.2.27">Версия 1.2.27</span></span>
                     <span class="android-support-row-arrow" aria-hidden="true">›</span>
                   </button>
                   <button type="button" class="android-support-row" id="card-support-legal">
@@ -1032,7 +1046,7 @@
                         <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
                       </svg>
                     </div>
-                <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.26">Версия 1.2.26</span></span>
+                <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.27">Версия 1.2.27</span></span>
                   </div>
                 </div>
               </section>

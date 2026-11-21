@@ -1,9 +1,9 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.26`
+**Source version:** `1.2.27`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.26` is published as a GitHub prerelease with the unsigned EXE and checksum attached; it is not a public stable release. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.27` is published as a GitHub prerelease with the unsigned EXE and checksum attached; it is not a public stable release. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -66,6 +66,14 @@ Source-only changes; no live VPN, account, route, DNS or installer action was pe
 - **Automatic no longer sends an unqualified backend auto request when a catalog is available.** It uses the fastest measured node, otherwise the protocol-ranked catalog candidate (VLESS Reality, then VLESS, then Hysteria2), matching Android's `best measured ?: first available` behavior. A failed candidate still enters the existing two-alternate fallback. This directly addresses the case where probes had no result and the backend-assigned node produced `server_unreachable`.
 - **Checks:** `node --check ui/app.js` and the full Node suite **164/164** pass. Commit `0cedd5a9c4b402b41e406fe4d39c05963b22e0c4` passed [CI run 44932730515](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44932730515) (frontend contracts, `cargo check`, Rust tests, NSIS build). [Release run 44932737377](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44932737377) built and published [v1.2.26](https://github.com/Brof14/ByMeVPN-app-windows/releases/tag/v1.2.26) as a prerelease: `ByMeVPN_1.2.26_x64-setup.exe` (16,241,264 bytes; SHA-256 `1283cb5d7ccba9c086b83a878c958ac07cd6b3f924c6c8e5dee94dd0471f20b7`) plus `SHA256SUMS.txt`. The downloaded asset hash matches; the installer is not Authenticode-signed.
 - **Not verified:** a real tunnel, live account, real server latency or Windows DPI/clean-machine behavior.
+
+## 1.2.27 Android home parity and measurement freshness (2026-11-21)
+
+- **Home server card now explains the tunnel.** Below the location name the card shows the outbound protocol badge (VLESS Reality mint, Hysteria 2 violet, other blue) and Android's “Подключено / Connected” marker while the tunnel is up, so the running protocol is visible without opening Servers. The card heading switches to “ВЫБРАННЫЙ СЕРВЕР / SELECTED SERVER” while a connection error is shown, matching Android’s error screen.
+- **Error state offers support.** A “Не получается подключиться? — Напишите нам, поможем разобраться” card appears in the bottom dock whenever a connection error is shown and opens the existing Support tab, as Android does. It is hidden while connected or while no plan/entitlement is known.
+- **Automatic selection ignores stale measurements.** Measurements held in the window now carry a load timestamp; automatic selection and fallback ranking only treat measurements inside the same ten-minute window the native cache uses as current. Older numbers no longer pin automatic mode to a node that may no longer be fastest, and a background re-probe is started (two-minute cooldown) instead of blocking the connect.
+- **Checks:** `node --check ui/app.js` and the full Node suite **165/165** pass, including a new contract test for stale-measurement handling. Rust was not recompiled in this Linux workspace; Windows CI runs `cargo check`, the Rust tests, formatting and the NSIS build. No live tunnel, account, route, DNS or installer run was performed here.
+- **Not changed:** the embedded updater and the least-privilege UI plus privileged VPN service still require signing keys/WFP and Windows acceptance, so they remain open as listed in the blockers.
 
 ## Release blockers
 

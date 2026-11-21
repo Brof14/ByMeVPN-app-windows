@@ -543,6 +543,19 @@ test('automatic server choice uses the quickest measured proxy latency across su
   assert.match(source, /state\.selectedServer\.code === 'auto'[\s\S]{0,180}autoTarget\?\.code/);
 });
 
+test('automatic selection ignores measurements older than the native cache window', () => {
+  const app = harness();
+  app.eval(`state.measurementsAt = Date.now() - 11 * 60 * 1000;
+    state.servers = [
+      {code:'old-fast',supported:true,ping_method:'vpn_https',ping:12},
+      {code:'reality',supported:true,protocol:'vless',security:'reality',ping:0}
+    ];`);
+  assert.equal(app.eval('chooseAutomaticServer(state.servers)'), null);
+  assert.equal(app.eval('automaticFallbackCandidates(state.servers)[0].code'), 'reality');
+  app.eval('state.measurementsAt = Date.now();');
+  assert.equal(app.eval('chooseAutomaticServer(state.servers).code'), 'old-fast');
+});
+
 test('automatic connection uses a concrete unmeasured candidate instead of a backend guess', async () => {
   const calls = [];
   const app = harness(undefined, {

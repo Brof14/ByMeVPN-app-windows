@@ -24,6 +24,7 @@ const state = {
   devices: [],
   servers: [],
   latencyRefreshing: false,
+  measurementsAt: 0,
   selectedServer: {
     code: 'auto',
     name: 'Автоматически',
@@ -102,6 +103,10 @@ let serverCatalogRetryTimer = null;
 let serverCatalogRetryAttempt = 0;
 let serverCatalogRetryOwner = null;
 let serverLatencyAutoAttemptAt = 0;
+// Measurements held in state can outlive the native ten-minute cache when the
+// window stays open. Treat them as stale so automatic selection does not pick
+// a node that is no longer the fastest.
+const AUTOMATIC_MEASUREMENT_TTL_MS = 10 * 60 * 1000;
 
 // Prices are strictly hydrated from the authenticated API. No local fake offers.
 const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
@@ -225,6 +230,8 @@ const I18N = {
     support_footer: "Поддержка ByMeVPN",
     support_faq_title: "Ответы на вопросы",
     support_faq_desc: "Оплата, подключение и устройства",
+    error_support_title: "Не получается подключиться?",
+    error_support_desc: "Напишите нам — поможем разобраться",
     support_news_title: "Новости ByMeVPN",
     support_news_desc: "Обновления и новые локации",
     advanced_page_title: "Дополнительные настройки",
@@ -307,6 +314,7 @@ const I18N = {
     vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
     vpn_health_refresh: "Проверить повторно",
     home_location_title: "МЕСТОПОЛОЖЕНИЕ",
+    home_server_connected: "Подключено",
     no_plan_title_line2: "Одно касание.",
     no_plan_desc: "Подключайтесь, когда вам нужен VPN.",
     no_plan_perk_connection: "VPN-подключение",
@@ -602,6 +610,8 @@ const I18N = {
     support_footer: "ByMeVPN support",
     support_faq_title: "FAQ",
     support_faq_desc: "Payments, connection and devices",
+    error_support_title: "Having trouble connecting?",
+    error_support_desc: "Contact us and we will help",
     support_news_title: "ByMeVPN news",
     support_news_desc: "Updates and new locations",
     advanced_page_title: "Advanced settings",
@@ -684,6 +694,7 @@ const I18N = {
     vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
     vpn_health_refresh: "Check again",
     home_location_title: "LOCATION",
+    home_server_connected: "Connected",
     no_plan_title_line2: "One tap away.",
     no_plan_desc: "Connect whenever you need a VPN.",
     no_plan_perk_connection: "VPN connection",
@@ -1034,6 +1045,9 @@ async function loadAvailableServersOnce(options, epoch) {
     if (epoch !== state.sessionEpoch) return false;
     if (!Array.isArray(servers)) throw new Error('Invalid server catalog');
     state.servers = servers;
+    if (servers.some(server => server?.ping_method === 'vpn_https' && Number(server.ping) > 0)) {
+      state.measurementsAt = Date.now();
+    }
     state.serversStale = false;
     saveServerCatalogCache(state.servers);
     const preferred = state.servers.find(s => s.code === state.preferredServerCode && s.supported !== false);
@@ -1788,6 +1802,7 @@ function setupEventListeners() {
 
   // Support & FAQ triggers
   document.getElementById('btn-top-help')?.addEventListener('click', () => openModal('modal-faq'));
+  document.getElementById('home-error-support')?.addEventListener('click', openSupportScreen);
   document.getElementById('btn-vpn-health-check')?.addEventListener('click', () => {
     openModal('modal-vpn-health');
     void refreshVpnHealth();
@@ -2455,6 +2470,11 @@ async function toggleVpn(allowServerSwitch = false) {
       // otherwise pick a concrete catalog candidate instead of letting the
       // backend choose an uncontrolled server. The candidate is still a
       // guess, so the automatic fallback below remains in place.
+      // A stale measurement is not a reason to connect blind: refresh it in
+      // the background while this connect uses the protocol-ranked candidate.
+      if (state.selectedServer.code === 'auto' && !state.servers.some(serverHasFreshMeasurement)) {
+        autoMeasureServerLatencyIfNeeded();
+      }
       const autoTarget = state.selectedServer.code === 'auto' && !state.serversStale
         ? (chooseAutomaticServer(state.servers) || automaticFallbackCandidates(state.servers)[0] || null)
         : null;
@@ -3010,6 +3030,13 @@ function updateVpnUi() {
     connectionError.setAttribute('role', state.vpnPhase === 'reconnecting' ? 'status' : 'alert');
   }
 
+  // Android's error state offers the same support entry as its Support tab.
+  const errorSupport = document.getElementById('home-error-support');
+  if (errorSupport) {
+    errorSupport.classList.toggle('hidden',
+      !(!isConn && hasPlan && !accessUnknown && !!state.connectionError));
+  }
+
   const latencyProgress = document.getElementById('server-latency-progress');
   if (latencyProgress) {
     const checking = state.servers.filter(server => Number(server.ping) === -3).length;
@@ -3055,6 +3082,29 @@ function updateVpnUi() {
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
     (automaticConnected ? state.metrics.server_name : uiText('Автовыбор', 'Auto select')) :
     ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
+
+  // Android shows the outbound protocol and a connected marker under the
+  // location name, so the card explains how the tunnel actually runs.
+  const cardServer = s.code === 'auto' ? (state.autoSelectedServer || null) : s;
+  const cardProtocol = cardServer && cardServer.code !== 'auto' ? serverProtocolLabel(cardServer) : '';
+  const protocolBadge = document.getElementById('home-server-protocol');
+  const statusRow = document.getElementById('home-server-status');
+  const connectedLabel = document.getElementById('home-server-connected');
+  if (protocolBadge) {
+    protocolBadge.textContent = cardProtocol;
+    const protocol = String(cardServer?.protocol || '').toLowerCase();
+    const security = String(cardServer?.security || '').toLowerCase();
+    const tone = protocol === 'hysteria2' || protocol === 'hy2' ? 'hysteria'
+      : protocol === 'vless' && security === 'reality' ? 'reality' : 'other';
+    protocolBadge.classList.remove('reality', 'hysteria', 'other');
+    protocolBadge.classList.add(tone);
+  }
+  if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn);
+  if (connectedLabel) connectedLabel.classList.toggle('hidden', !isConn);
+  const cardTitle = document.getElementById('home-server-card-title');
+  if (cardTitle) cardTitle.textContent = state.connectionError && !isConn
+    ? uiText('ВЫБРАННЫЙ СЕРВЕР', 'SELECTED SERVER')
+    : uiText('МЕСТОПОЛОЖЕНИЕ', 'LOCATION');
 
   updateMetricsUi();
 }
@@ -3895,7 +3945,7 @@ function automaticFallbackCandidates(servers) {
   const usable = (Array.isArray(servers) ? servers : [])
     .filter(server => server && server.supported !== false && ![-3, -4].includes(Number(server.ping)));
   const measured = usable
-    .filter(server => server.ping_method === 'vpn_https' && Number(server.ping) > 0)
+    .filter(serverHasFreshMeasurement)
     .sort((a, b) => Number(a.ping) - Number(b.ping) ||
       automaticServerProtocolRank(a) - automaticServerProtocolRank(b));
   const unverified = usable
@@ -3910,7 +3960,17 @@ function automaticFallbackCandidates(servers) {
 // catalog candidate instead of sending an unqualified backend auto request.
 function chooseAutomaticServer(servers) {
   return automaticServerCandidates(servers)
-    .find(server => server.ping_method === 'vpn_https' && Number(server.ping) > 0) || null;
+    .find(serverHasFreshMeasurement) || null;
+}
+
+// Only a measurement taken inside the native cache window may rank automatic
+// selection; anything older is treated like an unmeasured candidate.
+function serverHasFreshMeasurement(server) {
+  if (!server || server.ping_method !== 'vpn_https' || !(Number(server.ping) > 0)) return false;
+  const measuredAt = Number(state.measurementsAt || 0);
+  // Zero means the age is unknown (for example a catalog restored without a
+  // load timestamp); do not discard a usable measurement in that case.
+  return measuredAt === 0 || Date.now() - measuredAt < AUTOMATIC_MEASUREMENT_TTL_MS;
 }
 
 function isRetryableAutomaticServerFailure(error) {
@@ -3953,7 +4013,7 @@ async function startVpnWithAutomaticFallback(code) {
 function autoMeasureServerLatencyIfNeeded() {
   if (state.vpnConnected || state.connectionBusy || state.serverSwitchBusy || state.latencyRefreshing) return;
   if (!state.servers.length) return;
-  if (state.servers.some(server => Number(server.ping) > 0 || [-3, -4].includes(Number(server.ping)))) return;
+  if (state.servers.some(server => serverHasFreshMeasurement(server) || [-3, -4].includes(Number(server.ping)))) return;
   const now = Date.now();
   if (now - serverLatencyAutoAttemptAt < 120000) return;
   serverLatencyAutoAttemptAt = now;

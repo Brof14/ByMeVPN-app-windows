@@ -402,6 +402,40 @@ html, body, .app-root, .app-shell-layout {
   white-space: nowrap;
 }
 #tab-home .mobile-server-copy > span { color: #81999b; font-size: 11px; }
+#tab-home .mobile-server-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1px;
+}
+#tab-home .mobile-server-status.hidden { display: none; }
+#tab-home .mobile-server-protocol {
+  padding: 2px 6px;
+  border: 1px solid rgba(77, 175, 255, .35);
+  border-radius: 5px;
+  background: rgba(77, 175, 255, .17);
+  color: #78c6ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+#tab-home .mobile-server-protocol.reality {
+  border-color: rgba(60, 223, 172, .35);
+  background: rgba(60, 223, 172, .17);
+  color: #69d3bc;
+}
+#tab-home .mobile-server-protocol.hysteria {
+  border-color: rgba(157, 123, 255, .35);
+  background: rgba(157, 123, 255, .17);
+  color: #c4b0ff;
+}
+#tab-home .mobile-server-connected {
+  color: #69d3bc;
+  font-size: 11px;
+  font-weight: 600;
+}
+#tab-home .mobile-server-connected.hidden { display: none; }
 #tab-home .mobile-card-chevron {
   display: grid;
   flex: 0 0 32px;
@@ -414,6 +448,39 @@ html, body, .app-root, .app-shell-layout {
   font-size: 24px;
   cursor: pointer;
 }
+#tab-home .mobile-error-support {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 17px;
+  border: 1px solid #243739;
+  border-radius: 17px;
+  background: #101b1c;
+  color: #eef4f4;
+  text-align: left;
+  cursor: pointer;
+}
+#tab-home .mobile-error-support.hidden { display: none; }
+#tab-home .mobile-error-support:hover { background: #14252a; }
+#tab-home .mobile-error-support:focus-visible { outline: 2px solid #69d3bc; outline-offset: 2px; }
+#tab-home .mobile-error-support-icon {
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  color: #7cc9b2;
+}
+#tab-home .mobile-error-support-icon svg { width: 20px; height: 20px; }
+#tab-home .mobile-error-support-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+#tab-home .mobile-error-support-copy strong { font-size: 12.5px; font-weight: 600; }
+#tab-home .mobile-error-support-copy > span { color: #8aa1a1; font-size: 11px; }
+#tab-home .mobile-error-support-arrow { flex: 0 0 auto; background: none; color: #73898a; font-size: 17px; }
 #tab-home .mobile-subscription-card {
   display: flex;
   align-items: center;

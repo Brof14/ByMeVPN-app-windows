@@ -27,13 +27,15 @@ function harness(getPlans = async () => canonical, overrides = {}) {
       querySelector() { return null; },
       querySelectorAll() { return []; }
     },
-    window: { __TAURI__: { core: { invoke: async (cmd) => {
-      if (Object.hasOwn(overrides, cmd)) return await overrides[cmd]();
+    window: { __TAURI__: { core: { invoke: async (cmd, args) => {
+      if (Object.hasOwn(overrides, cmd)) return await overrides[cmd](args);
       if (cmd === 'get_plans') return await getPlans();
       if (cmd === 'get_servers') return [];
       return null;
     } } } },
-    setTimeout, clearTimeout, setInterval, clearInterval
+    setTimeout: overrides.__setTimeout || setTimeout,
+    clearTimeout: overrides.__clearTimeout || clearTimeout,
+    setInterval, clearInterval
   };
   const sandbox = createContext(context);
   runInContext(source, sandbox);
@@ -94,8 +96,8 @@ test('checkout never displays historical prices before server verification', () 
 });
 
 test('server catalog keeps a safe display-only cache when refresh fails', () => {
-  const start = source.indexOf('async function loadAvailableServers()');
-  const end = source.indexOf('async function fetchServerCatalog(epoch)', start);
+  const start = source.indexOf('async function loadAvailableServers(options = {})');
+  const end = source.indexOf('async function fetchServerCatalog(epoch,', start);
   const loader = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.doesNotMatch(loader, /state\.servers\s*=\s*\[\]/);
@@ -105,11 +107,79 @@ test('server catalog keeps a safe display-only cache when refresh fails', () => 
   assert.doesNotMatch(source.slice(source.indexOf('function sanitizeCachedServerCatalog('), end), /config|uuid|password|public_key/);
 });
 
+test('concurrent server catalog loads share one request and forced probes run afterward', async () => {
+  let releaseFirst;
+  const firstRequest = new Promise(resolve => { releaseFirst = resolve; });
+  const calls = [];
+  const app = harness(undefined, {
+    get_servers: async args => {
+      calls.push(args);
+      if (calls.length === 1) {
+        await firstRequest;
+        return [];
+      }
+      return [{ code: 'node-a', supported: true, ping: -3 }];
+    }
+  });
+  const ordinary = app.eval('loadAvailableServers()');
+  const forced = app.eval('loadAvailableServers({ forceProbe: true })');
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  releaseFirst();
+  assert.deepEqual(await Promise.all([ordinary, forced]), [false, true]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].forceProbe, true);
+});
+
+test('server catalog retries a bounded number of times after temporary failure', async () => {
+  const timers = [];
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => {
+      calls += 1;
+      if (calls < 3) throw new Error('HTTP 403');
+      return [{ code: 'node-a', supported: true }];
+    },
+    __setTimeout: (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    __clearTimeout: id => { if (timers[id - 1]) timers[id - 1].cancelled = true; }
+  });
+  app.eval("state.user = { id: 'user-a' }; state.subscription = { status: 'active' }");
+  assert.equal(await app.eval('loadAvailableServers()'), false);
+  assert.equal(timers[0].delay, 8_000);
+  await timers[0].callback();
+  assert.equal(calls, 2);
+  assert.equal(timers[1].delay, 30_000);
+  await timers[1].callback();
+  assert.equal(calls, 3);
+  assert.equal(app.eval('state.servers.length'), 1);
+  assert.equal(timers.length, 2);
+});
+
+test('a delayed server retry cannot cross into another signed-in account', async () => {
+  const timers = [];
+  let calls = 0;
+  const app = harness(undefined, {
+    get_servers: async () => { calls += 1; throw new Error('HTTP 403'); },
+    __setTimeout: callback => { timers.push(callback); return timers.length; },
+    __clearTimeout() {}
+  });
+  app.eval("state.user = { id: 'user-a' }; state.subscription = { status: 'active' }");
+  assert.equal(await app.eval('loadAvailableServers()'), false);
+  app.eval("state.sessionEpoch += 1; state.user = { id: 'user-b' }");
+  await timers[0]();
+  assert.equal(calls, 1);
+  assert.equal(app.eval('serverCatalogRetryTimer'), null);
+});
+
 test('current-device identity is not mislabeled as an active connection', () => {
-  assert.match(source, /uiText\('Это устройство', 'This device'\)/);
+  assert.match(source, /devices_current_confirmed: "Это устройство"/);
+  assert.match(source, /devices_current_confirmed: "This device"/);
   assert.doesNotMatch(source, /isCurrent \? `<span class="dot-green">●<\/span> \$\{uiText\('Онлайн', 'Online'\)\}`/);
-  assert.match(source, /Система назначит доступный сервер/);
-  assert.match(source, /The service will assign an available server/);
+  assert.match(source, /Подберём сервер/);
+  assert.match(source, /We will choose a server/);
 });
 
 test('VPN controls use native buttons for built-in keyboard and screen-reader behavior', () => {
@@ -276,7 +346,11 @@ test('unknown subscription never incorrectly claims the account is unpaid', () =
   const result = app.eval(`(() => {
     const elements = new Map();
     document.getElementById = (id) => {
-      if (!elements.has(id)) elements.set(id, { textContent: '', className: '', querySelector() { return null; } });
+      if (!elements.has(id)) elements.set(id, {
+        textContent: '', className: '', querySelector() { return null; },
+        classList: { toggle() {}, add() {}, remove() {} },
+        setAttribute() {}, removeAttribute() {}
+      });
       return elements.get(id);
     };
     state.settings.language = 'en';
@@ -295,7 +369,7 @@ test('unknown subscription never incorrectly claims the account is unpaid', () =
 
 test('English messaging never promises unsupported account auto-renew controls', () => {
   const app = harness();
-  assert.match(app.eval('I18N.en.auto_renew_note'), /Contact support/);
+  assert.match(app.eval('I18N.en.auto_renew_note'), /Manage auto-renewal from Account/);
   assert.doesNotMatch(app.eval('I18N.en.auto_renew_note'), /cancel at any time in account settings/i);
   app.eval("state.settings.language = 'en'");
   assert.equal(app.eval("localizedToast('VPN отключён')"), 'VPN disconnected.');
@@ -385,7 +459,7 @@ test('trial activation refreshes account eligibility before the backend mutation
   assert.equal(app.eval('state.subscription.status'), 'trial');
 });
 
-test('late trial confirmation cannot replace a different signed-in account', async () => {
+test('late trial response cannot replace a different signed-in account', async () => {
   let settle;
   const pending = new Promise(resolve => { settle = resolve; });
   const app = harness(undefined, {
@@ -393,7 +467,7 @@ test('late trial confirmation cannot replace a different signed-in account', asy
     activate_trial: async () => pending
   });
   app.eval("state.user = { id: 'account-A' }");
-  const first = app.eval("handleActivateTrial(true)");
+  const first = app.eval("handleActivateTrial()");
   app.eval("state.sessionEpoch += 1; state.user = { id: 'account-B' }; state.subscription = {status:'none'}");
   settle({ status: 'trial', max_devices: 2 });
   await first;
@@ -452,17 +526,113 @@ test('cached server catalogs do not present stale latency as current', () => {
   assert.equal(result[0].ping_method, 'vpn_https');
 });
 
-test('automatic server choice prefers the quickest measured Reality node and ignores incomparable Hysteria delay', () => {
+test('automatic server choice uses the quickest measured proxy latency across supported protocols', () => {
   const app = harness();
   const result = app.eval(`chooseAutomaticServer([
     {code:'hy2',supported:true,security:'tls',ping_method:'vpn_https',ping:20},
-    {code:'reality-slow',supported:true,security:'reality',ping_method:'tcp_connect',ping:80},
-    {code:'reality-fast',supported:true,security:'reality',ping_method:'tcp_connect',ping:35},
-    {code:'tls-fast',supported:true,security:'tls',ping_method:'tcp_connect',ping:10}
+    {code:'reality-slow',supported:true,security:'reality',ping_method:'vpn_https',ping:80},
+    {code:'reality-fast',supported:true,security:'reality',ping_method:'vpn_https',ping:35},
+    {code:'tls-fast',supported:true,security:'tls',ping_method:'vpn_https',ping:10}
   ])`);
-  assert.equal(result.code, 'reality-fast');
+  assert.equal(result.code, 'tls-fast');
+  const unmeasured = app.eval("chooseAutomaticServer([{code:'first',supported:true,ping:0},{code:'measured-failure',supported:true,ping:-2}])");
+  assert.equal(unmeasured, null);
+  const unsupported = app.eval("chooseAutomaticServer([{code:'unsupported',supported:false,ping:1},{code:'unknown-method',supported:true,ping_method:'tcp_connect',ping:1}])");
+  assert.equal(unsupported, null);
   assert.match(source, /chooseAutomaticServer\(state\.servers\)/);
   assert.match(source, /state\.selectedServer\.code === 'auto'[\s\S]{0,180}autoTarget\?\.code/);
+});
+
+test('automatic connection does not pin an unmeasured first server', async () => {
+  const calls = [];
+  const app = harness(undefined, {
+    vpn_start: async args => {
+      calls.push(args);
+      return { connected: true, verified: false };
+    }
+  });
+  app.eval(`state.subscription = {status:'active', seconds_remaining:3600};
+    state.servers = [{code:'first',supported:true,ping:0}];
+    state.selectedServer = {code:'auto',name:'Автоматически',country:'',flag:'🌐',ping:0};
+    state.serversStale = false;
+    updateVpnUi = () => {}; showToast = () => {};
+    startLiveTimer = () => {}; startStatusPolling = () => {};`);
+  await app.eval('toggleVpn()');
+  assert.equal(calls[0].nodeCode, null);
+
+  const measuredCalls = [];
+  const measured = harness(undefined, {
+    vpn_start: async args => {
+      measuredCalls.push(args);
+      return { connected: true, verified: false };
+    }
+  });
+  measured.eval(`state.subscription = {status:'active', seconds_remaining:3600};
+    state.servers = [
+      {code:'slow',supported:true,ping_method:'vpn_https',ping:60},
+      {code:'fast',supported:true,ping_method:'vpn_https',ping:24}
+    ];
+    state.selectedServer = {code:'auto',name:'Автоматически',country:'',flag:'🌐',ping:0};
+    state.serversStale = false;
+    updateVpnUi = () => {}; showToast = () => {};
+    startLiveTimer = () => {}; startStatusPolling = () => {};`);
+  await measured.eval('toggleVpn()');
+  assert.equal(measuredCalls[0].nodeCode, 'fast');
+});
+
+test('automatic connection retries one alternate only after a server reachability failure', async () => {
+  const calls = [];
+  const app = harness(undefined, {
+    vpn_start: async args => {
+      calls.push(args);
+      if (args.nodeCode === 'first') {
+        throw new Error('Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол.');
+      }
+      return { connected: true, verified: false };
+    }
+  });
+  app.eval(`state.subscription = {status:'active', seconds_remaining:3600};
+    state.servers = [
+      {code:'first',supported:true,ping_method:'vpn_https',ping:18},
+      {code:'second',supported:true,ping_method:'vpn_https',ping:31},
+      {code:'known-failure',supported:true,ping_method:'vpn_https',ping:-2}
+    ];
+    state.selectedServer = {code:'auto',name:'Автоматически',country:'',flag:'🌐',ping:0};
+    state.serversStale = false;
+    updateVpnUi = () => {}; showToast = () => {};
+    startLiveTimer = () => {}; startStatusPolling = () => {};`);
+  await app.eval('toggleVpn()');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    {nodeCode:'first'}, {nodeCode:'second'}
+  ]);
+
+  const safeErrors = [];
+  const unavailable = harness(undefined, {
+    vpn_start: async args => {
+      safeErrors.push(args);
+      throw new Error('VPN не передаёт трафик (probe_unavailable). Сетевые настройки Windows восстановлены.');
+    }
+  });
+  unavailable.eval(`state.subscription = {status:'active', seconds_remaining:3600};
+    state.servers = [{code:'first',supported:true,ping_method:'vpn_https',ping:18}];
+    state.selectedServer = {code:'auto',name:'Автоматически',country:'',flag:'🌐',ping:0};
+    state.serversStale = false;
+    updateVpnUi = () => {}; showToast = () => {};`);
+  await unavailable.eval('toggleVpn()');
+  assert.equal(safeErrors.length, 1);
+});
+
+test('server latency action requests fresh outbound probes and identifies supported protocols', async () => {
+  const app = harness();
+  const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
+  assert.equal(app.eval("serverProtocolLabel({protocol:'vless',security:'reality'})"), 'VLESS Reality');
+  assert.equal(app.eval("serverProtocolLabel({protocol:'hysteria2',security:'tls'})"), 'Hysteria 2');
+  assert.match(source, /loadAvailableServers\(\{ forceProbe: true \}\)/);
+  assert.match(source, /invoke\('get_servers', forceProbe[\s\S]{0,100}clientEpoch: epoch/);
+  assert.match(source, /events\.listen\('server-latency-update'/);
+  assert.match(html, /id="btn-measure-server-latency"/);
+  assert.match(html, /data-i18n="server_latency_help"/);
+  assert.match(source, /server_latency_help: "Measures internet latency through each server/);
 });
 
 test('account deletion requires an explicit warning before invoking native IPC', () => {

@@ -77,7 +77,7 @@ fn main() {
             // Kill Switch is still required for leak-free guarantees.
             let watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(8));
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     interval.tick().await;
@@ -113,6 +113,7 @@ fn main() {
             service::get_servers,
             service::get_plans,
             service::get_auto_renewal,
+            service::enable_auto_renewal,
             service::cancel_auto_renewal,
             service::activate_trial,
             service::create_payment,
@@ -130,7 +131,8 @@ fn main() {
             service::window_minimize,
             service::window_toggle_maximize,
             service::window_close,
-            service::open_external_url
+            service::open_external_url,
+            service::open_support_email
         ])
         .build(tauri::generate_context!())
         .expect("ByMeVPN failed to start")

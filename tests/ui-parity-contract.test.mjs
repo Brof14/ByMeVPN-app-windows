@@ -15,14 +15,18 @@ test('home navigation and visual tokens match current Android V2 baseline', () =
     assert.ok(css.toLowerCase().includes(token), 'Android V2 token missing: ' + token);
   }
   assert.match(css, /assets\/byme-connect-shield\.png/);
+  assert.match(css, /Roboto-Variable\.ttf/);
+  assert.match(css, /--font-family:\s*"ByMe Roboto"/);
 });
 
 test('unknown or unavailable entitlement never renders active VPN controls', () => {
   assert.match(js, /const accessUnknown = !sub \|\| sub\.status === 'unknown'/);
   assert.match(js, /const hasPlan = sub && \['active', 'trial', 'grace'\]\.includes\(sub\.status\)/);
-  assert.match(js, /else if \(accessUnknown\) \{/);
-  assert.match(js, /Retry verification/);
+  assert.match(js, /else if \(showNoPlan\) \{/);
+  assert.match(js, /noPlanBox\?\.classList\.remove\('hidden'\)/);
+  assert.match(js, /Retry to refresh your account details/);
   assert.match(js, /ring\?\.setAttribute\('aria-disabled', String\(accessUnknown && !isConn\)\)/);
+  assert.match(js, /ring\.disabled = state\.connectionBusy \|\| \(accessUnknown && !isConn\)/);
   assert.match(js, /void refreshAccountSnapshot\(true\)/);
   assert.doesNotMatch(js, /'active', 'trial', 'grace', 'unknown'\]\.includes\(sub\.status\)/);
 });
@@ -39,9 +43,10 @@ test('all clickable non-button cards are keyboard-operable', () => {
     assert.match(tag[0], /role="button"/);
     assert.match(tag[0], /tabindex="0"/);
   }
-  for (const id of ['card-support-channel', 'card-support-faq', 'card-support-email']) {
+  for (const id of ['card-support-faq', 'card-support-email']) {
     assert.match(html, new RegExp('<button[^>]*id="' + id + '"[^>]*>'));
   }
+  assert.doesNotMatch(html, /id="card-support-channel"/);
   assert.match(js, /element\.click\(\)/);
 });
 
@@ -74,8 +79,8 @@ test('automatic selection shows the server actually assigned by the backend', ()
   runInContext("state.settings.language = 'en';", context);
   assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: deGermany');
   runInContext('state.vpnConnected = false;', context);
-  runInContext("state.autoSelectedServer = {name:'Germany'};", context);
+  runInContext("state.autoSelectedServer = {name:'Germany',ping:18};", context);
   assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: Germany');
   runInContext('state.autoSelectedServer = null;', context);
-  assert.equal(runInContext('automaticServerSubtitle()', context), 'The service will assign an available server');
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'We will choose a server');
 });

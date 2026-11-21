@@ -22,6 +22,65 @@ fn valid_host(host: &str) -> bool {
         .is_ok_and(|url| url.host_str().is_some() && url.port().is_none())
 }
 
+fn valid_vless_encryption(value: &str) -> bool {
+    if value == "none" {
+        return true;
+    }
+    if value.len() > 8192
+        || !value.is_ascii()
+        || value
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return false;
+    }
+    let mut blocks = value.split('.');
+    if blocks.next() != Some("mlkem768x25519plus")
+        || !matches!(blocks.next(), Some("native" | "xorpub" | "random"))
+        || !matches!(blocks.next(), Some("1rtt" | "0rtt"))
+    {
+        return false;
+    }
+
+    let mut has_key = false;
+    let mut padding_blocks = 0;
+    for block in blocks {
+        if block.len() >= 20 {
+            if has_key
+                || !URL_SAFE_NO_PAD
+                    .decode(block)
+                    .is_ok_and(|key| matches!(key.len(), 32 | 1184))
+            {
+                return false;
+            }
+            has_key = true;
+        } else {
+            if has_key {
+                return false;
+            }
+            let mut range = block.split('-');
+            let Some(probability) = range.next().and_then(|part| part.parse::<u32>().ok()) else {
+                return false;
+            };
+            let Some(minimum) = range.next().and_then(|part| part.parse::<u32>().ok()) else {
+                return false;
+            };
+            let Some(maximum) = range.next().and_then(|part| part.parse::<u32>().ok()) else {
+                return false;
+            };
+            if range.next().is_some() || probability > 100 || minimum > maximum || maximum > 65_535
+            {
+                return false;
+            }
+            if padding_blocks == 0 && (probability != 100 || minimum == 0) {
+                return false;
+            }
+            padding_blocks += 1;
+        }
+    }
+    has_key && (padding_blocks == 0 || padding_blocks % 2 == 1)
+}
+
 fn session_alpn(session: &Value) -> Result<Option<Vec<String>>, String> {
     let entries: Vec<&str> = match session.get("alpn") {
         None | Some(Value::Null) => return Ok(None),
@@ -124,14 +183,14 @@ pub fn build_tun_config_ext(
             if !flow.is_empty() && flow != "xtls-rprx-vision" {
                 return Err("Сервер использует неподдерживаемый режим VLESS.".into());
             }
-            // Do not silently turn a server-provided VLESS encryption mode
-            // into "none". Unsupported modes must fail before routes change.
-            if text(session, &["encryption"])
-                .is_some_and(|encryption| !encryption.eq_ignore_ascii_case("none"))
-            {
+            // Preserve Android's current Xray VLESS Encryption field. Validate
+            // its public parameter shape before passing it to the pinned core;
+            // never silently downgrade it to "none".
+            let encryption = text(session, &["encryption"]).unwrap_or("none");
+            if !valid_vless_encryption(encryption) {
                 return Err("Сервер использует неподдерживаемое шифрование VLESS.".into());
             }
-            let mut user = json!({"id": id.to_string(), "encryption": "none"});
+            let mut user = json!({"id": id.to_string(), "encryption": encryption});
             if !flow.is_empty() {
                 user["flow"] = json!(flow);
             }
@@ -647,8 +706,57 @@ mod tests {
         let mut config = session();
         config["encryption"] = json!("unsupported-encryption");
         assert!(build_tun_config(&config).is_err());
+        config["encryption"] =
+            json!("mlkem768x25519plus.other.1rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        assert!(build_tun_config(&config).is_err());
+        config["encryption"] = json!(
+            "mlkem768x25519plus.native.1rtt.99-0-100.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        );
+        assert!(build_tun_config(&config).is_err());
         config["encryption"] = json!("none");
         assert!(build_tun_config(&config).is_ok());
+    }
+
+    #[test]
+    fn vless_mlkem_encryption_is_passed_through_without_downgrade() {
+        let mut config = session();
+        let encryption =
+            "mlkem768x25519plus.native.1rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        config["encryption"] = json!(encryption);
+        let generated = build_tun_config(&config).unwrap();
+        assert_eq!(
+            generated["outbounds"][0]["settings"]["vnext"][0]["users"][0]["encryption"],
+            encryption
+        );
+        assert!(supports_windows_session(&config));
+    }
+
+    #[test]
+    fn xray_accepts_android_vless_mlkem_encryption_config() {
+        let xray = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vendor/runtime/windows-x64/xray.exe");
+        for key_length in [32, 1184] {
+            let key = URL_SAFE_NO_PAD.encode(vec![0_u8; key_length]);
+            let mut node = session();
+            node["encryption"] = json!(format!(
+                "mlkem768x25519plus.native.1rtt.100-111-1111.75-0-111.50-0-3333.{key}"
+            ));
+            let config = build_tun_config(&node).unwrap();
+            let path =
+                std::env::temp_dir().join(format!("bymevpn-vless-mlkem-{}.json", Uuid::new_v4()));
+            std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+            let result = std::process::Command::new(&xray)
+                .args(["run", "-test", "-config"])
+                .arg(&path)
+                .output();
+            let _ = std::fs::remove_file(path);
+            let output = result.expect("Verified Xray runtime must be available");
+            assert!(
+                output.status.success(),
+                "Xray rejected the Android VLESS Encryption config with a {key_length}-byte key: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
     #[test]
@@ -1109,8 +1217,9 @@ mod tests {
             let output = result.expect("Verified Xray binary required for transport acceptance");
             assert!(
                 output.status.success(),
-                "Xray rejected {name}/{security}: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "Xray rejected {name}/{security}; stdout: {}; stderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
             );
         }
     }

@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "ByMe Roboto";
+  src: url("./assets/fonts/Roboto-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 :root {
   --bg-deep: #090f1d;
   --bg-surface: #121c2b;
@@ -23,7 +31,7 @@
   --radius-btn: 14px;
   --radius-pill: 9999px;
 
-  --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-family: "ByMe Roboto", Roboto, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -1579,6 +1587,134 @@ html, body {
   margin: 10px 0 16px;
 }
 
+.devices-limit-progress {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: #294453;
+  margin: 10px 0 4px;
+}
+
+.devices-limit-progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #69d3bc;
+  transition: width 220ms ease-out;
+}
+
+.devices-unavailable-card,
+.devices-current-device,
+.devices-add-card {
+  background: #142638;
+  border-color: #294453;
+  border-radius: 17px;
+  box-shadow: none;
+}
+
+.devices-unavailable-card {
+  padding: 16px;
+  margin: 0 0 18px;
+}
+
+.devices-unavailable-card > strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.devices-unavailable-card > p,
+.devices-add-card > p {
+  color: #9db6ac;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 14px;
+}
+
+.devices-unavailable-card .devices-retry-button {
+  width: 100%;
+  min-height: 46px;
+}
+
+.devices-unavailable-card .devices-retry-button:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.devices-current-device {
+  min-height: 90px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.devices-current-device .device-icon-box {
+  width: 37px;
+  height: 37px;
+  border-radius: 11px;
+  background: #182a3b;
+}
+
+.devices-current-status {
+  display: block;
+  margin-top: 6px;
+  color: #8cdeca;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.devices-empty-other {
+  color: #8aa1a1;
+  font-size: 12px;
+  padding: 0 2px 6px;
+}
+
+.devices-cards-stack .device-item-row {
+  min-height: 89px;
+}
+
+.devices-cards-stack .device-info-col > .device-last-seen {
+  display: block;
+}
+
+.devices-upgrade-card {
+  background: #142538;
+  border-color: #294455;
+  box-shadow: none;
+}
+
+.devices-upgrade-card > strong,
+.devices-add-card > strong {
+  display: block;
+  color: #69d3bc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.devices-upgrade-card .devices-upgrade-bot-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.devices-add-card {
+  padding: 18px;
+  margin-top: 14px;
+}
+
+.devices-add-card > strong {
+  color: #8fbbca;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+}
+
+.devices-add-card > p {
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
 .device-item-row {
   display: flex;
   align-items: center;
@@ -1606,6 +1742,45 @@ html, body {
   font-size: 13.5px;
 }
 
+.devices-current-device .device-info-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.devices-current-device .device-last-seen {
+  display: block;
+  margin-top: 4px;
+}
+
+.device-current-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 3px 8px;
+  border: 1px solid rgba(105, 211, 188, 0.22);
+  border-radius: var(--radius-pill);
+  background: rgba(105, 211, 188, 0.08);
+  color: #8cdeca;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.device-current-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #a7b9bb;
+}
+
+.device-current-status[data-confirmed="true"]::before {
+  background: #69d3bc;
+  box-shadow: 0 0 7px rgba(105, 211, 188, 0.48);
+}
+
 .device-status-online,
 .device-last-seen {
   font-size: 11px;
@@ -1626,7 +1801,7 @@ html, body {
   font-weight: 700;
 }
 
-.btn-disconnect-device {
+.btn-remove-device {
   height: 34px;
   padding: 0 12px;
   border-radius: 9px;
@@ -1642,7 +1817,7 @@ html, body {
   transition: all 0.15s;
 }
 
-.btn-disconnect-device:hover {
+.btn-remove-device:hover {
   background: rgba(255, 85, 85, 0.15);
   border-color: var(--danger-color);
   color: var(--danger-color);

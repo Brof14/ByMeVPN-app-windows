@@ -1279,7 +1279,11 @@ async fn measure_proxy_latency(
     })
     .await
     .ok()??;
-    if !crate::egress::wait_for_attestation_listener(port, Duration::from_millis(1200)).await {
+    // A cold Xray start can take well over a second on mechanical disks and
+    // slower laptops. The old 1.2 s window made every latency probe return
+    // "could not measure" even though the server was fine. Give the local
+    // listener a realistic start-up window; the request itself stays bounded.
+    if !crate::egress::wait_for_attestation_listener(port, Duration::from_millis(3000)).await {
         return None;
     }
     let ping = crate::egress::measure_xray_server_latency(port, &password).await?;
@@ -1526,7 +1530,7 @@ pub async fn get_servers(
                     );
                     let (measured, cancelled) = tokio::select! {
                         result = tokio::time::timeout(
-                            Duration::from_secs(7),
+                            Duration::from_secs(10),
                             measure_proxy_latency(runtime_dir, app_dir, session),
                         ) => (result.ok().flatten().unwrap_or(0), false),
                         _ = wait_for_server_probe_cancellation(probe_epoch) => (0, true),

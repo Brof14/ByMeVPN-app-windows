@@ -33,8 +33,12 @@ test('a status verification failure is shown as persistent inline warning, not r
   assert.match(js, /home-verification-notice/);
   assert.doesNotMatch(js,/showToast\(state\.vpnVerified\s*\?/);
 });
-test('wide desktop sign-in gives the brand and form separate balanced columns', () => {
-  assert.match(desktop, /@media\s*\(min-width:\s*1024px\)[\s\S]*?#view-auth\.auth-view\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(420px,\s*540px\)/s);
+test('sign-in stays one centered Android-style column at every desktop size', () => {
+  assert.match(desktop, /#view-auth\.auth-view\s*\{[^}]*flex-direction:\s*column/s);
+  assert.match(desktop, /#view-auth\.auth-view\s*\{[^}]*align-items:\s*center/s);
+  assert.match(desktop, /#view-auth\.auth-view\s*\{[^}]*justify-content:\s*safe\s+center/s);
+  assert.match(desktop, /#view-auth\s+\.auth-card-side\s*\{[^}]*max-width:\s*460px/s);
+  assert.doesNotMatch(desktop, /#view-auth\.auth-view\s*\{[^}]*grid-template-columns/s);
 });
 
 test('no-plan shield keeps the Android 130dp compact and 210dp full-size rules', () => {

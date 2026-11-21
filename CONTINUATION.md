@@ -240,3 +240,10 @@ Public stable release is not proven ready. Existing release audit: `docs/AUDIT_2
 - Verified offline: `node --check ui/app.js`, full Node suite 155 tests (6 new in `tests/ui-performance-and-auth.test.mjs`). Rendered login/register/home/server-picker at a 1100 px viewport with a fake Tauri bridge; confirmed inline validation, slogan switching and two-column grid computed styles.
 - Not run: Rust compilation/tests (no Rust/Windows toolchain in this Linux workspace), installer build/signing, live VPN/account/server actions, Windows WebView2/DPI checks.
 - Public stable release remains NO-GO under `docs/PRODUCTION_RELEASE_GATE.md`.
+
+## 2026-11-21 1.2.24 sign-in layout and latency probing
+- Reworked the desktop sign-in into a single centered Android-style column (brand above a 460 px form column). The old two-column grid put the mark and form in opposite corners on wide windows, producing the skewed sign-in screen.
+- Server latency probes now allow Xray 3 s to open its authenticated loopback listener (was 1.2 s) with a 10 s per-server budget, so cold Xray starts are no longer reported as “could not measure”.
+- Added a 30 s watchdog to the “measure latency” control so a dead native probe task cannot leave it disabled forever.
+- Verified offline: `node --check ui/app.js`, the full Node suite, and rendered sign-in/server-picker screens at desktop viewports. Rust was not compiled locally; CI compiles and tests it on Windows. No live VPN/account/network action was run.
+- Source version 1.2.24. Tag workflow still produces draft prereleases.

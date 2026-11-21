@@ -613,45 +613,59 @@
   #tab-servers .servers-top-bar { align-items: center; justify-content: space-between; gap: 10px; }
 }
 
-@media (min-width: 1024px) {
-  #view-auth.auth-view {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(420px, 540px);
-    grid-auto-rows: auto;
-    justify-items: stretch;
-    align-items: center;
-    align-content: center;
-    gap: clamp(36px, 7vw, 100px);
-    width: 100%;
-    max-width: 1440px;
-    margin-inline: auto;
-    padding: 36px clamp(44px, 8vw, 120px);
-  }
-
-  #view-auth .auth-hero-side {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    max-width: none;
-    min-height: 360px;
-  }
-
-  #view-auth .auth-hero-content { width: 100%; padding: 0; text-align: center; }
-  #view-auth .hero-shield-emblem { min-height: 164px; width: 172px; margin: 0 auto 12px; }
-  #view-auth .hero-shield-emblem::after { width: 160px; height: 160px; }
-  #view-auth .auth-brand-name { margin-bottom: 6px; font-size: 40px; }
-  #view-auth .auth-slogan { font-size: 14px; }
-  #view-auth .auth-card-side { width: 100%; max-width: 540px; padding: 0; }
-  #view-auth .auth-card {
-    padding: 28px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 22px;
-    background: var(--bg-surface);
-    box-shadow: var(--desktop-dialog-shadow);
-  }
-  #view-auth .auth-card:hover { border-color: var(--border-neon-green); }
+/* Desktop sign-in mirrors the Android single-column hierarchy: brand and
+   tagline on top, one centered form column below. The previous two-column
+   split let the mark and the card drift to opposite corners on wide monitors,
+   which is what made the sign-in screen look skewed. One predictable, centered
+   column is also what the mobile app shows. These rules are intentionally not
+   scoped to a media query so every window size uses the same composition. */
+#view-auth.auth-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(14px, 3vh, 36px) 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
+
+#view-auth .auth-hero-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  max-width: 460px;
+  min-height: 148px;
+}
+
+#view-auth .auth-hero-content { width: 100%; padding: 0; text-align: center; }
+#view-auth .hero-shield-emblem { min-height: 116px; width: 136px; margin: 0 auto 8px; }
+#view-auth .hero-shield-emblem::after { width: 136px; height: 136px; }
+#view-auth .auth-brand-name { margin-bottom: 4px; font-size: 34px; }
+#view-auth .auth-slogan { font-size: 13px; }
+#view-auth .auth-card-side {
+  flex: 0 0 auto;
+  display: block;
+  width: 100%;
+  max-width: 460px;
+  padding: 0;
+}
+#view-auth .auth-card {
+  width: 100%;
+  max-width: none;
+  padding: 8px 2px 22px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#view-auth .auth-card:hover { border-color: transparent; }
 
 @media (min-width: 1060px) {
   :root { --desktop-sidebar-width: 232px; }

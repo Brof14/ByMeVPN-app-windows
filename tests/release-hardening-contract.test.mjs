@@ -63,7 +63,7 @@ test('protocol latency probes run asynchronously and never delay server catalog 
   assert.match(native, /Return the server list immediately/);
   assert.match(native, /SERVER_PING_EPOCH\.fetch_add\(1, Ordering::SeqCst\)/);
   assert.match(native, /wait_for_server_probe_cancellation\(probe_epoch\)/);
-  assert.match(native, /timeout\(\s*Duration::from_secs\(7\)/);
+  assert.match(native, /timeout\(\s*Duration::from_secs\(10\)/);
   assert.doesNotMatch(native, /measure_real_ping|tcp_ping_target/);
   assert.doesNotMatch(native, /timeout_at\(deadline, ping_tasks\.join_next\(\)\)/);
 });

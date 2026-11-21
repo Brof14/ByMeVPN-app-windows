@@ -896,6 +896,7 @@ async function setupServerLatencyListener() {
         state.autoSelectedServer = chooseAutomaticServer(state.servers);
       }
       if (state.latencyRefreshing && !state.servers.some(server => [-3, -4].includes(Number(server.ping)))) {
+        clearTimeout(state.latencyWatchdog);
         state.latencyRefreshing = false;
       }
       scheduleVpnUiUpdate();
@@ -1676,6 +1677,14 @@ function setupEventListeners() {
     const button = document.getElementById('btn-measure-server-latency');
     if (!button || state.latencyRefreshing || state.vpnConnected || state.connectionBusy) return;
     state.latencyRefreshing = true;
+    // Never leave the control disabled if a native probe task dies without
+    // emitting its final event. The watchdog only clears the busy flag; it
+    // never invents a latency value.
+    clearTimeout(state.latencyWatchdog);
+    state.latencyWatchdog = setTimeout(() => {
+      state.latencyRefreshing = false;
+      updateVpnUi();
+    }, 30000);
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     const label = button.querySelector('[data-latency-label]');
@@ -1683,10 +1692,12 @@ function setupEventListeners() {
     try {
       const loaded = await loadAvailableServers({ forceProbe: true });
       if (!loaded || !state.servers.some(server => [-3, -4].includes(Number(server.ping)))) {
+        clearTimeout(state.latencyWatchdog);
         state.latencyRefreshing = false;
       }
       updateVpnUi();
     } catch {
+      clearTimeout(state.latencyWatchdog);
       state.latencyRefreshing = false;
       updateVpnUi();
     }

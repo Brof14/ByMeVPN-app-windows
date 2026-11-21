@@ -1,9 +1,9 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.23`
+**Source version:** `1.2.24`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The 1.2.23 source has not been packaged into a signed installer. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The 1.2.24 source has not been packaged into a signed installer. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -37,6 +37,16 @@ Source-only changes; no live VPN, account, route, DNS or installer action was pe
 - **Authentication UI** now renders inline field errors (email, password, confirmation and a form-level server error) that clear as the field is corrected; the session-recovery panel and its retry button are actually shown after a failed restore. The password eye control keeps its SVG instead of replacing it with a platform emoji. The login/registration slogan is mode-specific instead of showing both lines, and the registration Telegram action is a full-width secondary button rather than an unstyled link.
 - **Checks:** `node --check ui/app.js` and the full Node suite passed — 155 tests, including six new behavior/contract tests for search preservation, per-row latency updates, single-flight refreshes, inline auth errors and bounded auth icons. The login, registration, Home and server-picker screens were rendered in a browser against the current CSS at a 1100 px desktop viewport (fake Tauri bridge; no real API). Rust was not recompiled locally because this workspace has no Rust/Windows toolchain; the Windows CI job runs `cargo test` and the NSIS build after this branch is pushed.
 - **Not verified:** a real tunnel, live sign-in, real server latency, DPI scaling on Windows, and installer packaging. Render measurements in a Linux Chromium instance do not prove Windows WebView2 behaviour.
+
+## 1.2.24 sign-in layout and latency probing (2026-11-21)
+
+Source and layout changes; no live VPN, account, route, DNS or installer action was performed in this workspace.
+
+- **Desktop sign-in** is now one centered, Android-style column: brand and tagline above a 460 px form column. The previous two-column grid let the mark and the card drift to opposite corners on wide monitors (the skewed screen users reported). The column stays centered, and scrolls rather than clipping on short windows.
+- **Server latency** probes now give Xray three seconds to open its authenticated loopback listener (was 1.2 s) and allow a 10 s per-server budget. On slower disks the old window closed before Xray was ready, so every row showed “could not measure” even for healthy servers.
+- **Latency control** has a 30 s watchdog; a native probe that exits without a final event can no longer leave the “measure latency” button disabled forever.
+- **Checks:** JavaScript syntax and the full Node contract suite pass. The sign-in and server-picker screens were rendered at desktop viewports against the current CSS (fake Tauri bridge; no live API). Rust was not compiled locally (no toolchain in this Linux workspace); CI runs `cargo check`, the Rust tests and the NSIS build after the tag is pushed.
+- **Not verified:** a real tunnel, live sign-in, real server latency, Windows DPI scaling, installer packaging/signing.
 
 ## Release blockers
 

@@ -3,7 +3,7 @@
 **Updated:** 2026-11-21
 **Source version:** `1.2.26`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.25` is published as a GitHub prerelease with the unsigned EXE and checksum attached; it is not a public stable release. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.26` is published as a GitHub prerelease with the unsigned EXE and checksum attached; it is not a public stable release. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -60,6 +60,12 @@ Source-only changes; no live VPN, account, route, DNS or installer action was pe
 - **Checks:** `node --check ui/app.js`, full Node suite **164/164**, and the focused Rust contract updates. Rust was not compiled locally (no toolchain in this Linux workspace); Windows CI runs `cargo check`, `cargo test`, formatting and the NSIS build after push.
 - **CI and release:** commit `8d6e27fc2392ba40b4847748c647e9dbac7db8b1` passed [CI run 44931250503](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44931250503) including `cargo check`, Rust tests and the NSIS build. [Release run 44931253412](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44931253412) produced the installer; [v1.2.25](https://github.com/Brof14/ByMeVPN-app-windows/releases/tag/v1.2.25) is published as a prerelease with `ByMeVPN_1.2.25_x64-setup.exe` (16,230,903 bytes; SHA-256 `1470ad7c6c1896e25066ccd53c2fe0ee90fb167be840623004d1d0d2f2fbd56d`) and `SHA256SUMS.txt`. The installer is not Authenticode-signed.
 - **Not verified:** a real tunnel, live sign-in, real server latency, Windows DPI scaling, installer signing/clean-machine install. The user's `server_unreachable` report could not be reproduced without the Windows Xray journal and a live session.
+
+## 1.2.26 concrete automatic target (2026-11-21)
+
+- **Automatic no longer sends an unqualified backend auto request when a catalog is available.** It uses the fastest measured node, otherwise the protocol-ranked catalog candidate (VLESS Reality, then VLESS, then Hysteria2), matching Android's `best measured ?: first available` behavior. A failed candidate still enters the existing two-alternate fallback. This directly addresses the case where probes had no result and the backend-assigned node produced `server_unreachable`.
+- **Checks:** `node --check ui/app.js` and the full Node suite **164/164** pass. Commit `0cedd5a9c4b402b41e406fe4d39c05963b22e0c4` passed [CI run 44932730515](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44932730515) (frontend contracts, `cargo check`, Rust tests, NSIS build). [Release run 44932737377](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44932737377) built and published [v1.2.26](https://github.com/Brof14/ByMeVPN-app-windows/releases/tag/v1.2.26) as a prerelease: `ByMeVPN_1.2.26_x64-setup.exe` (16,241,264 bytes; SHA-256 `1283cb5d7ccba9c086b83a878c958ac07cd6b3f924c6c8e5dee94dd0471f20b7`) plus `SHA256SUMS.txt`. The downloaded asset hash matches; the installer is not Authenticode-signed.
+- **Not verified:** a real tunnel, live account, real server latency or Windows DPI/clean-machine behavior.
 
 ## Release blockers
 

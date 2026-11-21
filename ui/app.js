@@ -2451,8 +2451,12 @@ async function toggleVpn(allowServerSwitch = false) {
 
     showToast('Запуск туннеля Xray + Wintun...');
     try {
+      // Match Android's automatic selection: use the fastest measured node,
+      // otherwise pick a concrete catalog candidate instead of letting the
+      // backend choose an uncontrolled server. The candidate is still a
+      // guess, so the automatic fallback below remains in place.
       const autoTarget = state.selectedServer.code === 'auto' && !state.serversStale
-        ? chooseAutomaticServer(state.servers)
+        ? (chooseAutomaticServer(state.servers) || automaticFallbackCandidates(state.servers)[0] || null)
         : null;
       state.autoSelectedServer = autoTarget || null;
       updateVpnUi();
@@ -3901,8 +3905,9 @@ function automaticFallbackCandidates(servers) {
 }
 
 // Rank only measurements made through the selected outbound protocol. This
-// keeps automatic selection comparable across VLESS and Hysteria 2; the API
-// chooses automatically when no completed measurement is available yet.
+// keeps automatic selection comparable across VLESS and Hysteria 2. When no
+// completed measurement exists the caller falls back to the protocol-ranked
+// catalog candidate instead of sending an unqualified backend auto request.
 function chooseAutomaticServer(servers) {
   return automaticServerCandidates(servers)
     .find(server => server.ping_method === 'vpn_https' && Number(server.ping) > 0) || null;

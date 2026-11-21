@@ -1,7 +1,7 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.25`
+**Source version:** `1.2.26`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
 **Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.25` is published as a GitHub prerelease with the unsigned EXE and checksum attached; it is not a public stable release. The candidate remains subject to the production release gate.
 

@@ -543,7 +543,7 @@ test('automatic server choice uses the quickest measured proxy latency across su
   assert.match(source, /state\.selectedServer\.code === 'auto'[\s\S]{0,180}autoTarget\?\.code/);
 });
 
-test('automatic connection does not pin an unmeasured first server', async () => {
+test('automatic connection uses a concrete unmeasured candidate instead of a backend guess', async () => {
   const calls = [];
   const app = harness(undefined, {
     vpn_start: async args => {
@@ -558,7 +558,7 @@ test('automatic connection does not pin an unmeasured first server', async () =>
     updateVpnUi = () => {}; showToast = () => {};
     startLiveTimer = () => {}; startStatusPolling = () => {};`);
   await app.eval('toggleVpn()');
-  assert.equal(calls[0].nodeCode, null);
+  assert.equal(calls[0].nodeCode, 'first');
 
   const measuredCalls = [];
   const measured = harness(undefined, {
@@ -627,7 +627,7 @@ test('automatic connection fails over even when no latency pinned a node', async
   const app = harness(undefined, {
     vpn_start: async args => {
       calls.push(args.nodeCode);
-      if (args.nodeCode === null) {
+      if (args.nodeCode === 'de') {
         throw new Error('VPN не передаёт трафик (server_unreachable). Сетевые настройки Windows восстановлены.');
       }
       return { connected: true, verified: false };
@@ -643,9 +643,9 @@ test('automatic connection fails over even when no latency pinned a node', async
     updateVpnUi = () => {}; showToast = () => {};
     startLiveTimer = () => {}; startStatusPolling = () => {};`);
   await app.eval('toggleVpn()');
-  // No measured node: the backend's auto pick failed, then the first
-  // Windows-preferred catalog entry (VLESS Reality) was tried explicitly.
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [null, 'de']);
+  // No measured node: the protocol-ranked VLESS Reality candidate failed,
+  // then the next explicit catalog candidate was tried instead of stopping.
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['de', 'hy2']);
 });
 
 test('server latency action requests fresh outbound probes and identifies supported protocols', async () => {

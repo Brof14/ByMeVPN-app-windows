@@ -622,6 +622,32 @@ test('automatic connection retries one alternate only after a server reachabilit
   assert.equal(safeErrors.length, 1);
 });
 
+test('automatic connection fails over even when no latency pinned a node', async () => {
+  const calls = [];
+  const app = harness(undefined, {
+    vpn_start: async args => {
+      calls.push(args.nodeCode);
+      if (args.nodeCode === null) {
+        throw new Error('VPN не передаёт трафик (server_unreachable). Сетевые настройки Windows восстановлены.');
+      }
+      return { connected: true, verified: false };
+    }
+  });
+  app.eval(`state.subscription = {status:'active', seconds_remaining:3600};
+    state.servers = [
+      {code:'hy2',supported:true,protocol:'hysteria2',security:'tls',ping:-2},
+      {code:'de',supported:true,protocol:'vless',security:'reality',ping:-2}
+    ];
+    state.selectedServer = {code:'auto',name:'Автоматически',country:'',flag:'🌐',ping:0};
+    state.serversStale = false;
+    updateVpnUi = () => {}; showToast = () => {};
+    startLiveTimer = () => {}; startStatusPolling = () => {};`);
+  await app.eval('toggleVpn()');
+  // No measured node: the backend's auto pick failed, then the first
+  // Windows-preferred catalog entry (VLESS Reality) was tried explicitly.
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [null, 'de']);
+});
+
 test('server latency action requests fresh outbound probes and identifies supported protocols', async () => {
   const app = harness();
   const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');

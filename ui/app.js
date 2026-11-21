@@ -101,6 +101,7 @@ let serverCatalogInFlight = null;
 let serverCatalogRetryTimer = null;
 let serverCatalogRetryAttempt = 0;
 let serverCatalogRetryOwner = null;
+let serverLatencyAutoAttemptAt = 0;
 
 // Prices are strictly hydrated from the authenticated API. No local fake offers.
 const PRICING_MATRIX = { 2: {}, 5: {}, 10: {} };
@@ -1410,6 +1411,7 @@ function switchTab(tabId) {
       break;
     case 'tab-servers':
       titleEl.textContent = lang === 'ru' ? 'Серверы' : 'Servers';
+      void autoMeasureServerLatencyIfNeeded();
       break;
     case 'tab-account':
       titleEl.textContent = dict.nav_account;
@@ -2457,20 +2459,7 @@ async function toggleVpn(allowServerSwitch = false) {
       const code = state.selectedServer.code === 'auto'
         ? (autoTarget?.code || null)
         : state.selectedServer.code;
-      let metrics;
-      try {
-        metrics = await invoke('vpn_start', { nodeCode: code });
-      } catch (firstError) {
-        const fallback = autoTarget && isRetryableAutomaticServerFailure(firstError)
-          ? automaticServerCandidates(state.servers).find(server => server.code !== autoTarget.code)
-          : null;
-        if (!fallback) throw firstError;
-        state.autoSelectedServer = fallback;
-        updateVpnUi();
-        showToast(uiText('Сервер не ответил. Проверяем следующую локацию…',
-          'The server did not respond. Trying the next location…'));
-        metrics = await invoke('vpn_start', { nodeCode: fallback.code });
-      }
+      const metrics = await startVpnWithAutomaticFallback(code);
       state.vpnConnected = metrics?.connected === true;
       if (!state.vpnConnected) throw new Error('Движок не подтвердил соединение');
       state.vpnVerified = metrics?.verified === true;
@@ -2921,7 +2910,8 @@ function updateVpnUi() {
   );
   const sharedDock = document.getElementById('home-shared-dock');
   sharedDock?.classList?.toggle('hidden', showNoPlan || accessUnknown);
-  document.getElementById('btn-toggle-vpn')?.classList?.toggle('hidden', !accessUnknown);
+  const showConnectionRetry = !isConn && hasPlan && !accessUnknown && !!state.connectionError;
+  document.getElementById('btn-toggle-vpn')?.classList?.toggle('hidden', !accessUnknown && !showConnectionRetry);
   updateNoPlanPresentation();
 
   if (isConn) {
@@ -2969,6 +2959,8 @@ function updateVpnUi() {
       ? uiText('Восстанавливаем VPN', 'Reconnecting VPN')
       : state.vpnPhase === 'disconnecting'
         ? uiText('Отключаем VPN', 'Disconnecting VPN')
+      : state.connectionError
+        ? uiText('Не удалось подключиться', 'Could not connect')
       : uiText('VPN выключен', 'VPN off');
     noPlanBox?.classList.add('hidden');
     connectedBox?.classList.add('hidden');
@@ -2990,7 +2982,8 @@ function updateVpnUi() {
     if (btn) btn.textContent = state.vpnPhase === 'reconnecting' ?
       uiText('Восстанавливаем...', 'Reconnecting...') : state.vpnPhase === 'connecting' ?
         uiText('Подключаемся...', 'Connecting...') : state.vpnPhase === 'disconnecting' ?
-          uiText('Отключаем...', 'Disconnecting...') : uiText('Подключиться', 'Connect');
+          uiText('Отключаем...', 'Disconnecting...') : state.connectionError ?
+            uiText('Повторить', 'Try again') : uiText('Подключиться', 'Connect');
     ringOff?.classList.toggle('is-reconnecting', state.vpnPhase === 'reconnecting');
     ringOff?.classList.remove('ring-off');
     ringOff?.classList.add('ring-ready');
@@ -3011,6 +3004,17 @@ function updateVpnUi() {
     connectionError.classList.toggle('hidden', !showError);
     connectionError.classList.toggle('reconnecting', showError && state.vpnPhase === 'reconnecting');
     connectionError.setAttribute('role', state.vpnPhase === 'reconnecting' ? 'status' : 'alert');
+  }
+
+  const latencyProgress = document.getElementById('server-latency-progress');
+  if (latencyProgress) {
+    const checking = state.servers.filter(server => Number(server.ping) === -3).length;
+    const queued = state.servers.filter(server => Number(server.ping) === -4).length;
+    latencyProgress.textContent = checking + queued > 0
+      ? uiText(`Проверяем серверы: ${checking} сейчас, ${queued} в очереди`,
+        `Checking servers: ${checking} active, ${queued} queued`)
+      : '';
+    latencyProgress.classList.toggle('hidden', checking + queued === 0);
   }
 
   // Update Server info in card
@@ -3680,12 +3684,14 @@ function automaticServerSubtitle() {
     ? String(state.metrics?.server_name || '').trim()
     : String(state.autoSelectedServer?.name || '').trim();
   if (!selectedName) return uiText('Подберём сервер', 'We will choose a server');
-  return uiText(`Выбран сервер: ${selectedName}`, `Selected server: ${selectedName}`);
+  const ping = Number(state.autoSelectedServer?.ping);
+  const suffix = Number.isFinite(ping) && ping > 0 ? ` · ${ping} ms` : '';
+  return uiText(`Выбран сервер: ${selectedName}${suffix}`, `Selected server: ${selectedName}${suffix}`);
 }
 
 function serverLatencyPresentation(server) {
   const latency = Number(server?.ping) || 0;
-  const tone = latency > 0 ? 'measured'
+  const tone = latency > 0 ? (latency <= 200 ? 'measured' : latency <= 350 ? 'medium' : 'slow')
     : latency === -2 ? 'failed'
       : latency === -3 ? 'checking'
         : latency === -4 ? 'queued' : 'unknown';
@@ -3857,12 +3863,41 @@ async function selectServer(server) {
   }
 }
 
+function automaticServerProtocolRank(server) {
+  const protocol = String(server?.protocol || '').toLowerCase();
+  const security = String(server?.security || '').toLowerCase();
+  // When no latency result exists yet, prefer Windows' best-supported
+  // transport instead of an arbitrary catalog entry. Measured latency still
+  // dominates this tie-break.
+  if (protocol === 'vless' && security === 'reality') return 0;
+  if (protocol === 'vless') return 1;
+  if (protocol === 'hysteria2' || protocol === 'hy2') return 2;
+  return 3;
+}
+
 function automaticServerCandidates(servers) {
   const supported = (Array.isArray(servers) ? servers : [])
     .filter(server => server && server.supported !== false && Number(server.ping) !== -2);
   const latency = server => server.ping_method === 'vpn_https' && Number(server.ping) > 0
     ? Number(server.ping) : Number.POSITIVE_INFINITY;
-  return supported.sort((a, b) => latency(a) - latency(b));
+  return supported.sort((a, b) =>
+    latency(a) - latency(b) || automaticServerProtocolRank(a) - automaticServerProtocolRank(b));
+}
+
+// Connection fallback must still work when every latency probe failed. The
+// measured-success list is tried first, then nodes whose probe failed, so an
+// all-“could not measure” catalog no longer disables automatic failover.
+function automaticFallbackCandidates(servers) {
+  const usable = (Array.isArray(servers) ? servers : [])
+    .filter(server => server && server.supported !== false && ![-3, -4].includes(Number(server.ping)));
+  const measured = usable
+    .filter(server => server.ping_method === 'vpn_https' && Number(server.ping) > 0)
+    .sort((a, b) => Number(a.ping) - Number(b.ping) ||
+      automaticServerProtocolRank(a) - automaticServerProtocolRank(b));
+  const unverified = usable
+    .filter(server => !measured.includes(server))
+    .sort((a, b) => automaticServerProtocolRank(a) - automaticServerProtocolRank(b));
+  return [...measured, ...unverified];
 }
 
 // Rank only measurements made through the selected outbound protocol. This
@@ -3875,7 +3910,49 @@ function chooseAutomaticServer(servers) {
 
 function isRetryableAutomaticServerFailure(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
-  return /Выбранный сервер не передал проверочный HTTPS-запрос|VPN не передаёт трафик \(server_unreachable\)/i.test(message);
+  return /Выбранный сервер не передал проверочный HTTPS-запрос|VPN не передаёт трафик \(server_unreachable\)|Xray завершился во время локальной проверки|Xray не открыл локальный порт проверки|Ошибка конфигурации Xray|Сервер вернул|Сервер не вернул|Сервер использует|Некорректные параметры Hysteria/i.test(message);
+}
+
+// Automatic selection must also fail over when no latency result pinned a
+// node. Before this guard, an unmeasured "auto" attempt got exactly one try
+// and an auto-assigned dead server surfaced as a dead end.
+async function startVpnWithAutomaticFallback(code) {
+  try {
+    return await invoke('vpn_start', { nodeCode: code });
+  } catch (firstError) {
+    if (state.selectedServer.code !== 'auto' || !isRetryableAutomaticServerFailure(firstError)) {
+      throw firstError;
+    }
+    const attempted = new Set(code ? [code] : []);
+    const fallbacks = automaticFallbackCandidates(state.servers)
+      .filter(server => !attempted.has(server.code))
+      .slice(0, 2);
+    let lastError = firstError;
+    for (const fallback of fallbacks) {
+      state.autoSelectedServer = fallback;
+      updateVpnUi();
+      showToast(uiText(`Сервер не ответил. Проверяем ${serverDisplayName(fallback)}…`,
+        `The server did not respond. Trying ${serverDisplayName(fallback)}…`));
+      try {
+        return await invoke('vpn_start', { nodeCode: fallback.code });
+      } catch (error) {
+        lastError = error;
+        // A probe/route failure is not fixed by another catalog entry.
+        if (!isRetryableAutomaticServerFailure(error)) break;
+      }
+    }
+    throw lastError;
+  }
+}
+
+function autoMeasureServerLatencyIfNeeded() {
+  if (state.vpnConnected || state.connectionBusy || state.serverSwitchBusy || state.latencyRefreshing) return;
+  if (!state.servers.length) return;
+  if (state.servers.some(server => Number(server.ping) > 0 || [-3, -4].includes(Number(server.ping)))) return;
+  const now = Date.now();
+  if (now - serverLatencyAutoAttemptAt < 120000) return;
+  serverLatencyAutoAttemptAt = now;
+  void loadAvailableServers({ forceProbe: true });
 }
 
 function filterServers(query) {

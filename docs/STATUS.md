@@ -1,9 +1,9 @@
 # ByMeVPN Windows — implementation status
 
 **Updated:** 2026-11-21
-**Source version:** `1.2.24`
+**Source version:** `1.2.25`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The 1.2.24 source has not been packaged into a signed installer. The candidate remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The 1.2.25 source has not been packaged into a signed installer. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -47,6 +47,18 @@ Source and layout changes; no live VPN, account, route, DNS or installer action 
 - **Latency control** has a 30 s watchdog; a native probe that exits without a final event can no longer leave the “measure latency” button disabled forever.
 - **Checks:** JavaScript syntax and the full Node contract suite pass. The sign-in and server-picker screens were rendered at desktop viewports against the current CSS (fake Tauri bridge; no live API). Rust was not compiled locally (no toolchain in this Linux workspace); CI runs `cargo check`, the Rust tests and the NSIS build after the tag is pushed.
 - **Not verified:** a real tunnel, live sign-in, real server latency, Windows DPI scaling, installer packaging/signing.
+
+## 1.2.25 automatic failover, connection diagnostics and connected latency (2026-11-21)
+
+Source-only changes; no live VPN, account, route, DNS or installer action was performed in this workspace.
+
+- **Automatic failover without a measured node.** Previously automatic mode only retried when a positive latency result had pinned a server. An unmeasured `auto` request therefore got exactly one backend-assigned attempt; a dead assignment surfaced as the reported dead end. The client now tries up to two explicit catalog candidates after a retryable server-reachability or preflight-listener failure, including when every latency probe failed, while still refusing to retry `probe_unavailable` or system-route failures. For unmeasured candidates it prefers VLESS Reality, then other VLESS, then Hysteria2; measured latency still wins.
+- **Preflight resilience.** The no-TUN server preflight now waits 8 s for Xray's loopback listener, allows a 3 s connect/6 s request budget, and makes one bounded second HTTPS-probe round (10 s, then 5 s) after a 600 ms pause. Windows routes remain untouched until the server passes.
+- **Actionable Xray diagnostics.** Preflight and TUN failures now append a fixed, sanitized cause parsed from the local `xray_startup.log` (connection refused, timeout, DNS, TLS certificate, Reality rejection, authentication, Wintun, routes, permissions or config rejection) plus the local journal path. Raw log lines, hosts, UUIDs and tokens are never returned to the WebView.
+- **Connected latency.** A successful connection now measures real HTTPS latency through the verified tunnel, overlapped with route/DNS inspection, and refreshes it with the 20 s health probe. Server-list failures are cached for 60 s instead of 10 minutes, so a transient cold-start failure no longer blanks every row for the success TTL.
+- **Android parity closed in this pass.** Opening Servers with no measurements automatically triggers the same protocol-outbound probe; the list shows Android's active/queued counter, latency colour thresholds (≤200 ms mint, ≤350 ms yellow, slower orange), the selected automatic server plus its measured ping, and a persistent “Could not connect / Try again” state with a retry CTA instead of only a toast.
+- **Checks:** `node --check ui/app.js`, full Node suite **164/164**, and the focused Rust contract updates. Rust was not compiled locally (no toolchain in this Linux workspace); Windows CI runs `cargo check`, `cargo test`, formatting and the NSIS build after push.
+- **Not verified:** a real tunnel, live sign-in, real server latency, Windows DPI scaling, installer packaging/signing. The user's `server_unreachable` report could not be reproduced without the Windows Xray journal and a live session.
 
 ## Release blockers
 

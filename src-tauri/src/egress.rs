@@ -142,7 +142,12 @@ fn apply_generic_connectivity_fallback(proof: TunnelProof, generic_ok: bool) -> 
     }
 }
 
-fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Client, String> {
+fn authenticated_proxy_client_with_timeouts(
+    port: u16,
+    password: &str,
+    connect_timeout: Duration,
+    request_timeout: Duration,
+) -> Result<reqwest::Client, String> {
     let proxy = reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))
         .map_err(|_| "Некорректный локальный адрес проверки VPN.".to_string())?
         .basic_auth("bymevpn", password);
@@ -150,10 +155,19 @@ fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Clie
         .proxy(proxy)
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_millis(2500))
-        .timeout(Duration::from_millis(4500))
+        .connect_timeout(connect_timeout)
+        .timeout(request_timeout)
         .build()
         .map_err(|_| "Не удалось подготовить защищённый тест VPN.".to_string())
+}
+
+fn authenticated_proxy_client(port: u16, password: &str) -> Result<reqwest::Client, String> {
+    authenticated_proxy_client_with_timeouts(
+        port,
+        password,
+        Duration::from_millis(2500),
+        Duration::from_millis(4500),
+    )
 }
 
 /// Xray may take longer than a fixed startup delay to create its loopback
@@ -190,10 +204,29 @@ pub async fn wait_for_attestation_listener(port: u16, timeout: Duration) -> bool
 /// same VPN to carry ordinary HTTPS traffic. Until one real request succeeds,
 /// Windows TUN routes must not be changed.
 pub async fn preflight_xray_server(port: u16, password: &str) -> bool {
-    let Ok(client) = authenticated_proxy_client(port, password) else {
+    // Preflight gets a slightly longer request budget than steady-state
+    // verification: a cold Reality/QUIC handshake can need more than the
+    // ordinary 4.5 seconds on a slow uplink.
+    let Ok(client) = authenticated_proxy_client_with_timeouts(
+        port,
+        password,
+        Duration::from_millis(3000),
+        Duration::from_millis(6000),
+    ) else {
         return false;
     };
-    tokio::time::timeout(Duration::from_secs(10), async move {
+    if preflight_attempt(client.clone(), Duration::from_secs(10)).await {
+        return true;
+    }
+    // One bounded retry on the same listener distinguishes a transient
+    // handshake/startup timeout from a server that genuinely cannot carry
+    // HTTPS. The caller still keeps Windows routes untouched until success.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    preflight_attempt(client, Duration::from_secs(5)).await
+}
+
+async fn preflight_attempt(client: reqwest::Client, budget: Duration) -> bool {
+    tokio::time::timeout(budget, async move {
         first_successful_preflight(probe_https_reachability(client.clone()), async move {
             probe_egress(client).await.is_some()
         })

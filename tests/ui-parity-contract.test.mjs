@@ -80,7 +80,7 @@ test('automatic selection shows the server actually assigned by the backend', ()
   assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: deGermany');
   runInContext('state.vpnConnected = false;', context);
   runInContext("state.autoSelectedServer = {name:'Germany',ping:18};", context);
-  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: Germany');
+  assert.equal(runInContext('automaticServerSubtitle()', context), 'Selected server: Germany · 18 ms');
   runInContext('state.autoSelectedServer = null;', context);
   assert.equal(runInContext('automaticServerSubtitle()', context), 'We will choose a server');
 });

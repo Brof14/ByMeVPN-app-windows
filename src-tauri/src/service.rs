@@ -46,7 +46,24 @@ static SERVER_PING_CACHE: OnceLock<Mutex<ServerPingCache>> = OnceLock::new();
 static SERVER_PING_IN_FLIGHT: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 static SERVER_PING_EPOCH: AtomicU64 = AtomicU64::new(0);
 const SERVER_PING_CACHE_TTL: Duration = Duration::from_secs(600);
+// A failed measurement is usually a cold-start or transient network timeout.
+// Keeping it for the full success TTL left every row on "could not measure"
+// for ten minutes even after the server became healthy again.
+const SERVER_PING_FAILURE_TTL: Duration = Duration::from_secs(60);
 const SERVER_PING_CACHE_LIMIT: usize = 512;
+
+fn server_ping_entry_fresh(
+    measured_at: std::time::Instant,
+    ping: u32,
+    now: std::time::Instant,
+) -> bool {
+    let ttl = if ping > 0 {
+        SERVER_PING_CACHE_TTL
+    } else {
+        SERVER_PING_FAILURE_TTL
+    };
+    now.saturating_duration_since(measured_at) < ttl
+}
 
 fn cancel_server_ping_probes() {
     SERVER_PING_EPOCH.fetch_add(1, Ordering::SeqCst);
@@ -59,16 +76,14 @@ struct ServerPingCache {
 
 impl ServerPingCache {
     fn get(&mut self, key: &str, now: std::time::Instant) -> Option<u32> {
-        self.entries.retain(|_, (measured_at, _)| {
-            now.saturating_duration_since(*measured_at) < SERVER_PING_CACHE_TTL
-        });
+        self.entries
+            .retain(|_, (measured_at, ping)| server_ping_entry_fresh(*measured_at, *ping, now));
         self.entries.get(key).map(|(_, ping)| *ping)
     }
 
     fn insert(&mut self, key: String, ping: u32, now: std::time::Instant) {
-        self.entries.retain(|_, (measured_at, _)| {
-            now.saturating_duration_since(*measured_at) < SERVER_PING_CACHE_TTL
-        });
+        self.entries
+            .retain(|_, (measured_at, stored)| server_ping_entry_fresh(*measured_at, *stored, now));
         if self.entries.len() >= SERVER_PING_CACHE_LIMIT && !self.entries.contains_key(&key) {
             if let Some(oldest) = self
                 .entries
@@ -2443,6 +2458,11 @@ async fn vpn_start_inner(
         // Preserve preflight failures for local diagnostics, overwriting the
         // log only when the real TUN stage starts. Never upload raw Xray logs.
         let startup_log = app_dir.join("xray_startup.log");
+        let log_diagnosis = |path: &std::path::Path| {
+            crate::tun_health::xray_failure_diagnosis(path)
+                .map(|cause| format!(" Причина: {cause}."))
+                .unwrap_or_default()
+        };
         let preflight_log = fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -2475,7 +2495,7 @@ async fn vpn_start_inner(
         let preflight_listener_ready = preflight_process_running
             && crate::egress::wait_for_attestation_listener(
                 probe_port,
-                Duration::from_secs(5),
+                Duration::from_secs(8),
             )
             .await;
         let preflight_server_reachable = preflight_listener_ready
@@ -2486,13 +2506,25 @@ async fn vpn_start_inner(
         #[cfg(windows)]
         drop(preflight_job);
         if !preflight_process_running {
-            return Err("Xray завершился во время локальной проверки сервера. Маршруты Windows не менялись. Откройте диагностику подключения.".into());
+            return Err(format!(
+                "Xray завершился во время локальной проверки сервера.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
+                log_diagnosis(&startup_log),
+                startup_log.display()
+            ));
         }
         if !preflight_listener_ready {
-            return Err("Xray не открыл локальный порт проверки за 5 секунд. Маршруты Windows не менялись. Проверьте журнал диагностики.".into());
+            return Err(format!(
+                "Xray не открыл локальный порт проверки за 8 секунд.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
+                log_diagnosis(&startup_log),
+                startup_log.display()
+            ));
         }
         if !preflight_server_reachable {
-            return Err("Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол. Маршруты Windows не менялись. Попробуйте другой сервер или проверьте его параметры.".into());
+            return Err(format!(
+                "Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер или проверьте его параметры.",
+                log_diagnosis(&startup_log),
+                startup_log.display()
+            ));
         }
 
         // A missing external baseline is not a tunnel failure by itself, but
@@ -2551,15 +2583,28 @@ async fn vpn_start_inner(
             )
             .await
             {
-                return (TunnelProof::ProbeUnavailable, false);
+                return (TunnelProof::ProbeUnavailable, false, None);
             }
             let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
             if !proof.traffic_confirmed() {
-                return (proof, false);
+                return (proof, false, None);
             }
-            let (mut routes, dns) = tokio::join!(
+            // Measure through the just-verified tunnel, not a TCP handshake.
+            // Bounded and overlapped with route/DNS inspection so it cannot
+            // add a new serial delay to connection startup.
+            let latency = async {
+                tokio::time::timeout(
+                    Duration::from_millis(2500),
+                    crate::egress::measure_xray_server_latency(probe_port, &probe_password),
+                )
+                .await
+                .ok()
+                .flatten()
+            };
+            let (mut routes, dns, ping) = tokio::join!(
                 crate::tun_health::inspect(),
                 crate::tun_health::dns_resolution_check(),
+                latency,
             );
             if routes.definitely_missing() {
                 tokio::time::sleep(Duration::from_millis(250)).await;
@@ -2571,15 +2616,19 @@ async fn vpn_start_inner(
                 true,
                 proof.traffic_confirmed(),
             );
-            (proof, healthy)
+            (proof, healthy, ping)
         })
         .await;
 
-        let (proof, route_and_dns_ok) = match handoff {
+        let (proof, route_and_dns_ok, initial_ping) = match handoff {
             Ok(result) => result,
             Err(_) => {
                 stop_failed_tun(&mut child, &config_path).await?;
-                return Err("Проверка VPN превысила безопасный лимит. Системный интернет восстановлен.".into());
+                return Err(format!(
+                    "Проверка VPN превысила безопасный лимит.{} Системный интернет восстановлен. Журнал: {}.",
+                    log_diagnosis(&log_path),
+                    log_path.display()
+                ));
             }
         };
         let tunnel_ready = route_and_dns_ok && matches!(child.try_wait(), Ok(None));
@@ -2587,9 +2636,18 @@ async fn vpn_start_inner(
         if !tunnel_ready {
             stop_failed_tun(&mut child, &config_path).await?;
             return Err(if !proof.traffic_confirmed() {
-                format!("VPN не передаёт трафик ({}). Сетевые настройки Windows восстановлены.", proof.status())
+                format!(
+                    "VPN не передаёт трафик ({}).{} Сетевые настройки Windows восстановлены. Журнал: {}.",
+                    proof.status(),
+                    log_diagnosis(&log_path),
+                    log_path.display()
+                )
             } else {
-                "VPN-сервер отвечает, но Windows TUN или DNS не работает. Подключение отменено, обычный интернет восстановлен.".into()
+                format!(
+                    "VPN-сервер отвечает, но Windows TUN или DNS не работает.{} Подключение отменено, обычный интернет восстановлен. Журнал: {}.",
+                    log_diagnosis(&log_path),
+                    log_path.display()
+                )
             });
         }
 
@@ -2599,8 +2657,9 @@ async fn vpn_start_inner(
             stop_failed_tun(&mut child, &config_path).await?;
             return Err(error);
         }
-        // TCP connect time does not measure latency through the VPN.
-        let ping = 0;
+        // HTTPS latency through the verified tunnel (0 when both independent
+        // endpoints were unreachable; the UI keeps that distinct from a value).
+        let ping = initial_ping.unwrap_or(0);
         let started_at = std::time::Instant::now();
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         *lock = Some(ActiveTunnel {
@@ -2693,7 +2752,16 @@ pub async fn vpn_status(
         })
     };
     if let Some((started_at, baseline_ip, port, password)) = probe {
-        let result = verify_tunnel_path(baseline_ip, port, &password).await;
+        let (result, measured_ping) =
+            tokio::join!(verify_tunnel_path(baseline_ip, port, &password), async {
+                tokio::time::timeout(
+                    Duration::from_millis(2500),
+                    crate::egress::measure_xray_server_latency(port, &password),
+                )
+                .await
+                .ok()
+                .flatten()
+            },);
         let path_ready = if result.traffic_confirmed() {
             let routes = crate::tun_health::inspect().await;
             crate::tun_health::health_proves_connection(
@@ -2710,6 +2778,9 @@ pub async fn vpn_status(
             if active.started_at == started_at {
                 active.last_egress_probe = std::time::Instant::now();
                 active.last_tunnel_proof = result;
+                if let Some(ping) = measured_ping {
+                    active.cached_ping_ms = ping;
+                }
                 active.egress_verified = path_ready && result.verified_ip().is_some();
                 let restart = should_restart_after_health_probe(
                     result,
@@ -3143,6 +3214,8 @@ mod tests {
         cache.insert(key.clone(), 0, now);
 
         assert_eq!(cache.get(&key, now), Some(0));
+        assert_eq!(cache.get(&key, now + Duration::from_secs(59)), Some(0));
+        assert_eq!(cache.get(&key, now + Duration::from_secs(60)), None);
         assert_ne!(
             key,
             server_ping_cache_key(
@@ -3150,6 +3223,8 @@ mod tests {
                 &json!({"protocol":"vless","server":"vpn2.example","port":443})
             )
         );
+        cache.insert(key.clone(), 42, now);
+        assert_eq!(cache.get(&key, now + Duration::from_secs(599)), Some(42));
         assert_eq!(cache.get(&key, now + Duration::from_secs(600)), None);
     }
 

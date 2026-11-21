@@ -15,7 +15,8 @@ test('selected VPN endpoint must respond before Xray takes over Windows TUN', ()
   assert.ok(preflight > 0 && tunLaunch > preflight, 'preflight must finish before full tunnel starts');
   assert.match(start, /preflight_attestation_config\(&xray_config\)/);
   assert.match(start, /if !preflight_server_reachable \{/);
-  assert.match(start, /Duration::from_secs\(5\)/);
+  assert.match(start, /Duration::from_secs\(8\)/);
+  assert.match(start, /xray_failure_diagnosis/);
   assert.match(start, /preflight_child\.kill\(\)/);
   assert.match(start, /preflight_child\.wait\(\)/);
   assert.match(tunConfig, /fn preflight_attestation_config\(/);
@@ -43,8 +44,10 @@ test('observed traffic without IP proof stays unverified; failed TUN proof is ro
 
 test('missing transport proof is a failure, never a fabricated green status', () => {
   assert.match(egress, /pub async fn preflight_xray_server\(/);
-  assert.match(egress, /timeout\(Duration::from_secs\(10\)/);
+  assert.match(egress, /preflight_attempt\(client\.clone\(\), Duration::from_secs\(10\)\)/);
+  assert.match(egress, /preflight_attempt\(client, Duration::from_secs\(5\)\)/);
   assert.match(egress, /probe_egress\(client\)\.await\.is_some\(\)/);
+  assert.match(tunHealth, /pub fn xray_failure_diagnosis/);
   assert.match(service, /verify_tunnel_path\(/);
   assert.match(service, /last_tunnel_proof: proof/);
 });

@@ -247,3 +247,11 @@ Public stable release is not proven ready. Existing release audit: `docs/AUDIT_2
 - Added a 30 s watchdog to the “measure latency” control so a dead native probe task cannot leave it disabled forever.
 - Verified offline: `node --check ui/app.js`, the full Node suite, and rendered sign-in/server-picker screens at desktop viewports. Rust was not compiled locally; CI compiles and tests it on Windows. No live VPN/account/network action was run.
 - Source version 1.2.24. Tag workflow still produces draft prereleases.
+
+## 2026-11-21 1.2.25 automatic failover, diagnostics and connected latency
+- Automatic mode now fails over through up to two explicit catalog nodes even when no latency measurement pinned a node, including an all-“could not measure” catalog. It prefers VLESS Reality, then other VLESS, then Hysteria2 for unmeasured candidates; only server-reachability/preflight-listener failures are retried, not `probe_unavailable` or system-route failures.
+- Preflight waits 8 s for the Xray listener, uses a 3 s connect/6 s request budget and one bounded second HTTPS-probe round. Failures append a sanitized cause from `xray_startup.log` and the journal path; raw addresses, UUIDs and tokens are never exposed.
+- Connected ping is measured through the verified tunnel at startup and refreshed with the 20 s health probe. Server-list failure entries expire after 60 s instead of 600 s.
+- UI parity: automatic latency probing on Servers, Android active/queued counter, Android latency colour thresholds, selected auto server with measured ping, and a persistent error state with a retry CTA.
+- Verified offline: `node --check ui/app.js`, full Node suite 164/164. Rust is not available in this workspace; Windows CI compiles, formats, tests and builds the NSIS installer. No live VPN/account/network/route action was run.
+- Source version 1.2.25. Tag workflow still produces draft prereleases only.

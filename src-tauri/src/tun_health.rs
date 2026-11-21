@@ -188,27 +188,106 @@ pub async fn cleanup_bymevpn_routes_after_exit() -> Result<(), String> {
 
 // Xray writes continuously while the tunnel is active; a diagnostics request
 // must never load an unbounded file or return its sensitive raw content.
-pub fn startup_log_hint(path: &std::path::Path) -> &'static str {
+fn read_log_tail(path: &std::path::Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
     const MAX_TAIL_BYTES: u64 = 64 * 1024;
 
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return "unknown";
-    };
-    let Ok(size) = file.metadata().map(|metadata| metadata.len()) else {
-        return "unknown";
-    };
-    if file
-        .seek(SeekFrom::Start(size.saturating_sub(MAX_TAIL_BYTES)))
-        .is_err()
-    {
-        return "unknown";
-    }
+    let mut file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(size.saturating_sub(MAX_TAIL_BYTES)))
+        .ok()?;
     let mut tail = Vec::new();
-    if file.take(MAX_TAIL_BYTES).read_to_end(&mut tail).is_err() {
-        return "unknown";
+    file.take(MAX_TAIL_BYTES).read_to_end(&mut tail).ok()?;
+    Some(String::from_utf8_lossy(&tail).into_owned())
+}
+
+pub fn startup_log_hint(path: &std::path::Path) -> &'static str {
+    read_log_tail(path)
+        .map(|tail| log_hint(&tail))
+        .unwrap_or("unknown")
+}
+
+/// Human-readable cause from the local Xray journal. Callers may append this
+/// to a connection error; it deliberately returns a fixed phrase instead of a
+/// raw log line so hosts, UUIDs, passwords and subscription paths never reach
+/// the WebView or a support message.
+pub fn xray_failure_diagnosis(path: &std::path::Path) -> Option<&'static str> {
+    read_log_tail(path).and_then(|tail| xray_failure_hint(&tail))
+}
+
+pub fn xray_failure_hint(text: &str) -> Option<&'static str> {
+    let mut saw_failure = false;
+    for line in text.lines().rev().take(300) {
+        let line = line.to_ascii_lowercase();
+        let failure = [
+            "error",
+            "failed",
+            "failure",
+            "denied",
+            "cannot ",
+            "unable to",
+            "timed out",
+            "timeout",
+            "refused",
+            "invalid",
+            "rejected",
+            "unreachable",
+        ]
+        .iter()
+        .any(|part| line.contains(part));
+        if !failure {
+            continue;
+        }
+        saw_failure = true;
+        if line.contains("access is denied") || line.contains("permission denied") {
+            return Some("Windows отклонила операцию; приложению нужны права администратора");
+        }
+        if line.contains("wintun") || line.contains("create tun") {
+            return Some("не удалось создать TUN-адаптер ByMeVPN");
+        }
+        if line.contains("failed to add route") || line.contains("routing table") {
+            return Some("не удалось применить маршруты Windows");
+        }
+        if line.contains("connection refused") || line.contains("actively refused") {
+            return Some("сервер отклонил подключение (connection refused)");
+        }
+        if line.contains("i/o timeout")
+            || line.contains("context deadline exceeded")
+            || line.contains("timed out")
+            || line.contains("timeout")
+        {
+            return Some("сервер не ответил за отведённое время (timeout)");
+        }
+        if line.contains("no such host")
+            || line.contains("failed to resolve")
+            || line.contains("could not resolve")
+        {
+            return Some("не удалось определить адрес сервера (DNS)");
+        }
+        if line.contains("x509") || line.contains("certificate") || line.contains("tls:") {
+            return Some("сервер не прошёл проверку TLS-сертификата");
+        }
+        if line.contains("reality") {
+            return Some("сервер отклонил параметры Reality");
+        }
+        if line.contains("authentication")
+            || line.contains("invalid user")
+            || line.contains("unauthorized")
+            || line.contains("invalid password")
+        {
+            return Some("сервер отклонил ключ или пароль подключения");
+        }
+        if line.contains("eof") {
+            return Some("сервер закрыл соединение (EOF)");
+        }
+        if line.contains("unknown config")
+            || line.contains("failed to parse")
+            || line.contains("invalid config")
+        {
+            return Some("Xray отклонил конфигурацию подключения");
+        }
     }
-    log_hint(&String::from_utf8_lossy(&tail))
+    saw_failure.then_some("Xray сообщил об ошибке; подробности в локальном журнале")
 }
 
 // Classifications only. Never expose log lines: Xray errors can embed hosts,
@@ -353,6 +432,27 @@ mod tests {
             "dns"
         );
         assert_eq!(log_hint("failed to resolve host"), "dns");
+    }
+
+    #[test]
+    fn connection_diagnostics_name_common_xray_failures_without_echoing_raw_logs() {
+        assert_eq!(
+            xray_failure_hint("failed to dial: connection refused"),
+            Some("сервер отклонил подключение (connection refused)")
+        );
+        assert_eq!(
+            xray_failure_hint("dial tcp 203.0.113.5:443: i/o timeout"),
+            Some("сервер не ответил за отведённое время (timeout)")
+        );
+        assert_eq!(
+            xray_failure_hint("REALITY: processed invalid connection"),
+            Some("сервер отклонил параметры Reality")
+        );
+        assert_eq!(
+            xray_failure_hint("tls: failed to verify certificate: x509: expired"),
+            Some("сервер не прошёл проверку TLS-сертификата")
+        );
+        assert_eq!(xray_failure_hint("DNS lookup succeeded"), None);
     }
 
     #[test]

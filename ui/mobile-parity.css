@@ -2208,6 +2208,8 @@ html, body, .app-root, .app-shell-layout {
   background: #89a6a0;
 }
 #tab-servers .server-latency-dot.measured { background: #69d3bc; }
+#tab-servers .server-latency-dot.medium { background: #ffd54f; }
+#tab-servers .server-latency-dot.slow { background: #ff8a65; }
 #tab-servers .server-latency-dot.failed { background: #ff8a65; }
 #tab-servers .server-latency-label {
   color: #89a6a0;
@@ -2215,6 +2217,8 @@ html, body, .app-root, .app-shell-layout {
   font-weight: 550;
 }
 #tab-servers .server-latency-label.measured { color: #69d3bc; }
+#tab-servers .server-latency-label.medium { color: #ffd54f; }
+#tab-servers .server-latency-label.slow { color: #ff8a65; }
 #tab-servers .server-latency-label.failed { color: #ff8a65; }
 #tab-servers .mobile-server-sheet-footnote {
   margin: 18px 0 0;

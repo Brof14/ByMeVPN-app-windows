@@ -3,7 +3,7 @@
 **Updated:** 2026-11-21
 **Source version:** `1.2.22`
 **Android reference checked:** `Brof14/ByMeVPN-app` `b456c46926772cde4a122357309685cbb087a6fb`
-**Release classification:** Experimental / **NOT production-ready**. The current source is newer than the existing GitHub draft and remains subject to the production release gate.
+**Release classification:** Experimental / **NOT production-ready**. Tag `v1.2.22` has a GitHub draft prerelease with the EXE attached; it is not a public stable release. The candidate remains subject to the production release gate.
 
 ## Implemented and source-verified
 
@@ -24,7 +24,8 @@
 
 - Frontend contract suite passed; release-mode Rust suite passed **77/77**. Rust formatting, JavaScript syntax and `git diff --check` passed.
 - Built `ByMeVPN_1.2.22_x64-setup.exe` (16,214,284 bytes) under `src-tauri/target/release-artifacts-v1.2.22-github-candidate-2026-11-21/`. SHA-256: `e48f6fde19e4aa7f841818ee98da85fe1925f016ce632ef4cccffba9cf021124`.
-- The installer is **not Authenticode-signed** and was not launched. No real VPN session, internet/DNS/route test, or clean-machine install was run. This local artifact does not clear any release blocker below.
+- GitHub Actions run [44883989247](https://github.com/Brof14/ByMeVPN-app-windows/actions/runs/44883989247) completed successfully: 77 Rust tests, release build, NSIS install/runtime-hash/uninstall smoke check, and upload all passed. The draft [v1.2.22 release](https://github.com/Brof14/ByMeVPN-app-windows/releases/tag/untagged-2596f65f514fe051ff92) contains `ByMeVPN_1.2.22_x64-setup.exe` (16,223,133 bytes) and `SHA256SUMS.txt`; CI installer SHA-256: `41cc13c4324956f656f1ed86553fe5d8b274387df6ff01dc900a8b7c0f72e52c`.
+- The local installer is **not Authenticode-signed** and was not launched. CI's disposable-runner smoke test checked install/uninstall and packaged runtime hashes only; no real VPN session, internet/DNS/route test, or release-owner acceptance was run. This does not clear the release blockers below.
 
 ## Release blockers
 

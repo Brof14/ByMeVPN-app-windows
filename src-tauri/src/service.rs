@@ -2251,9 +2251,7 @@ pub async fn vpn_start(
 /// Selects the server with the smallest positive outbound latency. Used by
 /// automatic mode so the fastest measured server is chosen instead of a
 /// TCP-only catalog probe.
-pub fn select_fastest_server_latency<S: AsRef<str>>(
-    candidates: &[(S, u32)],
-) -> Option<String> {
+pub fn select_fastest_server_latency<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
     candidates
         .iter()
         .filter(|(_, ping)| *ping > 0)

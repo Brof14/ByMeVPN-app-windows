@@ -75,7 +75,9 @@ fn parse_report(text: &str) -> RouteReport {
             "ipv4" => report.ipv4_default = parse_bool(value),
             "ipv6" => report.ipv6_default = parse_bool(value),
             "effective_ipv4" => report.effective_ipv4 = parse_bool(value),
-            "endpoint_via_physical_gateway" => report.endpoint_via_physical_gateway = parse_bool(value),
+            "endpoint_via_physical_gateway" => {
+                report.endpoint_via_physical_gateway = parse_bool(value)
+            }
             "routing_loop" => report.routing_loop = value == "1",
             _ => {}
         }
@@ -170,7 +172,13 @@ if ($null -ne $a -and $idx -eq $a.ifIndex) {{ Write-Output 'loop=1' }} else {{ W
         endpoint = endpoint.replace('\'', "")
     );
     std::process::Command::new("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &script])
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &script,
+        ])
         .creation_flags(0x0800_0000)
         .output()
         .ok()

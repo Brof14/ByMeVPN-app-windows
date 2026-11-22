@@ -1,5 +1,5 @@
-use bymevpn::service::{should_restart_after_health_probe, ReconnectState};
 use bymevpn::egress::TunnelProof;
+use bymevpn::service::{should_restart_after_health_probe, ReconnectState};
 use std::time::{Duration, Instant};
 
 #[test]

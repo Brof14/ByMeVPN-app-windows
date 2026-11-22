@@ -253,25 +253,25 @@ pub struct ReconnectState {
 }
 
 impl ReconnectState {
-    fn permits_retry(&self, enabled: bool, node_code: &Option<String>) -> bool {
+    pub fn permits_retry(&self, enabled: bool, node_code: &Option<String>) -> bool {
         enabled && self.armed && &self.node_code == node_code
     }
 
-    fn connected(&mut self, node_code: String) {
+    pub fn connected(&mut self, node_code: String) {
         self.armed = true;
         self.node_code = Some(node_code);
         self.attempt = 0;
         self.next_attempt = None;
     }
 
-    fn manually_stopped(&mut self) {
+    pub fn manually_stopped(&mut self) {
         self.armed = false;
         self.node_code = None;
         self.attempt = 0;
         self.next_attempt = None;
     }
 
-    fn due_node(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
+    pub fn due_node(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
         const RETRY_DELAYS: [std::time::Duration; 5] = [
             Duration::from_secs(2),
             Duration::from_secs(4),

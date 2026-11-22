@@ -89,6 +89,15 @@ fn main() {
                     if status.is_ok_and(|metrics| {
                         !metrics.connected && metrics.proof != "network_recovery_required"
                     }) {
+                        // Record the Xray crash reason from xray_startup.log so the
+                        // next reconnect attempt can surface a safe, non-raw diagnosis.
+                        let _diagnosis = if let Ok(dir) = watchdog.path().app_data_dir() {
+                            crate::tun_health::xray_failure_diagnosis(&dir.join("xray_startup.log"))
+                        } else {
+                            None
+                        };
+                        // Restore IPv4/IPv6/DNS on the failure path before restart.
+                        let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
                         service::auto_reconnect_if_due(watchdog.clone()).await;
                     }
                 }
@@ -167,6 +176,9 @@ fn main() {
                 // stale routes/DNS after Xray exits. The helper is scoped to
                 // the ByMeVPN adapter; physical interfaces are untouched.
                 let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit_sync();
+                tauri::async_runtime::spawn(async {
+                    let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
+                });
                 if let Some(state) = app_handle.try_state::<service::AppState>() {
                     if let Ok(mut required) = state.network_recovery_required.lock() {
                         *required = cleanup.is_err();

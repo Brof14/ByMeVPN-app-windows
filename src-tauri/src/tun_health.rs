@@ -10,6 +10,12 @@ pub struct RouteReport {
     /// Does the Windows routing policy actually choose the TUN interface?
     /// A route merely existing in Get-NetRoute does not prove selection.
     pub effective_ipv4: Option<bool>,
+    /// Is the VPN endpoint still reachable through the physical gateway,
+    /// i.e. there is no routing loop where the endpoint is captured by TUN.
+    pub endpoint_via_physical_gateway: Option<bool>,
+    /// True when the VPN endpoint resolves to the TUN adapter instead of the
+    /// physical network, which would create a routing loop.
+    pub routing_loop: bool,
 }
 
 impl Default for RouteReport {
@@ -19,6 +25,8 @@ impl Default for RouteReport {
             ipv4_default: None,
             ipv6_default: None,
             effective_ipv4: None,
+            endpoint_via_physical_gateway: None,
+            routing_loop: false,
         }
     }
 }
@@ -28,6 +36,13 @@ impl RouteReport {
         matches!(self.adapter.as_str(), "missing" | "down")
             || self.ipv4_default == Some(false)
             || self.effective_ipv4 == Some(false)
+            || self.routing_loop
+    }
+
+    /// A routing loop means the VPN endpoint is no longer reachable through
+    /// the physical gateway, so the tunnel would capture its own traffic.
+    pub fn has_routing_loop(&self) -> bool {
+        self.routing_loop || self.endpoint_via_physical_gateway == Some(false)
     }
 }
 
@@ -60,6 +75,8 @@ fn parse_report(text: &str) -> RouteReport {
             "ipv4" => report.ipv4_default = parse_bool(value),
             "ipv6" => report.ipv6_default = parse_bool(value),
             "effective_ipv4" => report.effective_ipv4 = parse_bool(value),
+            "endpoint_via_physical_gateway" => report.endpoint_via_physical_gateway = parse_bool(value),
+            "routing_loop" => report.routing_loop = value == "1",
             _ => {}
         }
     }
@@ -129,6 +146,60 @@ pub async fn inspect() -> RouteReport {
     tauri::async_runtime::spawn_blocking(inspect_sync)
         .await
         .unwrap_or_default()
+}
+
+/// Verifies that the VPN endpoint is still reachable through the *physical*
+/// gateway and not captured by the ByMeVPN TUN adapter. A false result means
+/// a routing loop: traffic to the endpoint would be sent into the tunnel.
+#[cfg(windows)]
+pub fn detect_routing_loop_sync(endpoint: &str) -> bool {
+    use std::os::windows::process::CommandExt;
+    if endpoint.trim().is_empty() {
+        return false;
+    }
+    let script = format!(
+        r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$a = Get-NetAdapter -Name 'ByMeVPN' -ErrorAction SilentlyContinue
+$best = @(Find-NetRoute -RemoteIPAddress '{endpoint}' -ErrorAction SilentlyContinue |
+    Select-Object -First 1)
+if ($best.Count -eq 0) {{ Write-Output 'loop=unknown'; exit 0 }}
+$idx = $best[0].InterfaceIndex
+if ($null -ne $a -and $idx -eq $a.ifIndex) {{ Write-Output 'loop=1' }} else {{ Write-Output 'loop=0' }}
+"#,
+        endpoint = endpoint.replace('\'', "")
+    );
+    std::process::Command::new("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("loop=1"))
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+pub fn detect_routing_loop_sync(_endpoint: &str) -> bool {
+    false
+}
+
+pub async fn detect_routing_loop(endpoint: &str) -> bool {
+    let endpoint = endpoint.to_string();
+    tauri::async_runtime::spawn_blocking(move || detect_routing_loop_sync(&endpoint))
+        .await
+        .unwrap_or(false)
+}
+
+/// Returns true when the endpoint is reachable through the physical gateway
+/// (no routing loop).
+pub async fn vpn_endpoint_reachable_via_physical_gateway(endpoint: &str) -> bool {
+    !detect_routing_loop(endpoint).await
+}
+
+/// Restore IPv4/IPv6 routes and DNS on every failure path. Idempotent.
+pub async fn restore_routes_and_dns_on_failure() -> Result<(), String> {
+    cleanup_bymevpn_routes_after_exit().await
 }
 
 /// Best-effort recovery *after our Xray process has exited*. Xray removes

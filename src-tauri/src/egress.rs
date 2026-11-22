@@ -370,7 +370,7 @@ const SERVER_LATENCY_ENDPOINTS: [&str; 2] = [
     "https://www.google.com/generate_204",
 ];
 
-fn average_server_latency_ms(samples: &[u32]) -> Option<u32> {
+pub fn average_server_latency_ms(samples: &[u32]) -> Option<u32> {
     let mut valid = samples
         .iter()
         .copied()
@@ -557,10 +557,57 @@ fn probe_client() -> Result<reqwest::Client, String> {
 }
 
 /// Capture public IPv4 before changing system routes.
+/// Retry a probe with exponential backoff (250ms, 500ms, 1s, 2s, ...).
+pub async fn retry_with_exponential_backoff<F, Fut, T>(
+    mut operation: F,
+    max_attempts: u32,
+) -> Option<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Option<T>>,
+{
+    let mut delay = std::time::Duration::from_millis(250);
+    for attempt in 0..max_attempts {
+        if let Some(value) = operation().await {
+            return Some(value);
+        }
+        if attempt + 1 < max_attempts {
+            tokio::time::sleep(delay).await;
+            delay = (delay * 2).min(std::time::Duration::from_secs(8));
+        }
+    }
+    None
+}
+
+/// Fallback IP-check endpoint used when the primary probe is unavailable.
+pub const FALLBACK_IP_ENDPOINT: &str = "https://api.ipify.org";
+
 pub async fn public_egress_ip() -> Result<IpAddr, String> {
-    probe_egress(probe_client()?).await.ok_or_else(||
-        "Публичные сервисы проверки IP до подключения недоступны. Проверьте DNS, HTTPS и доступность сети.".to_string()
+    let client = probe_client()?;
+    if let Some(ip) = retry_with_exponential_backoff(
+        || {
+            let client = client.clone();
+            async move { probe_egress(client).await }
+        },
+        3,
     )
+    .await
+    {
+        return Ok(ip);
+    }
+    // Fallback endpoint with exponential backoff when primary probes are unavailable.
+    if let Some(ip) = retry_with_exponential_backoff(
+        || async move {
+            let client = probe_client().ok()?;
+            query_probe(client, FALLBACK_IP_ENDPOINT).await
+        },
+        2,
+    )
+    .await
+    {
+        return Ok(ip);
+    }
+    Err("Публичные сервисы проверки IP до подключения недоступны. Проверьте DNS, HTTPS и доступность сети.".to_string())
 }
 
 #[cfg(test)]

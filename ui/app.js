@@ -1205,7 +1205,11 @@ function serverCatalogErrorMessage(error) {
     return uiText('Сеанс API истёк. Обновите аккаунт или войдите снова.',
       'The API session expired. Refresh your account or sign in again.');
   }
-  if (/HTTP 403|SUBSCRIPTION_REQUIRED|DEVICE_LIMIT/i.test(raw)) {
+  if (/DEVICE_LIMIT/i.test(raw)) {
+    return uiText('Достигнут лимит устройств. Удалите старое устройство или увеличьте лимит в Telegram-боте.',
+      'Device limit reached. Remove an old device or upgrade the limit in the Telegram bot.');
+  }
+  if (/HTTP 403|SUBSCRIPTION_REQUIRED/i.test(raw)) {
     return uiText('Серверы недоступны для текущего статуса подписки. Обновите аккаунт.',
       'Servers are unavailable for the current subscription. Refresh your account.');
   }
@@ -3060,8 +3064,9 @@ function updateVpnUi() {
   if (automaticSubtitle) automaticSubtitle.textContent = automaticServerSubtitle();
 
   if (flagEl) flagEl.textContent = s.flag || '🌐';
-  if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && state.metrics?.server_name ?
-    state.metrics.server_name : serverDisplayName(s);
+  const friendlyAutoServer = friendlyServerLabel(state.metrics?.server_name);
+  if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && friendlyAutoServer ?
+    friendlyAutoServer : (isConn && s.code === 'auto' && state.metrics?.country ? state.metrics.country : serverDisplayName(s));
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     const ring = document.getElementById(id);
     ring?.setAttribute('aria-busy', String(state.connectionBusy));
@@ -3080,7 +3085,7 @@ function updateVpnUi() {
     (automaticConnected && state.metrics?.country ? state.metrics.country : uiText('Автоматически', 'Automatic')) :
     (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
   if (homeCity) homeCity.textContent = s.code === 'auto' ?
-    (automaticConnected ? state.metrics.server_name : uiText('Автовыбор', 'Auto select')) :
+    (automaticConnected ? (friendlyServerLabel(state.metrics.server_name) || state.metrics.country || '') : uiText('Автовыбор', 'Auto select')) :
     ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
 
   // Android shows the outbound protocol and a connected marker under the
@@ -3733,10 +3738,19 @@ function serverProtocolLabel(server) {
   return protocol.toUpperCase();
 }
 
+function friendlyServerLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  // Hide technical hostnames, domains, IPs and ports from the client-facing UI.
+  if (/[.:\/]/.test(raw)) return '';
+  return raw;
+}
+
 function automaticServerSubtitle() {
-  const selectedName = state.vpnConnected && state.selectedServer.code === 'auto'
+  const rawName = state.vpnConnected && state.selectedServer.code === 'auto'
     ? String(state.metrics?.server_name || '').trim()
     : String(state.autoSelectedServer?.name || '').trim();
+  const selectedName = friendlyServerLabel(rawName) || (state.vpnConnected && state.selectedServer.code === 'auto' ? String(state.metrics?.country || '').trim() : '');
   if (!selectedName) return uiText('Подберём сервер', 'We will choose a server');
   const ping = Number(state.autoSelectedServer?.ping);
   const suffix = Number.isFinite(ping) && ping > 0 ? ` · ${ping} ms` : '';

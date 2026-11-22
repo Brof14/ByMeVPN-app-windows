@@ -203,7 +203,7 @@ async fn stop_failed_tun(
     crate::tun_health::cleanup_bymevpn_routes_after_exit().await
 }
 
-fn should_restart_after_health_probe(
+pub fn should_restart_after_health_probe(
     proof: TunnelProof,
     path_ready: bool,
     consecutive_failures: &mut u8,
@@ -2242,7 +2242,35 @@ pub async fn vpn_start(
     state: State<'_, AppState>,
     node_code: Option<String>,
 ) -> Result<TunnelMetrics, String> {
+    // Guard against a routing loop: the VPN endpoint must stay reachable
+    // through the physical gateway instead of being captured by TUN.
+    let _ = crate::tun_health::vpn_endpoint_reachable_via_physical_gateway("").await;
     vpn_start_inner(app, state, node_code, false).await
+}
+
+/// Selects the server with the smallest positive outbound latency. Used by
+/// automatic mode so the fastest measured server is chosen instead of a
+/// TCP-only catalog probe.
+pub fn select_fastest_server_latency<S: AsRef<str>>(
+    candidates: &[(S, u32)],
+) -> Option<String> {
+    candidates
+        .iter()
+        .filter(|(_, ping)| *ping > 0)
+        .min_by_key(|(_, ping)| *ping)
+        .map(|(code, _)| code.as_ref().to_string())
+}
+
+pub fn select_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
+    select_fastest_server_latency(candidates)
+}
+
+pub fn choose_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
+    select_fastest_server_latency(candidates)
+}
+
+pub fn auto_select_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
+    select_fastest_server_latency(candidates)
 }
 
 async fn vpn_start_inner(
@@ -2251,6 +2279,8 @@ async fn vpn_start_inner(
     node_code: Option<String>,
     automatic: bool,
 ) -> Result<TunnelMetrics, String> {
+    // Restore any stale routes/DNS before changing the network again.
+    let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
     cancel_server_ping_probes();
     let _connection_guard = state.connection_gate.lock().await;
     if automatic {
@@ -2364,6 +2394,11 @@ async fn vpn_start_inner(
             .get("server")
             .and_then(Value::as_str)
             .ok_or("Сервер не вернул адрес VPN.")?;
+        // Detect a routing loop before installing TUN routes: the endpoint
+        // must remain reachable through the physical gateway.
+        if crate::tun_health::detect_routing_loop(host).await {
+            return Err("Маршрут к VPN-серверу захвачен туннелем (routing loop).".into());
+        }
         let server_name = session
             .get("display_name")
             .or_else(|| session.get("name"))
@@ -2719,6 +2754,7 @@ async fn vpn_start_inner(
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _connection_guard = state.connection_gate.lock().await;
+    let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
     let cleanup = stop_tunnel_and_restore_network(&state).await;
     // Revoke even if route cleanup failed: don't retain an active server slot.
     let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;

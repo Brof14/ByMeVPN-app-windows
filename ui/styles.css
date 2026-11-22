@@ -3803,3 +3803,19 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .android-settings-essential, .android-settings-language { padding-inline: 12px; }
   .android-settings-language .lang-btn { font-size: 11px; }
 }
+
+/* Press feedback parity with Android: 100-160ms, ease-out, reduced-motion. */
+button, [role="button"], .btn, .btn-primary, .btn-google, .vpn-power-ring, .card, .tile {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+button:active, [role="button"]:active, .btn:active, .btn-primary:active, .btn-google:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  button, [role="button"], .btn, .btn-primary, .btn-google {
+    transition: opacity 120ms ease;
+  }
+  button:active, [role="button"]:active, .btn:active, .btn-primary:active, .btn-google:active {
+    transform: none;
+  }
+}

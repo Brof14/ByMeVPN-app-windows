@@ -118,6 +118,56 @@ pub fn build_tun_config_ext(
     ad_block: &str,
     dns_mode: &str,
 ) -> Result<Value, String> {
+    build_tun_config_split(session, bypass_ru, ad_block, dns_mode, &[])
+}
+
+/// Split tunneling rule for excluded Windows applications.
+///
+/// Xray resolves the owning process of every connection captured by the TUN
+/// inbound, so a `process` field rule with absolute executable paths sends the
+/// selected programs to the physical adapter. The rule is prepended: an
+/// excluded app must not be captured by the port-53 DNS interception or by the
+/// RU/LAN bypass rules first.
+fn split_tunnel_process_rule(apps: &[String]) -> Option<Value> {
+    const MAX_PROCESSES: usize = 256;
+    let mut processes: Vec<String> = Vec::new();
+    for app in apps.iter().take(MAX_PROCESSES) {
+        let path = app.trim();
+        if path.len() < 4 || path.len() > 260 || path.chars().any(|c| c.is_control()) {
+            continue;
+        }
+        let bytes = path.as_bytes();
+        // Only absolute Windows paths: a bare image name would match unrelated
+        // programs that share it.
+        if bytes[1] != b':' || bytes[2] != b'\\' || !path.to_ascii_lowercase().ends_with(".exe") {
+            continue;
+        }
+        if processes
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(path))
+        {
+            continue;
+        }
+        processes.push(path.to_string());
+    }
+    (!processes.is_empty()).then(|| {
+        json!({
+            "type": "field",
+            "process": processes,
+            "outboundTag": "direct"
+        })
+    })
+}
+
+/// Same tunnel configuration plus the applications that bypass the VPN.
+/// `bypass_ru`, ad blocking and DNS stay unchanged; only the exclusions differ.
+pub fn build_tun_config_split(
+    session: &Value,
+    bypass_ru: bool,
+    ad_block: &str,
+    dns_mode: &str,
+    split_apps: &[String],
+) -> Result<Value, String> {
     let protocol = text(session, &["protocol"])
         .unwrap_or("vless")
         .to_ascii_lowercase();
@@ -358,6 +408,12 @@ pub fn build_tun_config_ext(
     };
 
     let mut rules = Vec::new();
+
+    // Split tunneling runs first so excluded applications leave through the
+    // physical adapter even when they resolve DNS or use a bypassed RU host.
+    if let Some(rule) = split_tunnel_process_rule(split_apps) {
+        rules.push(rule);
+    }
 
     // Windows routes DNS through the virtual TUN adapter. Intercept port 53
     // before any RU/LAN bypass rule; otherwise the WFP DNS leak blocker can
@@ -1222,5 +1278,57 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr),
             );
         }
+    }
+
+    #[test]
+    fn split_tunnel_rule_precedes_every_other_route() {
+        let apps = vec![
+            "C:\\Program Files\\Discord\\Discord.exe".to_string(),
+            "C:\\Program Files\\Steam\\steam.exe".to_string(),
+        ];
+        let config =
+            build_tun_config_split(&session(), true, "recommended", "cloudflare", &apps).unwrap();
+        let rules = config["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules[0]["type"], "field");
+        assert_eq!(rules[0]["outboundTag"], "direct");
+        assert_eq!(
+            rules[0]["process"],
+            json!([
+                "C:\\Program Files\\Discord\\Discord.exe",
+                "C:\\Program Files\\Steam\\steam.exe"
+            ])
+        );
+        // DNS interception and the RU bypass still follow the exclusion rule.
+        assert_eq!(rules[1]["port"], "53");
+        assert!(rules
+            .iter()
+            .any(|rule| rule["domain"][0] == json!("geosite:category-ru")));
+    }
+
+    #[test]
+    fn split_tunnel_rule_ignores_invalid_and_duplicate_paths() {
+        let apps = vec![
+            "C:\\Apps\\One.exe".to_string(),
+            "c:\\apps\\one.EXE".to_string(),
+            "One.exe".to_string(),
+            "C:\\Apps\\One.txt".to_string(),
+            "relative\\Two.exe".to_string(),
+            "C:\\Apps\\bad\n.exe".to_string(),
+            "  C:\\Apps\\Two.exe  ".to_string(),
+        ];
+        let config = build_tun_config_split(&session(), false, "none", "cloudflare", &apps).unwrap();
+        assert_eq!(
+            config["routing"]["rules"][0]["process"],
+            json!(["C:\\Apps\\One.exe", "C:\\Apps\\Two.exe"])
+        );
+    }
+
+    #[test]
+    fn empty_split_tunnel_keeps_the_dns_rule_first() {
+        let config =
+            build_tun_config_split(&session(), false, "none", "cloudflare", &[]).unwrap();
+        assert_eq!(config["routing"]["rules"][0]["port"], "53");
+        assert!(config["routing"]["rules"][0]["process"].is_null());
+        assert_eq!(build_tun_config_ext(&session(), false, "none", "cloudflare").unwrap(), config);
     }
 }

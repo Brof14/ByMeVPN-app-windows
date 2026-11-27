@@ -2,14 +2,14 @@
 
 .server-latency-help {
   margin: -7px 12px 16px;
-  color: #789394;
+  color: #6d86ab;
   font-size: 11px;
   line-height: 1.45;
 }
 
 .server-latency-progress {
   margin: -8px 12px 14px;
-  color: #9bb7b7;
+  color: #9eb4d4;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -28,8 +28,8 @@
   padding: 10px 13px;
   border: 1px solid rgba(232, 174, 109, .34);
   border-radius: 12px;
-  background: rgba(84, 62, 37, .17);
-  color: #e9c6a0;
+  background: rgba(20, 40, 78, .17);
+  color: #ffb74d;
   font-size: 11.5px;
   line-height: 1.4;
   text-align: center;
@@ -43,10 +43,10 @@
   min-height: 32px;
   margin-top: 8px;
   padding: 5px 11px;
-  border: 1px solid #9a7956;
+  border: 1px solid #ffb74d;
   border-radius: 9px;
   background: rgba(232, 174, 109, .07);
-  color: #f1d5b3;
+  color: #ffb74d;
   font-size: 11px;
   font-weight: 650;
   cursor: pointer;
@@ -56,10 +56,10 @@
 .mobile-vpn-health-modal .mobile-health-results {
   margin: 15px 0;
   padding: 13px 15px;
-  border: 1px solid #28424b;
+  border: 1px solid #19315c;
   border-radius: 13px;
-  background: #101d28;
-  color: #c6ddd8;
+  background: #0a1632;
+  color: #b3d5ee;
   white-space: pre-line;
   overflow-wrap: anywhere;
   font-size: 12px;
@@ -85,7 +85,7 @@
   border-bottom: 0;
   border-radius: 24px 24px 0 0;
   background: var(--bg-deep);
-  box-shadow: 0 24px 80px rgba(0, 5, 15, .58);
+  box-shadow: 0 24px 80px rgba(3, 10, 28, .58);
   scrollbar-width: thin;
 }
 #modal-account-settings {
@@ -100,7 +100,7 @@
   height: 4px;
   margin: 0 auto 18px;
   border-radius: 999px;
-  background: #506579;
+  background: #2b4d82;
 }
 .account-settings-dialog .account-settings-dialog-head {
   align-items: flex-start;
@@ -117,22 +117,22 @@
 }
 .account-settings-dialog-head h3 {
   margin: 0;
-  color: #f0f6f6;
+  color: #f0f6ff;
   font-size: 20px;
   letter-spacing: -.65px;
   font-weight: 730;
 }
 .account-settings-intro {
   margin: 7px 0 0;
-  color: #99adbb;
+  color: #9eb4d4;
   font-size: 12.5px;
   line-height: 1.5;
 }
 .account-settings-dialog .btn-modal-close {
   flex: 0 0 34px;
-  background: rgba(155, 180, 198, .08);
+  background: rgba(158, 180, 212, .08);
   border-radius: 11px;
-  color: #adc5ce;
+  color: #9eb4d4;
 }
 .account-settings-profile {
   display: flex;
@@ -141,9 +141,9 @@
   min-height: 85px;
   margin-bottom: 22px;
   padding: 15px 17px;
-  border: 1px solid #33605f;
+  border: 1px solid #2b4d82;
   border-radius: 18px;
-  background: linear-gradient(105deg, rgba(41, 120, 124, .21), rgba(18, 44, 64, .82));
+  background: linear-gradient(105deg, rgba(0, 216, 255, .21), rgba(26, 43, 76, .82));
 }
 .account-settings-avatar {
   display: grid;
@@ -153,7 +153,7 @@
   height: 45px;
   border-radius: 15px;
   background: rgba(46, 233, 184, .15);
-  color: #8be1d1;
+  color: #b3d5ee;
 }
 .account-settings-avatar svg { width: 25px; height: 25px; }
 .account-settings-profile-copy {
@@ -165,7 +165,7 @@
 }
 .account-settings-profile-copy strong {
   overflow: hidden;
-  color: #f1f7f5;
+  color: #f0f6ff;
   font-size: 15px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -173,7 +173,7 @@
 }
 .account-settings-profile-copy span {
   overflow: hidden;
-  color: #abc0c6;
+  color: #9eb4d4;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -186,7 +186,7 @@
   height: 27px;
   border-radius: 50%;
   background: rgba(46, 233, 184, .14);
-  color: #8fe7ce;
+  color: #b3d5ee;
   font-weight: 800;
 }
 .account-settings-dialog .account-settings-button-grid {
@@ -203,7 +203,7 @@
 }
 .account-settings-section h4 {
   margin: 0 0 9px 4px;
-  color: #8ea9b7;
+  color: #9eb4d4;
   font-size: 11px;
   font-weight: 750;
   letter-spacing: .4px;
@@ -213,9 +213,9 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border: 1px solid #2a4052;
+  border: 1px solid #19315c;
   border-radius: 16px;
-  background: rgba(10, 23, 37, .75);
+  background: rgba(3, 19, 38, .75);
 }
 .account-settings-action {
   display: flex;
@@ -227,7 +227,7 @@
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: #eaf3f5;
+  color: #eaf4ff;
   text-align: left;
   cursor: pointer;
   transition: background .16s ease;
@@ -246,23 +246,23 @@
   border: 1px solid rgba(46, 233, 184, .12);
   border-radius: 11px;
   background: rgba(46, 233, 184, .08);
-  color: #86d9c9;
+  color: #9eb4d4;
 }
 .account-settings-section.billing .account-settings-action-icon {
   background: rgba(96, 153, 236, .12);
-  color: #9cc7f1;
+  color: #b3d5ee;
 }
 .account-settings-section.help .account-settings-action-icon {
   background: rgba(156, 125, 218, .11);
-  color: #c6b0f5;
+  color: #b3d5ee;
 }
 .account-settings-section.security .account-settings-rows {
   display: flex;
   flex-direction: column;
 }
 .account-settings-section.security .account-settings-action-icon {
-  background: rgba(151, 171, 191, .09);
-  color: #b7cad3;
+  background: rgba(158, 180, 212, .09);
+  color: #b3d5ee;
 }
 .account-settings-action-copy {
   display: flex;
@@ -272,29 +272,29 @@
   gap: 4px;
 }
 .account-settings-action-copy strong {
-  color: #eef5f7;
+  color: #f0f6ff;
   font-size: 12.5px;
   font-weight: 660;
   line-height: 1.3;
 }
 .account-settings-action-copy small {
-  color: #8ca4b2;
+  color: #9eb4d4;
   font-size: 10.5px;
   font-weight: 400;
   line-height: 1.35;
 }
 .account-settings-chevron {
   flex: 0 0 auto;
-  color: #7894a1;
+  color: #6d86ab;
   font-size: 23px;
   line-height: 1;
 }
 .account-settings-danger .account-settings-action-icon {
   border-color: rgba(218, 119, 128, .16);
   background: rgba(218, 119, 128, .10) !important;
-  color: #e3a5ad !important;
+  color: #ff8f96 !important;
 }
-.account-settings-danger .account-settings-action-copy strong { color: #e9b0b7; }
+.account-settings-danger .account-settings-action-copy strong { color: #ff8f96; }
 .account-settings-danger:hover { background: rgba(198, 84, 92, .12); }
 .account-settings-profile-card {
   margin: 0 0 18px;
@@ -350,7 +350,7 @@
   border: 1px solid rgba(46, 233, 184, .24);
   border-radius: 9px;
   background: rgba(46, 233, 184, .08);
-  color: #8fe1cf;
+  color: #b3d5ee;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -376,7 +376,7 @@
   border: 0;
   border-radius: 11px;
   background: transparent;
-  color: #e98b8b;
+  color: #ff8f96;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -388,10 +388,10 @@
 .renewal-status-neutral {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #3a4a56;
+  border: 1px solid #1c3566;
   border-radius: 9px;
-  background: rgba(144, 164, 180, .10);
-  color: #9fb8c4;
+  background: rgba(158, 180, 212, .10);
+  color: #9eb4d4;
   padding: 5px 9px;
   font-size: 11px;
   font-weight: 550;
@@ -422,7 +422,7 @@
 :root {
   --desktop-sidebar-width: 212px;
   --desktop-overlay: rgba(5, 12, 24, .68);
-  --desktop-dialog-shadow: 0 28px 90px rgba(0, 5, 15, .52);
+  --desktop-dialog-shadow: 0 28px 90px rgba(3, 10, 28, .52);
 }
 
 @media (min-width: 760px) {
@@ -771,7 +771,7 @@
 }
 .search-icon .byme-icon { width: 18px; height: 18px; }
 .rec-icon-badge .byme-icon { width: 20px; height: 20px; }
-.device-icon-box { color: #a4c9d4; }
+.device-icon-box { color: #9eb4d4; }
 .device-icon-box .byme-icon { width: 20px; height: 20px; }
 .settings-group-icon-circle .byme-icon,
 .setting-row-icon .byme-icon { width: 19px; height: 19px; }

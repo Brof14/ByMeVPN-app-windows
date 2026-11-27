@@ -81,5 +81,16 @@ test('auth field icons are bounded and feedback styles exist', () => {
   assert.match(css, /\.btn-password-toggle svg\s*\{[^}]*width:\s*18px/s);
   assert.match(css, /\.btn-password-toggle\[aria-pressed="true"\] \.auth-eye-slash\s*\{\s*display:\s*inline/s);
   assert.match(css, /\.auth-form-error\s*\{[^}]*border-radius:\s*10px/s);
-  assert.match(css, /\.auth-field-error,\s*\n\.auth-form-error\s*\{[^}]*color:\s*#f0a3a9/s);
+  assert.match(css, /\.auth-field-error,\s*\n\.auth-form-error\s*\{[^}]*color:\s*#ff8f96/s);
+});
+
+test('stylesheet declarations stay valid after the palette migration', () => {
+  for (const file of ['ui/styles.css', 'ui/mobile-parity.css', 'ui/desktop-layout.css']) {
+    const sheet = readFileSync(new URL('../' + file, import.meta.url), 'utf8');
+    // A colour token followed by a bare alpha (e.g. `#031326, 0.65)`) is not a
+    // valid CSS colour and silently drops the whole declaration.
+    assert.doesNotMatch(sheet, /#[0-9a-fA-F]{6},\s*[0-9.]+\)/, file);
+    assert.equal((sheet.match(/\{/g) || []).length, (sheet.match(/\}/g) || []).length, file);
+    assert.doesNotMatch(sheet, /\b(?:#69d3bc|#69c8d8|#090f1d|#121c2b)\b/i, file);
+  }
 });

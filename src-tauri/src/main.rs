@@ -3,6 +3,7 @@
 mod api_transport;
 mod egress;
 mod google_desktop;
+mod installed_apps;
 mod service;
 mod tun_config;
 mod tun_health;
@@ -135,6 +136,7 @@ fn main() {
             service::vpn_health_report,
             service::get_settings,
             service::save_setting,
+            service::list_installed_apps,
             service::startup_enabled,
             service::set_startup,
             service::window_minimize,

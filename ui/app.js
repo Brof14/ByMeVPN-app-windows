@@ -76,6 +76,11 @@ const state = {
   trialReturnTab: 'tab-account',
   pricingReturnTab: 'tab-home',
   supportReturnTab: 'tab-account',
+  splitApps: [],
+  splitAppsLoaded: false,
+  splitAppsLoading: false,
+  splitQuery: '',
+  splitPending: false,
   subscriptionRefreshCount: 0,
   pendingCheckout: null,
   preferredServerCode: 'auto',
@@ -85,6 +90,8 @@ const state = {
     autoReconnect: true,
     stayConnectedInBackground: true,
     bypassRu: true,
+    splitTunneling: false,
+    splitTunnelingApps: [],
     adBlock: 'none',
     dnsMode: 'cloudflare',
     killSwitch: false,
@@ -142,6 +149,16 @@ const I18N = {
     settings_default_tip: "Не уверены, что выбрать? Оставьте настройки по умолчанию.",
     settings_more_title: "Расширенные настройки",
     settings_more_desc: "DNS, исключения приложений, уведомления",
+    back_to_advanced: "Назад к настройкам",
+    split_page_title: "Раздельное туннелирование",
+    split_title: "Раздельное туннелирование",
+    split_summary_off: "Исключить приложения из VPN",
+    split_toggle_title: "Исключения для приложений",
+    split_toggle_desc: "Отмеченные приложения идут напрямую без VPN",
+    split_pending_text: "Переподключите VPN, чтобы применить список",
+    split_pending_action: "Обновить",
+    split_reset: "Сбросить",
+    split_search_placeholder: "Поиск приложения…",
     advanced_desktop_title: "Настройки Windows",
     advanced_desktop_intro: "Дополнительные параметры для компьютера.",
     window_minimize: "Свернуть",
@@ -524,6 +541,16 @@ const I18N = {
     settings_default_tip: "Not sure? Keep the default settings.",
     settings_more_title: "Advanced settings",
     settings_more_desc: "DNS, split tunneling, notifications",
+    back_to_advanced: "Back to settings",
+    split_page_title: "Split tunneling",
+    split_title: "Split tunneling",
+    split_summary_off: "Bypass VPN for selected apps",
+    split_toggle_title: "App bypass",
+    split_toggle_desc: "Selected apps connect directly without VPN",
+    split_pending_text: "Reconnect VPN to apply updated app rules",
+    split_pending_action: "Reconnect",
+    split_reset: "Reset",
+    split_search_placeholder: "Search apps…",
     advanced_desktop_title: "Windows settings",
     advanced_desktop_intro: "More options for your computer.",
     window_minimize: "Minimize",
@@ -1395,7 +1422,7 @@ function switchTab(tabId) {
     : tabId === 'tab-trial' ? 'tab-account'
     : tabId === 'tab-support'
       ? (state.supportReturnTab === 'tab-home' ? 'tab-home' : 'tab-account')
-    : tabId === 'tab-advanced' ? 'tab-settings' : tabId;
+    : ['tab-advanced', 'tab-split-tunnel'].includes(tabId) ? 'tab-settings' : tabId;
   document.querySelectorAll('.sidebar-tab').forEach(btn => {
     const selected = btn.dataset.tab === rootTab;
     btn.classList.toggle('active', selected);
@@ -1453,6 +1480,10 @@ function switchTab(tabId) {
     case 'tab-advanced':
       titleEl.textContent = lang === 'ru' ? 'Дополнительно' : 'More settings';
       break;
+    case 'tab-split-tunnel':
+      titleEl.textContent = lang === 'ru' ? 'Раздельное туннелирование' : 'Split tunneling';
+      void loadSplitApps();
+      break;
   }
 
   // Android keeps the Home brand behind the server sheet and titles each page
@@ -1472,6 +1503,7 @@ function getPageBackTarget(tabId) {
     'tab-settings': 'tab-home',
     'tab-account': 'tab-home',
     'tab-advanced': 'tab-settings',
+    'tab-split-tunnel': 'tab-advanced',
     'tab-devices': 'tab-account',
     'tab-renewal': 'tab-account'
   }[tabId] || null;
@@ -1656,6 +1688,34 @@ function setupEventListeners() {
   document.getElementById('btn-pricing-back')?.addEventListener('click', handlePageBack);
   document.getElementById('btn-pricing-retry')?.addEventListener('click', () => { void loadPricingCatalog(); });
   document.getElementById('row-open-advanced-settings')?.addEventListener('click', () => switchTab('tab-advanced'));
+  document.getElementById('row-open-split-tunnel')?.addEventListener('click', () => switchTab('tab-split-tunnel'));
+  document.getElementById('btn-back-from-split-tunnel')?.addEventListener('click', () => switchTab('tab-advanced'));
+  document.getElementById('set-split-tunnel')?.addEventListener('change', event => {
+    void setSplitTunnelEnabled(event.target.checked === true);
+  });
+  document.getElementById('btn-split-reset')?.addEventListener('click', () => {
+    void persistSplitApps([]);
+  });
+  document.getElementById('split-search')?.addEventListener('input', event => {
+    state.splitQuery = String(event.target.value || '');
+    updateSplitToolbar();
+    renderSplitApps();
+  });
+  document.getElementById('btn-split-clear-search')?.addEventListener('click', () => {
+    state.splitQuery = '';
+    const field = document.getElementById('split-search');
+    if (field) field.value = '';
+    updateSplitToolbar();
+    renderSplitApps();
+  });
+  document.getElementById('btn-split-reconnect')?.addEventListener('click', () => {
+    void reconnectForSplitTunnel();
+  });
+  // One delegated listener keeps a 300-row catalog cheap to render.
+  document.getElementById('split-app-list')?.addEventListener('click', event => {
+    const row = event.target.closest?.('.split-app-row');
+    if (row?.dataset?.path) toggleSplitApp(row.dataset.path);
+  });
 
   // Android's exact drawable is primary. Keep the built-in vector shield
   // available if an installation unexpectedly cannot load its bundled PNG.
@@ -4271,6 +4331,226 @@ async function handlePayYooKassa() {
   }
 }
 
+// Split tunneling (SplitTunnelingScreen.kt)
+// Windows has no per-app VPN builder: excluded processes are routed to the
+// physical adapter by Xray's process rule, so the picker stores absolute
+// executable paths.
+const SPLIT_RENDER_LIMIT = 300;
+
+function splitAppsSelected() {
+  const apps = state.settings?.splitTunnelingApps;
+  return Array.isArray(apps) ? apps.filter(path => typeof path === 'string') : [];
+}
+
+function updateSplitTunnelSummary() {
+  const summary = document.getElementById('split-tunnel-summary');
+  if (!summary) return;
+  const count = splitAppsSelected().length;
+  summary.textContent = state.settings?.splitTunneling !== true
+    ? uiText('Исключить приложения из VPN', 'Bypass VPN for selected apps')
+    : count > 0
+      ? uiText(`Включено · исключено ${count}`, `Enabled · ${count} excluded`)
+      : uiText('Включено · выберите приложения', 'Enabled · choose apps');
+}
+
+function updateSplitPendingCard() {
+  const card = document.getElementById('split-pending-card');
+  card?.classList?.toggle('hidden', !(state.splitPending && state.vpnConnected));
+}
+
+function updateSplitToolbar() {
+  const count = splitAppsSelected().length;
+  const label = document.getElementById('split-count-label');
+  if (label) label.textContent = uiText(`Исключено приложений: ${count}`, `Bypassed apps: ${count}`);
+  document.getElementById('btn-split-reset')?.classList?.toggle('hidden', count === 0);
+  document.getElementById('btn-split-clear-search')?.classList?.toggle('hidden', state.splitQuery === '');
+}
+
+function setSplitStatus(text) {
+  const status = document.getElementById('split-status');
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle('hidden', !text);
+}
+
+function splitAppRow(app, selected) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'split-app-row' + (selected ? ' selected' : '');
+  row.dataset.path = app.path;
+  row.setAttribute('role', 'listitem');
+  row.setAttribute('aria-pressed', selected ? 'true' : 'false');
+
+  const badge = document.createElement('span');
+  badge.className = 'split-app-badge';
+  badge.setAttribute('aria-hidden', 'true');
+  badge.textContent = (app.name.trim()[0] || '?').toUpperCase();
+
+  const copy = document.createElement('span');
+  copy.className = 'split-app-copy';
+  const name = document.createElement('strong');
+  name.textContent = app.name;
+  const path = document.createElement('span');
+  path.textContent = app.path;
+  copy.append(name, path);
+
+  const check = document.createElement('span');
+  check.className = 'split-app-check';
+  check.setAttribute('aria-hidden', 'true');
+
+  row.append(badge, copy, check);
+  return row;
+}
+
+function renderSplitApps() {
+  const list = document.getElementById('split-app-list');
+  if (!list) return;
+  if (state.splitAppsLoading) {
+    list.replaceChildren();
+    setSplitStatus(uiText('Загружаем приложения…', 'Loading apps…'));
+    return;
+  }
+  if (!state.splitAppsLoaded) {
+    list.replaceChildren();
+    setSplitStatus('');
+    return;
+  }
+  const query = state.splitQuery.trim().toLowerCase();
+  const selected = new Set(splitAppsSelected().map(path => path.toLowerCase()));
+  const filtered = state.splitApps.filter(app => !query
+    || app.name.toLowerCase().includes(query)
+    || app.path.toLowerCase().includes(query));
+  // Android lists excluded apps first, then alphabetically.
+  filtered.sort((a, b) => {
+    const aSelected = selected.has(a.path.toLowerCase());
+    const bSelected = selected.has(b.path.toLowerCase());
+    if (aSelected !== bSelected) return aSelected ? -1 : 1;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+  const visible = filtered.slice(0, SPLIT_RENDER_LIMIT);
+  const fragment = document.createDocumentFragment();
+  for (const app of visible) {
+    fragment.appendChild(splitAppRow(app, selected.has(app.path.toLowerCase())));
+  }
+  list.replaceChildren(fragment);
+  setSplitStatus(filtered.length === 0
+    ? uiText('Приложения не найдены', 'No matching apps found')
+    : filtered.length > visible.length
+      ? uiText(`Показаны первые ${visible.length}. Уточните поиск.`, `Showing the first ${visible.length}. Refine the search.`)
+      : '');
+}
+
+// Toggling an app updates the rendered rows in place: rebuilding the list on
+// every click would reset the scroll position inside the catalog.
+function syncSplitRows() {
+  const selected = new Set(splitAppsSelected().map(path => path.toLowerCase()));
+  document.querySelectorAll?.('.split-app-row')?.forEach(row => {
+    const active = selected.has(String(row.dataset?.path || '').toLowerCase());
+    row.classList?.toggle?.('selected', active);
+    row.setAttribute?.('aria-pressed', active ? 'true' : 'false');
+  });
+  updateSplitToolbar();
+  updateSplitTunnelSummary();
+  updateSplitPendingCard();
+}
+
+async function loadSplitApps() {
+  renderSplitApps();
+  updateSplitToolbar();
+  updateSplitPendingCard();
+  if (state.splitAppsLoaded || state.splitAppsLoading) return;
+  state.splitAppsLoading = true;
+  renderSplitApps();
+  try {
+    const apps = await invoke('list_installed_apps');
+    state.splitApps = (Array.isArray(apps) ? apps : [])
+      .filter(app => app && typeof app.path === 'string' && app.path.toLowerCase().endsWith('.exe'))
+      .map(app => ({ name: String(app.name || app.path), path: app.path }));
+    state.splitAppsLoaded = true;
+  } catch (err) {
+    state.splitApps = [];
+    state.splitAppsLoaded = true;
+    showToast(typeof err === 'string' ? err : 'Не удалось прочитать список приложений.', true);
+  } finally {
+    state.splitAppsLoading = false;
+    renderSplitApps();
+    updateSplitToolbar();
+  }
+}
+
+// Two quick taps can otherwise race: the earlier request can land after the
+// newer one and overwrite the list. Writes are serialized in tap order.
+let splitSaveQueue = Promise.resolve();
+
+async function writeSplitApps(nextPaths) {
+  try {
+    await invoke('save_setting', { key: 'splitTunnelingApps', value: nextPaths });
+    if (state.settings.splitTunneling === true && nextPaths.length > 0) {
+      await invoke('save_setting', { key: 'splitTunneling', value: true });
+    }
+  } catch (err) {
+    showToast(typeof err === 'string' ? err : uiText('Не удалось сохранить список приложений.',
+      'Could not save the app list.'), true);
+    // Re-read the authoritative list instead of guessing which write failed.
+    try {
+      const saved = await invoke('get_settings');
+      if (saved && Array.isArray(saved.splitTunnelingApps)) {
+        state.settings.splitTunnelingApps = saved.splitTunnelingApps;
+        state.settings.splitTunneling = saved.splitTunneling === true;
+        applySettingsToUi();
+        syncSplitRows();
+      }
+    } catch (_) { /* keep the optimistic list when the settings cannot be read */ }
+  }
+}
+
+function persistSplitApps(nextPaths) {
+  const enable = nextPaths.length > 0 && state.settings.splitTunneling !== true;
+  state.settings.splitTunnelingApps = nextPaths;
+  if (enable) state.settings.splitTunneling = true;
+  // A running tunnel keeps its loaded routing table until it reconnects.
+  state.splitPending = state.vpnConnected;
+  applySettingsToUi();
+  syncSplitRows();
+  splitSaveQueue = splitSaveQueue.then(() => writeSplitApps(nextPaths));
+}
+
+function toggleSplitApp(path) {
+  const current = splitAppsSelected();
+  const exists = current.some(entry => entry.toLowerCase() === path.toLowerCase());
+  persistSplitApps(exists
+    ? current.filter(entry => entry.toLowerCase() !== path.toLowerCase())
+    : [...current, path]);
+}
+
+async function setSplitTunnelEnabled(enabled) {
+  const previous = state.settings.splitTunneling === true;
+  state.settings.splitTunneling = enabled;
+  applySettingsToUi();
+  try {
+    await invoke('save_setting', { key: 'splitTunneling', value: enabled });
+  } catch (err) {
+    state.settings.splitTunneling = previous;
+    applySettingsToUi();
+    showToast(typeof err === 'string' ? err : uiText('Не удалось сохранить настройку.',
+      'Could not save this setting.'), true);
+    return;
+  }
+  if (state.vpnConnected) {
+    state.splitPending = true;
+    updateSplitPendingCard();
+  }
+  updateSplitTunnelSummary();
+}
+
+async function reconnectForSplitTunnel() {
+  state.splitPending = false;
+  updateSplitPendingCard();
+  if (!state.vpnConnected || state.connectionBusy) return;
+  await toggleVpn();
+  if (!state.vpnConnected) await toggleVpn();
+}
+
 // Settings Persistence
 async function handleSettingChange(key, value) {
   const previous = state.settings[key];
@@ -4321,6 +4601,10 @@ function applySettingsToUi() {
   const setBg = document.getElementById('set-background');
   const setBypass = document.getElementById('set-bypass');
   const setDnsMode = document.getElementById('set-dns-mode');
+  const setSplitTunnel = document.getElementById('set-split-tunnel');
+  if (setSplitTunnel) setSplitTunnel.checked = s.splitTunneling === true;
+  updateSplitTunnelSummary();
+  updateSplitToolbar();
   const setKill = document.getElementById('set-killswitch');
 
   if (setAuto) setAuto.checked = !!s.autoStart;

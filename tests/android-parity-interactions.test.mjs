@@ -324,10 +324,30 @@ test('VPN captures original egress before starting the full tunnel and rolls bac
     'never start the TUN until the original egress capture has completed');
   assert.ok(session > start);
   // Any post-session failure, including invalid Xray config, must revoke it.
-  assert.ok(startup.includes('let mut xray_config = build_tun_config_ext('));
+  assert.ok(startup.includes('build_tun_config_split(session, bypass_ru, ad_block, dns_mode, &split_apps)'));
   assert.ok(startup.includes('add_attestation_http_inbound('));
   assert.ok(startup.includes('let connection_result: Result<TunnelMetrics, String> = async {'));
   const rollback = startup.indexOf('if connection_result.is_err() {');
   assert.ok(rollback > 0, 'missing shared startup-failure handler');
   assert.match(startup.slice(rollback), /request_in_session\([\s\S]*?Method::DELETE,\s*"\/vpn\/session"[\s\S]*?Some\(generation\)/);
+});
+
+test('Split tunneling mirrors Android: catalog screen, master toggle, and reconect hint', () => {
+  const split = html.slice(html.indexOf('id="tab-split-tunnel"'), html.indexOf('<!-- MODALS'));
+  assert.match(split, /id="btn-back-from-split-tunnel"/);
+  assert.match(split, /id="set-split-tunnel"/);
+  assert.match(split, /id="split-search"/);
+  assert.match(split, /id="split-app-list"/);
+  assert.match(split, /id="split-count-label"/);
+  assert.match(split, /id="btn-split-reset"/);
+  assert.match(split, /id="split-pending-card"/);
+  assert.match(split, /id="btn-split-reconnect"/);
+  assert.match(html, /id="row-open-split-tunnel"/);
+  // The Advanced screen links to it, and Back returns there.
+  assert.match(source, /'tab-split-tunnel': 'tab-advanced'/);
+  assert.match(source, /invoke\('list_installed_apps'\)/);
+  assert.match(source, /key: 'splitTunnelingApps'/);
+  assert.match(source, /key: 'splitTunneling'/);
+  // The router only reads real Windows executable paths.
+  assert.match(source, /endsWith\('\.exe'\)/);
 });

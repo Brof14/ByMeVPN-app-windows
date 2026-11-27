@@ -1,6 +1,7 @@
 pub mod api_transport;
 pub mod egress;
 pub mod google_desktop;
+pub mod installed_apps;
 pub mod service;
 pub mod tun_config;
 pub mod tun_health;

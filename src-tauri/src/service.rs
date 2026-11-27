@@ -1,7 +1,8 @@
 use crate::api_transport::{send_to_bases, API_BASES};
 use crate::egress::{preflight_xray_server, verify_tunnel_path, TunnelProof};
 use crate::tun_config::{
-    add_attestation_http_inbound, build_tun_config_ext, preflight_attestation_config,
+    add_attestation_http_inbound, build_tun_config_ext, build_tun_config_split,
+    preflight_attestation_config,
     supports_windows_session,
 };
 use crate::tunnel_runtime::verify_runtime;
@@ -2136,6 +2137,8 @@ fn default_settings() -> Value {
         "autoReconnect": true,
         "stayConnectedInBackground": true,
         "bypassRu": true,
+        "splitTunneling": false,
+        "splitTunnelingApps": [],
         "adBlock": "none",
         "dnsMode": "cloudflare",
         "killSwitch": false,
@@ -2146,9 +2149,29 @@ fn default_settings() -> Value {
 
 fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
     match key {
-        "autoStart" | "autoConnect" | "autoReconnect" | "bypassRu" => {
+        "autoStart" | "autoConnect" | "autoReconnect" | "bypassRu" | "splitTunneling" => {
             if !value.is_boolean() {
                 return Err("Эта настройка должна иметь значение вкл./выкл.".into());
+            }
+        }
+        "splitTunnelingApps" => {
+            let apps = value
+                .as_array()
+                .ok_or("Список исключённых приложений имеет неверный формат.")?;
+            if apps.len() > 256 {
+                return Err("Слишком много исключённых приложений.".into());
+            }
+            for app in apps {
+                let path = app
+                    .as_str()
+                    .ok_or("Некорректный путь приложения в списке исключений.")?;
+                if path.len() < 4
+                    || path.len() > 260
+                    || path.chars().any(|c| c.is_control())
+                    || !path.to_ascii_lowercase().ends_with(".exe")
+                {
+                    return Err("Некорректный путь приложения в списке исключений.".into());
+                }
             }
         }
         "stayConnectedInBackground" => {
@@ -2234,6 +2257,15 @@ pub async fn save_setting(app: AppHandle, key: String, value: Value) -> Result<(
         return Err(format!("Не удалось сохранить настройки: {error}"));
     }
     Ok(())
+}
+
+/// Catalog for the split-tunneling picker. Reading the registry and the
+/// program folders is blocking work, so it never runs on the UI thread.
+#[tauri::command]
+pub async fn list_installed_apps() -> Vec<crate::installed_apps::InstalledApp> {
+    tauri::async_runtime::spawn_blocking(crate::installed_apps::collect_installed_apps)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -2353,6 +2385,26 @@ async fn vpn_start_inner(
         .get("dnsMode")
         .and_then(Value::as_str)
         .unwrap_or("cloudflare");
+    // Split tunneling is a Windows feature: excluded applications keep using
+    // the physical adapter while every other process stays in the tunnel.
+    let split_apps: Vec<String> = if settings
+        .get("splitTunneling")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        settings
+            .get("splitTunnelingApps")
+            .and_then(Value::as_array)
+            .map(|apps| {
+                apps.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     let chosen_node = node_code.unwrap_or_else(|| "auto".to_string());
     let reconnect_node = chosen_node.clone();
@@ -2409,7 +2461,8 @@ async fn vpn_start_inner(
             .unwrap_or("")
             .to_string();
         // Server inbound and public egress IP often differ (NAT, relays, reverse proxies).
-        let mut xray_config = build_tun_config_ext(session, bypass_ru, ad_block, dns_mode)?;
+        let mut xray_config =
+            build_tun_config_split(session, bypass_ru, ad_block, dns_mode, &split_apps)?;
         // The port is bound only on localhost, and its secret is unique for
         // each connection. No listener is exposed on a physical/LAN adapter.
         let reservation = std::net::TcpListener::bind(("127.0.0.1", 0))

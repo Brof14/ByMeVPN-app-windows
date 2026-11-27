@@ -918,7 +918,18 @@
                   <span class="badge-tech-pill active">geoip:private</span>
                 </div>
               </div>
-            
+
+              <div class="glass-card settings-group-card android-settings-advanced">
+                <button type="button" id="row-open-split-tunnel" class="setting-item-row android-advanced-row">
+                  <span class="setting-row-icon" aria-hidden="true"><svg class="byme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h7m3 0h6M4 16h6m3 0h7"/><circle cx="13" cy="8" r="2.2"/><circle cx="12" cy="16" r="2.2"/></svg></span>
+                  <span class="setting-copy-column">
+                    <strong data-i18n="split_title">Раздельное туннелирование</strong>
+                    <span id="split-tunnel-summary" data-i18n="split_summary_off">Исключить приложения из VPN</span>
+                  </span>
+                  <span class="mobile-language-chevron" aria-hidden="true">›</span>
+                </button>
+              </div>
+
               <section class="android-desktop-advanced">
                 <h3 class="android-desktop-section-title" data-i18n="advanced_desktop_title">Настройки Windows</h3>
                 <p class="android-desktop-section-desc" data-i18n="advanced_desktop_intro">Дополнительные параметры для компьютера.</p>
@@ -1056,6 +1067,48 @@
                 </div>
               </section>
 </div>
+
+            <!-- TAB 10: SPLIT TUNNELING (SplitTunnelingScreen.kt) -->
+            <div id="tab-split-tunnel" class="tab-content">
+              <div class="subpage-header-row">
+                <button type="button" class="btn-subpage-back" id="btn-back-from-split-tunnel">
+                  <span aria-hidden="true">‹</span> <span data-i18n="back_to_advanced">Назад к настройкам</span>
+                </button>
+                <h2 class="subpage-title" data-i18n="split_page_title">Раздельное туннелирование</h2>
+              </div>
+
+              <div class="glass-card settings-group-card">
+                <div class="setting-item-row">
+                  <span class="setting-row-icon" aria-hidden="true"><svg class="byme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h7m3 0h6M4 16h6m3 0h7"/><circle cx="13" cy="8" r="2.2"/><circle cx="12" cy="16" r="2.2"/></svg></span>
+                  <div class="setting-copy-column">
+                    <strong data-i18n="split_toggle_title">Исключения для приложений</strong>
+                    <span data-i18n="split_toggle_desc">Отмеченные приложения идут напрямую без VPN</span>
+                  </div>
+                  <label class="switch-control">
+                    <input type="checkbox" id="set-split-tunnel" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div id="split-pending-card" class="split-pending-card hidden" role="status">
+                <span data-i18n="split_pending_text">Переподключите VPN, чтобы применить список</span>
+                <button type="button" id="btn-split-reconnect" class="btn-split-reconnect" data-i18n="split_pending_action">Обновить</button>
+              </div>
+
+              <div class="split-toolbar">
+                <span id="split-count-label">Исключено приложений: 0</span>
+                <button type="button" id="btn-split-reset" class="btn-split-reset hidden" data-i18n="split_reset">Сбросить</button>
+              </div>
+
+              <div class="split-search-row">
+                <input id="split-search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="split_search_placeholder" placeholder="Поиск приложения…" aria-label="Поиск приложения" />
+                <button type="button" id="btn-split-clear-search" class="split-search-clear hidden" aria-label="Очистить">×</button>
+              </div>
+
+              <div id="split-app-list" class="split-app-list" role="list"></div>
+              <p id="split-status" class="split-status hidden" role="status" aria-live="polite">Приложения не найдены</p>
+            </div>
 
           </div>
         </main>

@@ -1525,7 +1525,15 @@ pub async fn get_servers(
             .and_then(Value::as_str)
             .unwrap_or("vless");
         let security = config.get("security").and_then(Value::as_str).unwrap_or("");
-        let network = config.get("network").and_then(Value::as_str).unwrap_or("");
+        // Mirror the tunnel builder's default so the transport chip is always
+        // truthful even when the API config omits `network`.
+        let is_hysteria_protocol =
+            protocol.eq_ignore_ascii_case("hysteria2") || protocol.eq_ignore_ascii_case("hy2");
+        let network = config
+            .get("network")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(if is_hysteria_protocol { "udp" } else { "tcp" });
         // Use the normalized ISO-3166 alpha-2 code so newly added server
         // countries get a flag without requiring a Windows-client release.
         let flag_fallback = country_flag(&code_upper);

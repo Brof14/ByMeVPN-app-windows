@@ -1397,7 +1397,7 @@ async fn measure_tcp_rtt(host: &str, port: u16) -> Option<u32> {
     .ok()?;
     u32::try_from(started.elapsed().as_millis())
         .ok()
-        .filter(|ms| *ms > 0)
+        .map(|ms| ms.max(1))
 }
 
 async fn wait_for_server_probe_cancellation(epoch: u64) {
@@ -1438,10 +1438,9 @@ pub async fn get_servers(
     force_probe: Option<bool>,
     client_epoch: Option<u64>,
 ) -> Result<Vec<Value>, String> {
-    let probe_epoch = SERVER_PING_EPOCH.load(Ordering::SeqCst);
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
-    // Catalog refreshes must not create extra probes while a connection is
+    // Catalog refreshes must not add probe traffic while a connection is
     // active or a connect/disconnect operation is in progress.
     let should_probe = state.connection_gate.try_lock().is_ok()
         && state
@@ -1449,21 +1448,7 @@ pub async fn get_servers(
             .lock()
             .map(|tunnel| tunnel.is_none())
             .unwrap_or(false);
-    // Each measurement runs a short-lived Xray outbound, so bound concurrent
-    // processes even when the server catalog grows.
-    let needs_proxy_probe = should_probe
-        && servers.iter().any(|server| {
-            let config = server.get("config").unwrap_or(server);
-            supports_windows_session(config)
-        });
-    let runtime_dir = needs_proxy_probe
-        .then(|| get_runtime_dir(&app).ok())
-        .flatten();
-    let app_dir = needs_proxy_probe
-        .then(|| app.path().app_data_dir().ok())
-        .flatten();
     let client_epoch = client_epoch.unwrap_or(0);
-    let mut pending_probes = Vec::new();
     let mut rtt_targets = Vec::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
@@ -1540,6 +1525,7 @@ pub async fn get_servers(
             .and_then(Value::as_str)
             .unwrap_or("vless");
         let security = config.get("security").and_then(Value::as_str).unwrap_or("");
+        let network = config.get("network").and_then(Value::as_str).unwrap_or("");
         // Use the normalized ISO-3166 alpha-2 code so newly added server
         // countries get a flag without requiring a Windows-client release.
         let flag_fallback = country_flag(&code_upper);
@@ -1557,45 +1543,25 @@ pub async fn get_servers(
         let port = config.get("port").and_then(Value::as_u64).unwrap_or(443);
         let supported = supports_windows_session(config);
         let valid_endpoint = !host.is_empty() && (1..=65535).contains(&port);
-        let probe_supported = supported && valid_endpoint;
-        let cache_key = probe_supported.then(|| server_ping_cache_key(code, config));
-        let cached_ping = cache_key.as_deref().and_then(cached_server_ping);
-        let mut ping = cached_ping
-            .map(|value| if value > 0 { value as i64 } else { -2 })
-            .unwrap_or(0);
-        if should_probe
-            && probe_supported
-            && (force_probe == Some(true) || cached_ping.is_none())
-            && runtime_dir.is_some()
-            && app_dir.is_some()
-        {
-            if let Some(key) = cache_key {
-                match register_server_ping(&key) {
-                    ProbeRegistration::Started => {
-                        ping = -4;
-                        pending_probes.push((code.to_string(), key, config.clone()));
-                    }
-                    ProbeRegistration::Existing(running) => ping = if running { -3 } else { -4 },
-                    ProbeRegistration::Unavailable => {}
-                }
-            }
-        }
-        if ping <= 0 && probe_supported {
+        // Report the network round trip to the server itself. The old
+        // HTTPS-through-Xray probe started a temporary core for every row, so
+        // the list stayed in "queued" for minutes and the value it produced
+        // included Xray and TLS work instead of the network latency.
+        if supported && valid_endpoint {
             rtt_targets.push((code.to_string(), host.clone(), port as u16));
         }
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
-            "protocol":protocol, "security":security,
+            "protocol":protocol, "security":security, "network":network,
             "ping_method": "vpn_https",
             "flag":flag, "supported":supported,
-            "ping":ping, "rtt_ms":0}));
+            "ping":0, "rtt_ms":0}));
     }
-    // The HTTPS-through-VPN probe runs a temporary Xray process, so it is off
-    // while a tunnel is up. Without a second, cheap number every row stayed
-    // "not tested". One TCP handshake to the same endpoint answers the question
-    // the list asks — which server is near — without a process or a payload.
-    if !rtt_targets.is_empty() {
+    // One TCP handshake per endpoint answers the question the list asks —
+    // which server is near — without a process or a payload. Six probes at a
+    // time keep a long catalogue from opening hundreds of sockets at once.
+    if should_probe && !rtt_targets.is_empty() {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
@@ -1613,74 +1579,6 @@ pub async fn get_servers(
                     let _ = app.emit(
                         "server-latency-update",
                         json!({"epoch":client_epoch, "code":code, "rtt":rtt}),
-                    );
-                });
-            }
-            while tasks.join_next().await.is_some() {}
-        });
-    }
-    // Return the server list immediately. Each protocol-aware latency check
-    // runs independently so startup, refresh and Connect never wait for probes.
-    if !pending_probes.is_empty() {
-        let app = app.clone();
-        let runtime_dir = runtime_dir.expect("probe runtime checked above");
-        let app_dir = app_dir.expect("probe app directory checked above");
-        tauri::async_runtime::spawn(async move {
-            let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
-            let mut tasks = tokio::task::JoinSet::new();
-            for (code, key, session) in pending_probes {
-                let app = app.clone();
-                let runtime_dir = runtime_dir.clone();
-                let app_dir = app_dir.clone();
-                let slots = slots.clone();
-                let probe_epoch = probe_epoch;
-                tasks.spawn(async move {
-                    let _flight = ServerPingFlight(key.clone());
-                    let Ok(_permit) = slots.acquire_owned().await else {
-                        return;
-                    };
-                    let can_probe = {
-                        let state = app.state::<AppState>();
-                        let available = state.connection_gate.try_lock().map(|gate| {
-                            let disconnected = state
-                                .tunnel
-                                .lock()
-                                .map(|tunnel| tunnel.is_none())
-                                .unwrap_or(false);
-                            drop(gate);
-                            disconnected
-                        });
-                        available.unwrap_or(false)
-                    };
-                    if !can_probe {
-                        let _ = app.emit(
-                            "server-latency-update",
-                            json!({"epoch":client_epoch, "code":code, "ping":0}),
-                        );
-                        return;
-                    }
-                    set_server_ping_running(&key, true);
-                    let _ = app.emit(
-                        "server-latency-update",
-                        json!({"epoch":client_epoch, "code":code, "ping":-3}),
-                    );
-                    let (measured, cancelled) = tokio::select! {
-                        result = tokio::time::timeout(
-                            Duration::from_secs(10),
-                            measure_proxy_latency(runtime_dir, app_dir, session),
-                        ) => (result.ok().flatten().unwrap_or(0), false),
-                        _ = wait_for_server_probe_cancellation(probe_epoch) => (0, true),
-                    };
-                    if !cancelled {
-                        cache_server_ping(key.clone(), measured);
-                    }
-                    let _ = app.emit(
-                        "server-latency-update",
-                        json!({
-                            "epoch":client_epoch,
-                            "code":code,
-                            "ping":if cancelled { 0 } else if measured > 0 { measured as i64 } else { -2 }
-                        }),
                     );
                 });
             }
@@ -2570,6 +2468,13 @@ async fn vpn_start_inner(
             .get("server")
             .and_then(Value::as_str)
             .ok_or("Сервер не вернул адрес VPN.")?;
+        // The endpoint port is only used to time one TCP handshake for the
+        // displayed latency; the tunnel itself is configured from `session`.
+        let endpoint_port = session
+            .get("port")
+            .and_then(Value::as_u64)
+            .filter(|port| (1..=65535).contains(port))
+            .unwrap_or(443) as u16;
         // Detect a routing loop before installing TUN routes: the endpoint
         // must remain reachable through the physical gateway.
         if crate::tun_health::detect_routing_loop(host).await {
@@ -2790,13 +2695,13 @@ async fn vpn_start_inner(
             if !proof.traffic_confirmed() {
                 return (proof, false, None);
             }
-            // Measure through the just-verified tunnel, not a TCP handshake.
-            // Bounded and overlapped with route/DNS inspection so it cannot
-            // add a new serial delay to connection startup.
+            // Report the network round trip to the server endpoint. An HTTPS
+            // request through the fresh tunnel also pays for Xray and TLS, so
+            // it read as a 400–500 ms "ping" on a healthy 40 ms link.
             let latency = async {
                 tokio::time::timeout(
-                    Duration::from_millis(2500),
-                    crate::egress::measure_xray_server_latency(probe_port, &probe_password),
+                    Duration::from_millis(1500),
+                    measure_tcp_rtt(host, endpoint_port),
                 )
                 .await
                 .ok()
@@ -2858,8 +2763,8 @@ async fn vpn_start_inner(
             stop_failed_tun(&mut child, &config_path).await?;
             return Err(error);
         }
-        // HTTPS latency through the verified tunnel (0 when both independent
-        // endpoints were unreachable; the UI keeps that distinct from a value).
+        // Network round trip to the endpoint (0 when the handshake timed out;
+        // the UI keeps that distinct from a measured value).
         let ping = initial_ping.unwrap_or(0);
         let started_at = std::time::Instant::now();
         let mut lock = state.tunnel.lock().map_err(|e| e.to_string())?;

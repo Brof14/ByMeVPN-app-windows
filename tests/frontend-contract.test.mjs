@@ -666,12 +666,14 @@ test('server latency action requests fresh outbound probes and identifies suppor
   const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
   assert.equal(app.eval("serverProtocolLabel({protocol:'vless',security:'reality'})"), 'VLESS Reality');
   assert.equal(app.eval("serverProtocolLabel({protocol:'hysteria2',security:'tls'})"), 'Hysteria 2');
+  assert.equal(app.eval("serverTransportLabel({network:'grpc'})"), 'gRPC');
+  assert.equal(app.eval("serverTransportLabel({network:'tcp'})"), 'TCP');
   assert.match(source, /loadAvailableServers\(\{ forceProbe: true \}\)/);
   assert.match(source, /invoke\('get_servers', forceProbe[\s\S]{0,100}clientEpoch: epoch/);
   assert.match(source, /events\.listen\('server-latency-update'/);
   assert.match(html, /id="btn-measure-server-latency"/);
   assert.match(html, /data-i18n="server_latency_help"/);
-  assert.match(source, /server_latency_help: "Measures internet latency through each server/);
+  assert.match(source, /server_latency_help: "Latency is the server's own response time/);
 });
 
 test('account deletion requires an explicit warning before invoking native IPC', () => {

@@ -275,10 +275,15 @@ test('Android primary settings contains the everyday connection toggles and lang
   }
   assert.match(advanced, /id="set-autoconnect"/);
   assert.doesNotMatch(primary, /id="set-autoconnect"/);
-  for (const id of ['set-autostart', 'set-background', 'set-dns-mode']) {
+  for (const id of ['set-autostart', 'set-background']) {
     assert.match(advanced, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));
   }
+  // The DNS provider choice did not change anything the user could see, and
+  // support belongs on the main Settings screen instead of Advanced.
+  assert.doesNotMatch(advanced, /id="set-dns-mode"/);
+  assert.doesNotMatch(advanced, /id="tile-support-telegram"/);
+  assert.match(primary, /id="tile-support-telegram"/);
   // Неактивные переключатели убраны из расширенных настроек.
   for (const id of ['set-killswitch', 'adblock-group']) {
     assert.doesNotMatch(advanced, new RegExp('id="' + id + '"'));

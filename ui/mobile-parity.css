@@ -401,12 +401,16 @@ html, body, .app-root, .app-shell-layout {
   padding: 0 5px;
   border: 1px solid #1c3566;
   border-radius: 8px;
-  background: #0e2046;
   color: #b3d5ee;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .4px;
   line-height: 1;
+}
+/* Only the code fallback gets the badge fill: a painted flag supplies its own
+   background layers, and this rule must not sit on top of them. */
+#tab-home .mobile-location-row .chip-flag:not(.country-flag) {
+  background-color: #0e2046;
 }
 #tab-home .mobile-server-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 #tab-home .mobile-server-copy strong {
@@ -452,12 +456,27 @@ html, body, .app-root, .app-shell-layout {
   font-weight: 600;
 }
 #tab-home .mobile-server-connected.hidden { display: none; }
+#tab-home .mobile-server-transport {
+  padding: 2px 6px;
+  border: 1px solid rgba(158, 180, 212, .3);
+  border-radius: 5px;
+  background: rgba(158, 180, 212, .1);
+  color: #b3d5ee;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+#tab-home .mobile-server-transport.hidden { display: none; }
 #tab-home .mobile-server-ping {
   color: #9eb4d4;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
+#tab-home .mobile-server-ping.measured { color: #2ee9b8; }
+#tab-home .mobile-server-ping.medium,
+#tab-home .mobile-server-ping.slow { color: #ffb74d; }
 #tab-home .mobile-server-ping.is-live { color: #2ee9b8; }
 #tab-home .mobile-server-ping.hidden { display: none; }
 #tab-home .mobile-card-chevron {
@@ -2273,6 +2292,18 @@ html, body, .app-root, .app-shell-layout {
   border-color: rgba(0, 216, 255, .35);
   background: rgba(0, 216, 255, .14);
   color: #b3d5ee;
+}
+#tab-servers .server-transport-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid rgba(158, 180, 212, .3);
+  border-radius: 5px;
+  background: rgba(158, 180, 212, .1);
+  color: #b3d5ee;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
 }
 #tab-servers .server-latency-dot {
   flex: 0 0 6px;

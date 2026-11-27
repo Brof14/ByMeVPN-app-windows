@@ -326,10 +326,10 @@ const I18N = {
     server_sheet_footnote: "Отображаются только серверы, доступные по вашей подписке.",
     server_measure_latency: "Проверить задержку",
     server_latency_checking: "Проверяем…",
-    server_latency_help: "Измеряется задержка через каждый сервер до интернета. VPN включать не нужно.",
+    server_latency_help: "Задержка — это время ответа самого сервера. VPN включать не нужно.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
-    vpn_unverified_help: "Туннель работает. Внешнюю проверку выхода выполнить не удалось, поэтому защита не подтверждена.",
-    vpn_health_action: "Диагностика соединения",
+    vpn_unverified_help: "Защита не подтверждена: VPN работает, но внешний IP проверить не удалось.",
+    vpn_health_action: "Проверить снова",
     vpn_health_title: "Проверка подключения",
     vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
     vpn_health_refresh: "Проверить повторно",
@@ -718,10 +718,10 @@ const I18N = {
     server_sheet_footnote: "Only servers in your subscription are shown.",
     server_measure_latency: "Measure latency",
     server_latency_checking: "Checking…",
-    server_latency_help: "Measures internet latency through each server. VPN does not need to be connected.",
+    server_latency_help: "Latency is the server's own response time. VPN does not need to be connected.",
     home_connection_kicker: "YOUR CONNECTION",
-    vpn_unverified_help: "The tunnel is running. The external exit check could not be completed, so protection is not verified.",
-    vpn_health_action: "Connection diagnostics",
+    vpn_unverified_help: "The VPN is running. The external IP check could not be completed, so protection is not verified.",
+    vpn_health_action: "Check again",
     vpn_health_title: "Connection diagnostics",
     vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
     vpn_health_refresh: "Check again",
@@ -3069,12 +3069,11 @@ function updateVpnUi() {
     const proof = state.metrics?.proof || 'probe_unavailable';
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…')
-      : state.vpnVerified ? uiText('VPN подключён', 'VPN connected')
       : proof === 'tun_no_traffic' ? uiText('Нет трафика через Windows TUN', 'Windows TUN has no traffic')
-      // Недоступный проверяющий сервис — не ошибка подключения.
-      : proof === 'server_unreachable' || proof === 'probe_unavailable'
-        ? uiText('VPN подключён', 'VPN connected')
-        : uiText('Соединение не подтверждено', 'Connection unverified');
+      // Внешняя проверка выхода — дополнительное доказательство, а не условие
+      // подключения. Недоступный проверяющий сервис не превращает рабочий
+      // туннель в ошибку, поэтому заголовок остаётся нейтральным.
+      : uiText('VPN подключён', 'VPN connected');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Завершаем соединение…', 'Closing the connection…')
@@ -3254,8 +3253,18 @@ function updateVpnUi() {
     const pingMs = tunnelPing || catalogPing || catalogRtt;
     pingBadge.textContent = pingMs > 0 ? uiText(`${pingMs} мс`, `${pingMs} ms`) : '';
     pingBadge.classList.toggle('hidden', pingMs <= 0);
+    // Green only for a genuinely local server: under 200 ms.
+    pingBadge.classList.toggle('measured', pingMs > 0 && pingMs <= 200);
+    pingBadge.classList.toggle('medium', pingMs > 200 && pingMs <= 350);
+    pingBadge.classList.toggle('slow', pingMs > 350);
     // One status per row, like Android: latency replaces the word "Connected".
     if (pingMs > 0) connectedLabel?.classList.add('hidden');
+  }
+  const transportBadge = document.getElementById('home-server-transport');
+  if (transportBadge) {
+    const transportLabel = cardServer && cardServer.code !== 'auto' ? serverTransportLabel(cardServer) : '';
+    transportBadge.textContent = transportLabel;
+    transportBadge.classList.toggle('hidden', !transportLabel);
   }
   if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn && !(Number(cardServer?.ping) > 0 || Number(cardServer?.rtt_ms) > 0));
   const cardTitle = document.getElementById('home-server-card-title');
@@ -3890,6 +3899,19 @@ function serverProtocolLabel(server) {
   return protocol.toUpperCase();
 }
 
+// Android names the transport under the protocol chip, so a server card
+// explains how the tunnel actually runs instead of only naming the protocol.
+function serverTransportLabel(server) {
+  const network = String(server?.network || '').toLowerCase();
+  if (network === 'grpc') return 'gRPC';
+  if (network === 'xhttp') return 'XHTTP';
+  if (network === 'ws') return 'WebSocket';
+  if (network === 'httpupgrade') return 'HTTPUpgrade';
+  if (network === 'hysteria' || network === 'udp') return 'QUIC';
+  if (network === 'tcp' || network === 'raw') return 'TCP';
+  return '';
+}
+
 function friendlyServerLabel(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -3904,7 +3926,7 @@ function automaticServerSubtitle() {
     : String(state.autoSelectedServer?.name || '').trim();
   const selectedName = friendlyServerLabel(rawName) || (state.vpnConnected && state.selectedServer.code === 'auto' ? String(state.metrics?.country || '').trim() : '');
   if (!selectedName) return uiText('Подберём сервер', 'We will choose a server');
-  const ping = Number(state.autoSelectedServer?.ping);
+  const ping = Number(state.autoSelectedServer?.ping) || Number(state.autoSelectedServer?.rtt_ms) || 0;
   const suffix = Number.isFinite(ping) && ping > 0 ? ` · ${ping} ms` : '';
   return uiText(`Выбран сервер: ${selectedName}${suffix}`, `Selected server: ${selectedName}${suffix}`);
 }
@@ -3969,8 +3991,9 @@ function updateServerLatencyCard(server) {
   }
   if (dot) dot.className = `server-latency-dot ${info.tone}`;
   const protocol = card.querySelector('.server-protocol-badge');
+  const transport = card.querySelector('.server-transport-badge');
   card.setAttribute('aria-label',
-    `${serverDisplayName(server)}, ${protocol?.textContent || serverProtocolLabel(server)}, ${info.label}`);
+    `${serverDisplayName(server)}, ${protocol?.textContent || serverProtocolLabel(server)}, ${transport?.textContent || serverTransportLabel(server)}, ${info.label}`);
 }
 
 // Several probes can finish inside one display frame. Collapse their UI work
@@ -4041,14 +4064,22 @@ function renderServersList(filter = state.serverSearchQuery) {
     const isHysteria = String(srv.protocol || '').toLowerCase() === 'hysteria2' || String(srv.protocol || '').toLowerCase() === 'hy2';
     protocol.className = `server-protocol-badge ${isHysteria ? 'hysteria' : security === 'reality' ? 'reality' : 'other'}`;
     protocol.textContent = serverProtocolLabel(srv);
+    const transport = serverTransportLabel(srv);
+    const transportBadge = document.createElement('span');
+    if (transport) {
+      transportBadge.className = 'server-transport-badge';
+      transportBadge.textContent = transport;
+    }
     const meta = document.createElement('span');
     meta.className = 'server-item-meta';
-    meta.append(protocol, latencyDot, ping);
+    meta.append(protocol);
+    if (transport) meta.append(transportBadge);
+    meta.append(latencyDot, ping);
     const dot = document.createElement('span');
     dot.className = 'radio-selection-dot';
     details.append(meta);
     card.append(flag, details, dot);
-    card.setAttribute('aria-label', `${serverDisplayName(srv)}, ${protocol.textContent}, ${latencyInfo.label}`);
+    card.setAttribute('aria-label', `${serverDisplayName(srv)}, ${protocol.textContent}, ${transport || ''}, ${latencyInfo.label}`);
     card.addEventListener('click', () => void selectServer(srv));
     container.appendChild(card);
   });

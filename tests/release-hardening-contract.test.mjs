@@ -50,28 +50,25 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
   assert.match(main, /interval\(std::time::Duration::from_secs\(2\)\)/);
 });
 
-test('protocol latency probes run asynchronously and never delay server catalog delivery', () => {
-  assert.match(native, /spawn_blocking\(move \|\| \{/);
-  assert.match(native, /Semaphore::new\(2\)/);
-  assert.match(native, /force_probe == Some\(true\) \|\| cached_ping\.is_none\(\)/);
-  assert.match(native, /measure_proxy_latency\(runtime_dir, app_dir, session\)/);
-  assert.match(native, /measure_xray_server_latency\(port, &password\)/);
+test('catalogue latency is one TCP handshake and never starts Xray per row', () => {
+  assert.match(native, /async fn measure_tcp_rtt\(/);
+  assert.match(native, /tokio::net::TcpStream::connect\(\(host, port\)\)/);
+  assert.match(native, /Semaphore::new\(6\)/);
+  assert.match(native, /rtt_targets\.push\(/);
   assert.match(native, /JoinSet::new\(\)/);
-  assert.match(native, /SERVER_PING_CACHE_TTL: Duration = Duration::from_secs\(600\)/);
   assert.match(native, /"ping_method": "vpn_https"/);
   assert.match(native, /app\.emit\(\s*"server-latency-update"/);
-  assert.match(native, /Return the server list immediately/);
-  assert.match(native, /SERVER_PING_EPOCH\.fetch_add\(1, Ordering::SeqCst\)/);
-  assert.match(native, /wait_for_server_probe_cancellation\(probe_epoch\)/);
-  assert.match(native, /timeout\(\s*Duration::from_secs\(10\)/);
-  assert.doesNotMatch(native, /measure_real_ping|tcp_ping_target/);
-  assert.doesNotMatch(native, /timeout_at\(deadline, ping_tasks\.join_next\(\)\)/);
+  // A fresh connect reports the endpoint round trip, not the HTTPS time of a
+  // cold tunnel, so the displayed ping stays truthful.
+  assert.match(native, /measure_tcp_rtt\(host, endpoint_port\)/);
 });
 
-test('experimental builds are not auto published to paying clients', () => {
+test('preview builds stay drafts while a tagged release is published', () => {
   assert.match(ci, /preview-release:/);
   assert.match(ci, /draft: true/);
-  assert.match(read('.github/workflows/release.yml'), /draft: true/);
+  const release = read('.github/workflows/release.yml');
+  assert.match(release, /draft: false/);
+  assert.doesNotMatch(release, /prerelease: true/);
 });
 
 test('Telegram login ticket is never sent in a URL on server errors', () => {

@@ -45,7 +45,10 @@ test('VPN UI only claims protection when native egress verification passed', () 
   assert.match(ui, /state\.vpnVerified = status\.verified === true/);
   assert.match(ui, /status\?\.connected === true && status\?\.verified === true/);
   assert.match(ui, /uiText\('VPN подключён', 'VPN connected'\)/);
-  assert.match(ui, /state\.vpnVerified \? uiText\('VPN подключён'/);
+  // The heading names the connection state; verified protection is shown only
+  // by the check mark, the active pill and the muted notice.
+  assert.match(ui, /proof === 'tun_no_traffic' \? uiText\('Нет трафика через Windows TUN'/);
+  assert.match(ui, /activePill\?\.classList\.toggle\('hidden', !state\.vpnVerified/);
   assert.match(ui, /verificationMark\.textContent = state\.vpnVerified \? '✓' : '·'/);
   assert.match(ui, /home-verification-notice/);
   assert.match(ui, /Защита не подтверждена/);

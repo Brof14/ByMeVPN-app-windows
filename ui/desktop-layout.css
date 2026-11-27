@@ -818,3 +818,19 @@
 @media (max-width: 759px) {
   .toast-popup { bottom: 92px; }
 }
+
+@media (min-width: 1060px) {
+  /* Pricing is a decision column, not a data table: keep each block readable
+     and centered instead of stretching the offer rows across the window. */
+  .app-shell-layout #tab-pricing.active > * {
+    width: 100%;
+    max-width: 780px;
+    margin-inline: auto;
+  }
+
+  #tab-home .no-plan-shield-circle {
+    width: clamp(180px, 26vh, 236px);
+    height: clamp(180px, 26vh, 236px);
+  }
+  #tab-home .no-plan-headline { font-size: 34px; }
+}

@@ -75,8 +75,8 @@ test('Google callback uses the ByMeVPN theme and does not force the account choo
   assert.match(oauth, /Вход через Google подтверждён/);
   assert.match(oauth, /Google approved sign-in/);
   assert.match(oauth, /Content-Security-Policy/);
-  assert.match(oauth, /#090f1d/i);
-  assert.match(oauth, /#69d3bc/i);
+  assert.match(oauth, /#030a1c/i);
+  assert.match(oauth, /#2ee9b8/i);
   assert.doesNotMatch(oauth, /append_pair\("prompt", "select_account"\)/);
   assert.equal((html.match(/class="google-g-icon" viewBox="0 0 24 24"/g) || []).length, 2);
   assert.doesNotMatch(html, /<span class="google-g-icon">G<\/span>/);

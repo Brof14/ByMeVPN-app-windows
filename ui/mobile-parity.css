@@ -14,7 +14,7 @@ html, body, .app-root, .app-shell-layout {
   background: var(--android-canvas);
 }
 .app-root {
-  background: radial-gradient(ellipse 68% 54% at 55% 0, rgba(21, 46, 87, .15), transparent 72%), var(--android-canvas);
+  background: radial-gradient(ellipse 68% 54% at 55% 0, rgba(14, 31, 69, .15), transparent 72%), var(--android-canvas);
 }
 
 /* Android uses a single screen with a narrow header and a fixed 72dp dock. */
@@ -46,12 +46,12 @@ html, body, .app-root, .app-shell-layout {
   border: 1px solid #2c4154;
   border-radius: 14px;
   background: #142235;
-  color: #c5d8d5;
+  color: #b3d5ee;
   cursor: pointer;
 }
 .android-topbar-back svg { width: 18px; height: 18px; }
 .android-topbar-back:hover { background: #1a2d42; }
-.android-topbar-back:focus-visible { outline: 2px solid #69d3bc; outline-offset: 2px; }
+.android-topbar-back:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 2px; }
 .mobile-header-brand {
   display: inline-flex;
   align-items: center;
@@ -74,7 +74,7 @@ html, body, .app-root, .app-shell-layout {
   border-radius: 14px;
   background: #152335;
   border: 1px solid #2b4053;
-  color: #c5d8d5;
+  color: #b3d5ee;
 }
 .app-shell-layout .page-title {
   font-size: 27px;
@@ -113,7 +113,7 @@ html, body, .app-root, .app-shell-layout {
   display: flex;
   border: 0;
   border-top: 1px solid #243447;
-  background: #101a29;
+  background: #061028;
   flex-direction: row;
   align-items: center;
   z-index: 30;
@@ -159,7 +159,7 @@ html, body, .app-root, .app-shell-layout {
 .app-shell-layout .sidebar-tab.active {
   background: transparent;
   border-color: transparent;
-  color: #71d2c3;
+  color: #2ee9b8;
 }
 .app-shell-layout .sidebar-tab.active { font-weight: 650; }
 .app-shell-layout .sidebar-tab.active::after {
@@ -168,9 +168,9 @@ html, body, .app-root, .app-shell-layout {
   height: 3px;
   flex: 0 0 3px;
   border-radius: 5px;
-  background: #71d2c3;
+  background: #2ee9b8;
 }
-.app-shell-layout .sidebar-tab:focus-visible { outline: 2px solid #71d2c3; outline-offset: -3px; }
+.app-shell-layout .sidebar-tab:focus-visible { outline: 2px solid #2ee9b8; outline-offset: -3px; }
 
 /* HomeScreen.kt: dynamic state occupies center, location/subscription dock below. */
 .app-shell-layout #tab-home.active {
@@ -256,14 +256,14 @@ html, body, .app-root, .app-shell-layout {
   flex: none;
   opacity: .62;
   transform: scale(.96);
-  filter: drop-shadow(0 0 13px rgba(81, 170, 194, .16));
+  filter: drop-shadow(0 0 13px rgba(0, 216, 255, .16));
   transition: opacity .42s ease, transform .42s ease, filter .42s ease;
   pointer-events: none;
 }
 #tab-home #vpn-power-ring.ring-connected .vpn-shield-image {
   opacity: 1;
   transform: scale(1);
-  filter: drop-shadow(0 0 17px rgba(70, 219, 177, .20));
+  filter: drop-shadow(0 0 17px rgba(66, 245, 155, .20));
 }
 #tab-home .vpn-shield-mark {
   display: none;
@@ -272,20 +272,20 @@ html, body, .app-root, .app-shell-layout {
   flex: none;
   overflow: visible;
   opacity: .67;
-  filter: drop-shadow(0 0 13px rgba(81, 170, 194, .22));
+  filter: drop-shadow(0 0 13px rgba(0, 216, 255, .22));
   transition: opacity .3s ease, filter .3s ease, transform .3s ease;
   pointer-events: none;
 }
 #tab-home .vpn-shield-mark.is-fallback-visible { display: block; }
 #tab-home #vpn-power-ring.ring-connected .vpn-shield-mark {
   opacity: 1;
-  filter: drop-shadow(0 0 18px rgba(70, 219, 177, .36));
+  filter: drop-shadow(0 0 18px rgba(66, 245, 155, .36));
 }
 #tab-home .pulse-power-ring:hover .vpn-shield-mark {
   transform: scale(1.035);
 }
 #tab-home .pulse-power-ring:focus-visible {
-  outline: 2px solid #69d3bc;
+  outline: 2px solid #2ee9b8;
   outline-offset: 5px;
 }
 #tab-home .pulse-power-ring:hover { transform: scale(1.014); }
@@ -319,7 +319,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-home .status-check-icon { font-size: 23px; color: #3cdcad; }
 #tab-home .status-title-text {
   margin: 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 25px;
   font-weight: 700;
   letter-spacing: -.55px;
@@ -395,7 +395,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-home .mobile-server-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 #tab-home .mobile-server-copy strong {
   overflow: hidden;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 16px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -411,9 +411,9 @@ html, body, .app-root, .app-shell-layout {
 #tab-home .mobile-server-status.hidden { display: none; }
 #tab-home .mobile-server-protocol {
   padding: 2px 6px;
-  border: 1px solid rgba(77, 175, 255, .35);
+  border: 1px solid rgba(0, 119, 255, .35);
   border-radius: 5px;
-  background: rgba(77, 175, 255, .17);
+  background: rgba(0, 119, 255, .17);
   color: #78c6ff;
   font-size: 10px;
   font-weight: 700;
@@ -421,9 +421,9 @@ html, body, .app-root, .app-shell-layout {
   white-space: nowrap;
 }
 #tab-home .mobile-server-protocol.reality {
-  border-color: rgba(60, 223, 172, .35);
-  background: rgba(60, 223, 172, .17);
-  color: #69d3bc;
+  border-color: rgba(66, 245, 155, .35);
+  background: rgba(66, 245, 155, .17);
+  color: #2ee9b8;
 }
 #tab-home .mobile-server-protocol.hysteria {
   border-color: rgba(157, 123, 255, .35);
@@ -431,7 +431,7 @@ html, body, .app-root, .app-shell-layout {
   color: #c4b0ff;
 }
 #tab-home .mobile-server-connected {
-  color: #69d3bc;
+  color: #2ee9b8;
   font-size: 11px;
   font-weight: 600;
 }
@@ -444,7 +444,7 @@ html, body, .app-root, .app-shell-layout {
   height: 32px;
   border-radius: 10px;
   background: #1b3030;
-  color: #9dd5cb;
+  color: #b3d5ee;
   font-size: 24px;
   cursor: pointer;
 }
@@ -457,13 +457,13 @@ html, body, .app-root, .app-shell-layout {
   border: 1px solid #243739;
   border-radius: 17px;
   background: #101b1c;
-  color: #eef4f4;
+  color: #f0f6ff;
   text-align: left;
   cursor: pointer;
 }
 #tab-home .mobile-error-support.hidden { display: none; }
 #tab-home .mobile-error-support:hover { background: #14252a; }
-#tab-home .mobile-error-support:focus-visible { outline: 2px solid #69d3bc; outline-offset: 2px; }
+#tab-home .mobile-error-support:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 2px; }
 #tab-home .mobile-error-support-icon {
   display: grid;
   flex: 0 0 20px;
@@ -479,7 +479,7 @@ html, body, .app-root, .app-shell-layout {
   min-width: 0;
 }
 #tab-home .mobile-error-support-copy strong { font-size: 12.5px; font-weight: 600; }
-#tab-home .mobile-error-support-copy > span { color: #8aa1a1; font-size: 11px; }
+#tab-home .mobile-error-support-copy > span { color: #9eb4d4; font-size: 11px; }
 #tab-home .mobile-error-support-arrow { flex: 0 0 auto; background: none; color: #73898a; font-size: 17px; }
 #tab-home .mobile-subscription-card {
   display: flex;
@@ -503,7 +503,7 @@ html, body, .app-root, .app-shell-layout {
   height: 30px;
   border-radius: 50%;
   background: #162b27;
-  color: #9dd5cb;
+  color: #b3d5ee;
 }
 #tab-home .mobile-subscription-clock svg { width: 16px; height: 16px; }
 #tab-home .mobile-subscription-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; }
@@ -515,10 +515,10 @@ html, body, .app-root, .app-shell-layout {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#tab-home .mobile-subscription-copy > span { color: #8aa1a1; font-size: 11px; }
+#tab-home .mobile-subscription-copy > span { color: #9eb4d4; font-size: 11px; }
 #tab-home .mobile-subscription-arrow { color: #73898a; font-size: 23px; line-height: 1; }
 #tab-home .mobile-server-card :is([role="button"]):focus-visible,
-#tab-home .mobile-subscription-card:focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+#tab-home .mobile-subscription-card:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 3px; }
 
 /* Android HomeNoPlanContent.kt: one centered shield and one trial card. */
 #tab-home .mobile-no-plan {
@@ -550,7 +550,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-home .no-plan-shield-circle::after { display: none; }
 #tab-home .no-plan-headline {
   margin: 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 25px;
   font-weight: 700;
   line-height: 1.24;
@@ -572,12 +572,12 @@ html, body, .app-root, .app-shell-layout {
   padding: 19px;
   border: 1px solid #285a4c;
   border-radius: 21px;
-  background: linear-gradient(135deg, #142638, #18283a, #101e1d);
+  background: linear-gradient(135deg, #142638, #11254e, #101e1d);
   text-align: left;
 }
 #tab-home .no-plan-trial-dock h3 {
   margin: 0 0 4px;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 24px;
   line-height: 1.2;
   font-weight: 750;
@@ -604,8 +604,8 @@ html, body, .app-root, .app-shell-layout {
   width: 100%;
   border: 0;
   border-radius: 17px;
-  background: linear-gradient(90deg, #69d3bc, #64c0d4);
-  color: #0a1c29;
+  background: linear-gradient(90deg, #2ee9b8, #00d8ff);
+  color: #031326;
   font-size: 16px;
   font-weight: 750;
   letter-spacing: -.2px;
@@ -618,13 +618,13 @@ html, body, .app-root, .app-shell-layout {
   height: 18px;
 }
 #tab-home .mobile-primary-cta:disabled {
-  background: linear-gradient(90deg, #25364a, #253b4d);
-  color: #9cacbd;
+  background: linear-gradient(90deg, #11254e, #14284e);
+  color: #9eb4d4;
   opacity: 1;
   cursor: not-allowed;
 }
 #tab-home .mobile-primary-cta:disabled .mobile-cta-arrow {
-  color: #7d94a8;
+  color: #6d86ab;
 }
 .trial-success-window {
   display: flex;
@@ -744,7 +744,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-support .android-support-icon svg { width: 30px; height: 30px; }
 #tab-support .support-hero-title {
   margin: 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 28px;
   font-weight: 700;
   line-height: 33px;
@@ -769,8 +769,8 @@ html, body, .app-root, .app-shell-layout {
   padding: 0 52px 0 20px;
   border: 0;
   border-radius: 17px;
-  background: linear-gradient(90deg, #69d3bc, #64c0d4);
-  color: #0a1c29;
+  background: linear-gradient(90deg, #2ee9b8, #00d8ff);
+  color: #031326;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -.2px;
@@ -784,16 +784,16 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-support .android-support-section-title {
   margin: 12px 0 10px 2px;
-  color: #8ba3a4;
+  color: #9eb4d4;
   font-size: 12px;
   font-weight: 600;
 }
 #tab-support .android-support-section-title.information { margin-top: 22px; }
 #tab-support .android-support-card-group {
   overflow: hidden;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 19px;
-  background: #121c2b;
+  background: #0a1632;
 }
 #tab-support .android-support-row {
   position: relative;
@@ -805,7 +805,7 @@ html, body, .app-root, .app-shell-layout {
   padding: 0 15px;
   border: 0;
   background: transparent;
-  color: #eaf1ef;
+  color: #eaf4ff;
   text-align: left;
   cursor: pointer;
 }
@@ -816,10 +816,10 @@ html, body, .app-root, .app-shell-layout {
   right: 0;
   left: 60px;
   height: 1px;
-  background: #263647;
+  background: #1c3566;
 }
-#tab-support .android-support-row:hover { background: rgba(114, 166, 180, .08); }
-#tab-support .android-support-row:focus-visible { outline: 2px solid #69d3bc; outline-offset: -3px; }
+#tab-support .android-support-row:hover { background: rgba(158, 180, 212, .08); }
+#tab-support .android-support-row:focus-visible { outline: 2px solid #2ee9b8; outline-offset: -3px; }
 #tab-support .android-support-row-icon {
   display: grid;
   flex: 0 0 33px;
@@ -841,7 +841,7 @@ html, body, .app-root, .app-shell-layout {
   gap: 3px;
 }
 #tab-support .android-support-row-copy strong {
-  color: #eaf1ef;
+  color: #eaf4ff;
   font-size: 13.6px;
   font-weight: 600;
   letter-spacing: -.2px;
@@ -851,7 +851,7 @@ html, body, .app-root, .app-shell-layout {
   font-size: 11.4px;
   line-height: 15px;
 }
-#tab-support .android-support-row-arrow { color: #71898a; font-size: 22px; line-height: 1; }
+#tab-support .android-support-row-arrow { color: #6d86ab; font-size: 22px; line-height: 1; }
 #tab-support .android-support-footer {
   margin: 28px 0 20px;
   color: #617e79;
@@ -872,7 +872,7 @@ html, body, .app-root, .app-shell-layout {
 .auth-card { padding: 16px 0 24px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .auth-card:hover { border: 0; }
 .auth-title { font-size: 23px; }
-.auth-subtitle { color: #9cacbd; font-size: 12px; }
+.auth-subtitle { color: #9eb4d4; font-size: 12px; }
 
 /* The other Android destinations remain single-column, without a desktop grid. */
 .app-shell-layout .app-tab-pages .home-cards-duo,
@@ -949,7 +949,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-account .profile-name-text {
   margin: 0 0 4px;
   overflow: hidden;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 16px;
   font-weight: 700;
   white-space: nowrap;
@@ -958,7 +958,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-account .profile-email-text {
   display: block;
   overflow: hidden;
-  color: #8ca5a2;
+  color: #9eb4d4;
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -970,7 +970,7 @@ html, body, .app-root, .app-shell-layout {
   padding: 7px 9px;
   border-radius: 8px;
   background: #193743;
-  color: #8cdeca;
+  color: #42f59b;
   font-size: 10px;
   line-height: 1.2;
   font-weight: 500;
@@ -1000,7 +1000,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-account .mobile-account-kicker {
   display: block;
   margin-bottom: 10px;
-  color: #8fbbca;
+  color: #b3d5ee;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 1.2px;
@@ -1010,7 +1010,7 @@ html, body, .app-root, .app-shell-layout {
   align-items: baseline;
   min-height: 81px;
   gap: 4px;
-  color: #eef4f4;
+  color: #f0f6ff;
 }
 #tab-account .mobile-account-days strong {
   font-size: 64px;
@@ -1058,17 +1058,18 @@ html, body, .app-root, .app-shell-layout {
   min-height: 48px;
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid #526f80;
-  border-radius: 13px;
-  background: #eaf8f8;
-  color: #0a2431;
+  /* ByMeSecondaryButton: sapphire surface, subtle border, light text. */
+  border: 1px solid #2b4d82;
+  border-radius: 14px;
+  background: #0e2046;
+  color: #eaf4ff;
   font-size: 13px;
   font-weight: 700;
   text-align: center;
 }
 #tab-account .mobile-account-inactive h3 {
   margin: 6px 0 10px;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -.5px;
@@ -1085,8 +1086,8 @@ html, body, .app-root, .app-shell-layout {
   margin-bottom: 14px;
   border: 0;
   border-radius: 13px;
-  color: #0a2431;
-  background: linear-gradient(95deg, #69d3bc, #64c0d4);
+  color: #031326;
+  background: linear-gradient(95deg, #2ee9b8, #00d8ff);
   font-size: 14px;
   font-weight: 700;
 }
@@ -1104,7 +1105,7 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-account .mobile-account-section-label {
   margin: 22px 0 10px 2px;
-  color: #8ba3a4;
+  color: #9eb4d4;
   font-size: 12px;
   font-weight: 600;
 }
@@ -1116,10 +1117,10 @@ html, body, .app-root, .app-shell-layout {
   gap: 13px;
   width: 100%;
   padding: 14px 17px;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 16px;
-  background: #121c2b;
-  color: #eef4f4;
+  background: #0a1632;
+  color: #f0f6ff;
   box-shadow: none;
   cursor: pointer;
 }
@@ -1127,9 +1128,9 @@ html, body, .app-root, .app-shell-layout {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 19px;
-  background: #121c2b;
+  background: #0a1632;
 }
 #tab-account .mobile-account-management-group > :is(.account-devices-section, .mobile-account-settings-row) {
   min-height: 76px;
@@ -1141,13 +1142,13 @@ html, body, .app-root, .app-shell-layout {
   text-align: left;
 }
 #tab-account .mobile-account-management-group > :is(.account-devices-section, .mobile-account-settings-row):not(:last-child) {
-  border-bottom: 1px solid #263647;
+  border-bottom: 1px solid #1c3566;
 }
 #tab-account .mobile-account-management-group > :is(.account-devices-section, .mobile-account-settings-row):hover {
-  background: rgba(114, 166, 180, .08);
+  background: rgba(158, 180, 212, .08);
 }
 #tab-account .mobile-account-management-group > :is(.account-devices-section, .mobile-account-settings-row):focus-visible {
-  outline: 2px solid #69d3bc;
+  outline: 2px solid #2ee9b8;
   outline-offset: -3px;
 }
 #tab-account .mobile-account-row-icon {
@@ -1157,24 +1158,24 @@ html, body, .app-root, .app-shell-layout {
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: #1b2f3c;
-  color: #7ac9cb;
+  background: #0e1f45;
+  color: #00d8ff;
 }
 #tab-account .mobile-account-row-icon svg { width: 20px; height: 20px; }
 #tab-account .mobile-account-row-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
-#tab-account .mobile-account-row-copy strong { color: #eef4f4; font-size: 13.5px; font-weight: 650; }
-#tab-account .mobile-account-row-copy span { font-size: 11px; font-weight: 400; color: #8ca5a2; }
-#tab-account .mobile-account-row-arrow { flex: 0 0 auto; color: #71898a; font-size: 24px; line-height: 1; }
-#tab-account :is(.account-devices-section, .mobile-account-settings-row):focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+#tab-account .mobile-account-row-copy strong { color: #f0f6ff; font-size: 13.5px; font-weight: 650; }
+#tab-account .mobile-account-row-copy span { font-size: 11px; font-weight: 400; color: #9eb4d4; }
+#tab-account .mobile-account-row-arrow { flex: 0 0 auto; color: #6d86ab; font-size: 24px; line-height: 1; }
+#tab-account :is(.account-devices-section, .mobile-account-settings-row):focus-visible { outline: 2px solid #2ee9b8; outline-offset: 3px; }
 
 .mobile-account-settings-modal {
   width: min(440px, calc(100vw - 34px));
   max-width: calc(100vw - 34px);
   max-height: calc(100dvh - 58px);
   overflow-y: auto;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 22px;
-  background: #121c2b;
+  background: #0a1632;
 }
 .mobile-account-settings-modal .account-settings-button-grid {
   display: flex;
@@ -1205,7 +1206,7 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-settings .android-settings-heading h2 {
   margin: 0 0 8px;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 25px;
   line-height: 1.2;
   font-weight: 720;
@@ -1213,13 +1214,13 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-settings .android-settings-heading p {
   margin: 0;
-  color: #8ea4a2;
+  color: #9eb4d4;
   font-size: 12.5px;
   line-height: 17px;
 }
 #tab-settings .android-settings-section-label {
   margin: 10px 2px;
-  color: #8ba3a4;
+  color: #9eb4d4;
   font-size: 12px;
   font-weight: 600;
 }
@@ -1229,9 +1230,9 @@ html, body, .app-root, .app-shell-layout {
 #tab-settings .android-settings-essential,
 #tab-settings .android-settings-language {
   padding: 4px 14px;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 18px;
-  background: #121c2b;
+  background: #0a1632;
   box-shadow: none;
 }
 #tab-settings .setting-item-row {
@@ -1248,8 +1249,8 @@ html, body, .app-root, .app-shell-layout {
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: #1b2f3c;
-  color: #7ac9cb;
+  background: #0e1f45;
+  color: #00d8ff;
   font-size: 20px;
 }
 #tab-settings .setting-row-icon svg { width: 20px; height: 20px; }
@@ -1261,12 +1262,12 @@ html, body, .app-root, .app-shell-layout {
   gap: 4px;
 }
 #tab-settings .setting-copy-column strong {
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 13.5px;
   font-weight: 650;
 }
 #tab-settings .setting-copy-column > span {
-  color: #9cacbd;
+  color: #9eb4d4;
   font-size: 11.5px;
   line-height: 1.38;
 }
@@ -1285,11 +1286,11 @@ html, body, .app-root, .app-shell-layout {
   background: #a5b2b3;
 }
 .app-shell-layout .switch-control input:checked + .switch-slider {
-  background: #71d0c4;
+  background: var(--neon-btn-grad);
 }
 .app-shell-layout .switch-control input:checked + .switch-slider::before {
   transform: translateX(20px);
-  background: #0a2230;
+  background: #031326;
 }
 #tab-settings .android-settings-language .mobile-language-row {
   display: flex;
@@ -1298,7 +1299,7 @@ html, body, .app-root, .app-shell-layout {
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   border: none;
   background: transparent;
   font: inherit;
@@ -1308,16 +1309,16 @@ html, body, .app-root, .app-shell-layout {
 #tab-settings .mobile-language-chevron {
   flex: 0 0 auto;
   margin-left: auto;
-  color: #71898a;
+  color: #6d86ab;
   font-size: 23px;
 }
-#tab-settings #row-open-advanced-settings { display: none; }
+/* Android 2.1 puts Advanced settings in its own group row, not a hidden control. */
 #tab-settings .android-settings-default-tip {
   margin: 20px 0 12px;
   padding: 14px 15px;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 15px;
-  color: #8ea4a2;
+  color: #9eb4d4;
   background: #101b29;
   font-size: 12px;
   line-height: 1.5;
@@ -1327,19 +1328,19 @@ html, body, .app-root, .app-shell-layout {
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 52px);
   overflow-y: auto;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 24px;
-  background: #121c2b;
+  background: #0a1632;
   padding: 20px;
 }
 .mobile-language-modal .modal-head h3 {
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 20px;
   font-weight: 700;
 }
 .mobile-language-modal .modal-desc {
   margin: 10px 0 16px;
-  color: #9cacbd;
+  color: #9eb4d4;
   font-size: 13px;
 }
 .mobile-language-modal .lang-segmented-control {
@@ -1359,19 +1360,19 @@ html, body, .app-root, .app-shell-layout {
   min-height: 57px;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 15px;
-  background: #111c2b;
-  color: #eef4f4;
+  background: #07122b;
+  color: #f0f6ff;
   font-size: 14px;
   font-weight: 550;
   text-align: left;
   cursor: pointer;
 }
 .mobile-language-modal .lang-btn.active {
-  border-color: #69d3bc;
-  background: #18283a;
-  color: #eef4f4;
+  border-color: #2ee9b8;
+  background: #11254e;
+  color: #f0f6ff;
 }
 .mobile-language-modal .mobile-language-radio {
   position: relative;
@@ -1380,22 +1381,22 @@ html, body, .app-root, .app-shell-layout {
   place-items: center;
   width: 20px;
   height: 20px;
-  border: 1.5px solid #7d94a8;
+  border: 1.5px solid #6d86ab;
   border-radius: 50%;
 }
 .mobile-language-modal .lang-btn.active .mobile-language-radio {
-  border-color: #69d3bc;
+  border-color: #2ee9b8;
 }
 .mobile-language-modal .lang-btn.active .mobile-language-radio::after {
   content: '';
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #69d3bc;
+  background: #2ee9b8;
 }
 .mobile-language-modal .lang-btn:focus-visible,
 #tab-settings #btn-language-dialog:focus-visible {
-  outline: 2px solid #69d3bc;
+  outline: 2px solid #2ee9b8;
   outline-offset: 3px;
 }
 
@@ -1496,15 +1497,15 @@ html, body, .app-root, .app-shell-layout {
   padding-block: 12px;
   border: 0;
   border-radius: 17px;
-  background: linear-gradient(90deg, #69d3bc, #64c0d4);
+  background: linear-gradient(90deg, #2ee9b8, #00d8ff);
   box-shadow: none;
-  color: #0a1c29;
+  color: #031326;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -.2px;
 }
 #tab-renewal .mobile-renewal-actions > .btn-primary:disabled {
-  background: linear-gradient(90deg, #25364a, #253b4d);
+  background: linear-gradient(90deg, #11254e, #14284e);
   color: var(--android-secondary);
 }
 #tab-renewal .mobile-renewal-actions > .btn-secondary {
@@ -1512,8 +1513,8 @@ html, body, .app-root, .app-shell-layout {
   padding-block: 10px;
   border: 1px solid #526f80;
   border-radius: 14px;
-  background: #eaf8f8;
-  color: #0a2431;
+  background: #eaf4ff;
+  color: #031326;
   font-size: 13px;
   font-weight: 700;
 }
@@ -1586,7 +1587,7 @@ html, body, .app-root, .app-shell-layout {
   font-weight: 500;
 }
 #modal-confirm.renewal-confirmation .modal-actions-row button:hover:enabled {
-  background: rgba(105, 211, 188, .08);
+  background: rgba(46, 233, 184, .08);
   transform: none;
 }
 #modal-confirm.renewal-confirmation .modal-actions-row button:disabled {
@@ -1595,7 +1596,7 @@ html, body, .app-root, .app-shell-layout {
 }
 
 .app-shell-layout #tab-pricing {
-  background: #090f1d;
+  background: #030a1c;
   padding: 0 26px 28px;
 }
 
@@ -1622,7 +1623,7 @@ html, body, .app-root, .app-shell-layout {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(69, 227, 174, .12);
+  background: rgba(66, 245, 155, .12);
   color: var(--android-mint);
   font-size: 18px;
   font-weight: 700;
@@ -1706,7 +1707,7 @@ html, body, .app-root, .app-shell-layout {
   font-size: 9px;
   font-weight: 700;
 }
-#modal-faq .expanded .faq-number { background: rgba(69, 227, 174, .12); }
+#modal-faq .expanded .faq-number { background: rgba(66, 245, 155, .12); }
 #modal-faq .faq-disclosure {
   width: 26px;
   height: 26px;
@@ -1757,7 +1758,7 @@ html, body, .app-root, .app-shell-layout {
   border: 1px solid #2c4154;
   border-radius: 14px;
   background: #142235;
-  color: #c5d8d5;
+  color: #b3d5ee;
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
@@ -1767,18 +1768,18 @@ html, body, .app-root, .app-shell-layout {
   font-size: 27px;
   font-weight: 650;
   letter-spacing: -1.15px;
-  color: #eef4f4;
+  color: #f0f6ff;
 }
 #tab-pricing .mobile-pricing-topbar p {
   margin: 0;
-  color: #8fa3a4;
+  color: #9eb4d4;
   font-size: 12px;
 }
 #tab-pricing .section-micro-label,
 #tab-pricing .mobile-pricing-kicker {
   display: block;
   margin: 0 0 10px;
-  color: #7d94a8;
+  color: #6d86ab;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 1.2px;
@@ -1801,7 +1802,7 @@ html, body, .app-root, .app-shell-layout {
   align-items: flex-start;
   gap: 4px;
   margin: 8px 0 12px;
-  color: #8fa3a4;
+  color: #9eb4d4;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1811,14 +1812,14 @@ html, body, .app-root, .app-shell-layout {
   padding: 6px 0;
   border: 0;
   background: transparent;
-  color: #69d3bc;
+  color: #2ee9b8;
   font-size: 12px;
   font-weight: 650;
   text-align: left;
   cursor: pointer;
 }
 #tab-pricing .mobile-pricing-catalog-status button:focus-visible {
-  outline: 2px solid #69d3bc;
+  outline: 2px solid #2ee9b8;
   outline-offset: 2px;
 }
 #tab-pricing .dev-seg-btn {
@@ -1838,7 +1839,7 @@ html, body, .app-root, .app-shell-layout {
   text-align: center;
 }
 #tab-pricing .dev-seg-btn.active {
-  background: #69d3bc;
+  background: #2ee9b8;
   color: #10241e;
   font-weight: 750;
 }
@@ -1865,19 +1866,19 @@ html, body, .app-root, .app-shell-layout {
   border: 1px solid #283c3e;
   border-radius: 18px;
   background: #111c1d;
-  color: #eef4f4;
+  color: #f0f6ff;
   box-shadow: none;
   cursor: pointer;
   transform: none;
   text-align: left;
 }
 #tab-pricing .tariff-card.selected {
-  border-color: #69d3bc;
+  border-color: #2ee9b8;
   background: #132221;
   box-shadow: none;
 }
 #tab-pricing .tariff-card.best-value.selected { background: #152a26; }
-#tab-pricing .tariff-card:hover { transform: none; border-color: #69d3bc; }
+#tab-pricing .tariff-card:hover { transform: none; border-color: #2ee9b8; }
 #tab-pricing .tariff-card.unavailable { cursor: pointer; }
 #tab-pricing .mobile-tariff-info {
   display: flex;
@@ -1888,13 +1889,13 @@ html, body, .app-root, .app-shell-layout {
   gap: 6px;
 }
 #tab-pricing .tariff-period-name {
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 15px;
   font-weight: 750;
 }
 #tab-pricing .tariff-period-note {
   display: block;
-  color: #8fa3a4;
+  color: #9eb4d4;
   font-size: 11.5px;
   line-height: 1.35;
 }
@@ -1909,7 +1910,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-pricing .tariff-price-number {
   display: inline;
   margin: 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 18px;
   font-weight: 750;
   letter-spacing: -.5px;
@@ -1925,8 +1926,8 @@ html, body, .app-root, .app-shell-layout {
   background: transparent;
 }
 #tab-pricing .tariff-card.selected .mobile-tariff-radio {
-  border-color: #78d3c9;
-  background: #78d3c9;
+  border-color: #2ee9b8;
+  background: #2ee9b8;
 }
 #tab-pricing .tariff-card.selected .mobile-tariff-radio::after {
   content: '✓';
@@ -1944,7 +1945,7 @@ html, body, .app-root, .app-shell-layout {
   padding: 5px 9px;
   border: 0;
   border-radius: 8px;
-  background: #69d3bc;
+  background: #2ee9b8;
   color: #06231a;
   font-size: 9px;
   line-height: 1;
@@ -1975,7 +1976,7 @@ html, body, .app-root, .app-shell-layout {
   font-size: 13px;
 }
 #tab-pricing .mobile-pricing-summary strong {
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 25px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
@@ -1995,8 +1996,8 @@ html, body, .app-root, .app-shell-layout {
   padding: 12px 15px;
   border: 0;
   border-radius: 13px;
-  background: linear-gradient(90deg,#69d3bc,#64c0d4);
-  color: #0a2431;
+  background: linear-gradient(90deg,#2ee9b8,#00d8ff);
+  color: #031326;
   font-size: 14px;
   font-weight: 750;
 }
@@ -2009,7 +2010,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-pricing .payment-footnotes {
   margin: 16px 0 0;
   padding: 0;
-  color: #7d94a8;
+  color: #6d86ab;
   font-size: 10px;
   line-height: 1.5;
   text-align: center;
@@ -2071,7 +2072,7 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-servers .mobile-server-sheet-title h2 {
   margin: 0;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 27px;
   font-weight: 750;
   letter-spacing: -1.15px;
@@ -2122,7 +2123,7 @@ html, body, .app-root, .app-shell-layout {
   font-size: 11px;
 }
 #tab-servers .btn-refresh-servers:disabled { opacity: .58; }
-#tab-servers .btn-measure-server-latency { color: #69d3bc; }
+#tab-servers .btn-measure-server-latency { color: #2ee9b8; }
 #tab-servers .btn-measure-server-latency[aria-busy="true"] > span:first-child {
   animation: server-latency-spin 850ms linear infinite;
 }
@@ -2150,7 +2151,7 @@ html, body, .app-root, .app-shell-layout {
   border: 0;
   border-radius: 14px;
   background: #2c4d5d;
-  color: #69d3bc;
+  color: #2ee9b8;
   font-size: 20px;
 }
 #tab-servers .rec-server-info {
@@ -2162,12 +2163,12 @@ html, body, .app-root, .app-shell-layout {
   text-align: left;
 }
 #tab-servers .rec-server-info strong {
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 13px;
   font-weight: 750;
 }
 #tab-servers .rec-server-info span {
-  color: #89a6a0;
+  color: #9eb4d4;
   font-size: 11px;
 }
 #tab-servers .radio-selection-dot {
@@ -2181,8 +2182,8 @@ html, body, .app-root, .app-shell-layout {
 #tab-servers .recommended-server-card.selected .radio-selection-dot {
   display: grid;
   place-items: center;
-  background: #69d3bc;
-  border-color: #69d3bc;
+  background: #2ee9b8;
+  border-color: #2ee9b8;
 }
 #tab-servers .recommended-server-card.selected .radio-selection-dot::after {
   content: '✓';
@@ -2193,7 +2194,7 @@ html, body, .app-root, .app-shell-layout {
 #tab-servers .section-micro-label {
   display: block;
   margin: 0 0 12px;
-  color: #7d94a8;
+  color: #6d86ab;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 1.2px;
@@ -2220,7 +2221,7 @@ html, body, .app-root, .app-shell-layout {
   box-shadow: none;
   text-align: left;
 }
-#tab-servers .server-stack-item.selected { border-color: #69d3bc; }
+#tab-servers .server-stack-item.selected { border-color: #2ee9b8; }
 #tab-servers .server-item-flag { flex: 0 0 26px; font-size: 23px; }
 #tab-servers .server-item-text {
   display: flex;
@@ -2231,13 +2232,13 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-servers .server-item-text strong {
   overflow: hidden;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 13.5px;
   font-weight: 750;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-#tab-servers .server-item-text span { color: #89a6a0; font-size: 11px; }
+#tab-servers .server-item-text span { color: #9eb4d4; font-size: 11px; }
 #tab-servers .server-item-meta {
   display: flex;
   align-items: center;
@@ -2249,18 +2250,18 @@ html, body, .app-root, .app-shell-layout {
   display: inline-flex;
   align-items: center;
   padding: 2px 6px;
-  border: 1px solid rgba(77, 175, 255, .35);
+  border: 1px solid rgba(0, 119, 255, .35);
   border-radius: 5px;
-  background: rgba(77, 175, 255, .14);
+  background: rgba(0, 119, 255, .14);
   color: #78c6ff;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
 }
 #tab-servers .server-protocol-badge.reality {
-  border-color: rgba(60, 223, 172, .35);
-  background: rgba(60, 223, 172, .14);
-  color: #69d3bc;
+  border-color: rgba(66, 245, 155, .35);
+  background: rgba(66, 245, 155, .14);
+  color: #2ee9b8;
 }
 #tab-servers .server-protocol-badge.hysteria {
   border-color: rgba(157, 123, 255, .35);
@@ -2272,19 +2273,19 @@ html, body, .app-root, .app-shell-layout {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #89a6a0;
+  background: #9eb4d4;
 }
-#tab-servers .server-latency-dot.measured { background: #69d3bc; }
-#tab-servers .server-latency-dot.medium { background: #ffd54f; }
+#tab-servers .server-latency-dot.measured { background: #2ee9b8; }
+#tab-servers .server-latency-dot.medium { background: #ffb74d; }
 #tab-servers .server-latency-dot.slow { background: #ff8a65; }
 #tab-servers .server-latency-dot.failed { background: #ff8a65; }
 #tab-servers .server-latency-label {
-  color: #89a6a0;
+  color: #9eb4d4;
   font-size: 11px;
   font-weight: 550;
 }
-#tab-servers .server-latency-label.measured { color: #69d3bc; }
-#tab-servers .server-latency-label.medium { color: #ffd54f; }
+#tab-servers .server-latency-label.measured { color: #2ee9b8; }
+#tab-servers .server-latency-label.medium { color: #ffb74d; }
 #tab-servers .server-latency-label.slow { color: #ff8a65; }
 #tab-servers .server-latency-label.failed { color: #ff8a65; }
 #tab-servers .mobile-server-sheet-footnote {
@@ -2313,3 +2314,52 @@ button:active, [role="button"]:active, .btn:active, .btn-primary:active, .btn-go
     transform: none;
   }
 }
+
+/* SettingsScreen.kt (Android 2.1): Подключение → Язык → Дополнительно.
+   The desktop-only auto-connect switch moved into Advanced settings. */
+#tab-settings .android-settings-advanced {
+  padding: 4px 14px;
+  border: 1px solid #1c3566;
+  border-radius: 18px;
+  background: #0a1632;
+}
+#tab-settings .android-advanced-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+#tab-settings .android-advanced-row .setting-copy-column {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+#tab-settings .android-advanced-row strong {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+#tab-settings .android-advanced-row span {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+#tab-settings .android-advanced-row .mobile-language-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+#tab-settings .android-advanced-row:hover { background: var(--bg-card-hover); }
+#tab-settings .android-advanced-row:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+/* AccountScreen.kt keeps renewal state in the management row, not inside the plan card. */
+#tab-account #acc-autorenew-badge { display: none; }

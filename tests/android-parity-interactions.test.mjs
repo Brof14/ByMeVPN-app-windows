@@ -47,8 +47,8 @@ test('Android bottom tabs appear in the same Home / Settings / Account order', (
   assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(css, /height: calc\(100% - 66px\)/);
   assert.match(parityCss, /\.app-shell-layout \.page-title\s*\{[^}]*font-size:\s*27px;[^}]*font-weight:\s*600;[^}]*letter-spacing:\s*-1\.15px/);
-  assert.match(parityCss, /\.app-shell-layout \.switch-control input:checked \+ \.switch-slider\s*\{[^}]*background:\s*#71d0c4/);
-  assert.match(parityCss, /\.app-shell-layout \.switch-control input:checked \+ \.switch-slider::before\s*\{[^}]*background:\s*#0a2230/);
+  assert.match(parityCss, /\.app-shell-layout \.switch-control input:checked \+ \.switch-slider\s*\{[^}]*background:\s*var\(--neon-btn-grad\)/);
+  assert.match(parityCss, /\.app-shell-layout \.switch-control input:checked \+ \.switch-slider::before\s*\{[^}]*background:\s*#031326/);
 });
 
 test('a secondary page retains its Android parent tab and aria-current', () => {
@@ -262,13 +262,17 @@ test('startup switch reflects Windows registry instead of stale settings.json', 
   assert.ok(app.calls.some(call => call.command === 'startup_enabled'));
 });
 
-test('Android primary settings contains the three everyday connection toggles and language', () => {
+test('Android primary settings contains the everyday connection toggles and language', () => {
   const primary = html.split('id="tab-settings"')[1].split('id="tab-devices"')[0];
   const advanced = html.split('id="tab-advanced"')[1].split('<!-- MODALS')[0];
-  for (const id of ['set-autoconnect', 'set-autoreconnect', 'set-bypass']) {
+  // SettingsScreen.kt 2.1: auto-reconnect and RU bypass only; the desktop-only
+  // auto-connect switch lives in Advanced settings.
+  for (const id of ['set-autoreconnect', 'set-bypass']) {
     assert.match(primary, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(advanced, new RegExp('id="' + id + '"'));
   }
+  assert.match(advanced, /id="set-autoconnect"/);
+  assert.doesNotMatch(primary, /id="set-autoconnect"/);
   for (const id of ['set-autostart', 'set-background', 'set-killswitch', 'adblock-group', 'set-dns-mode']) {
     assert.match(advanced, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));

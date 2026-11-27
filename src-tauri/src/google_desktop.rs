@@ -22,16 +22,16 @@ const CALLBACK_ACCEPTED_HTML: &str = r#"<!doctype html>
   <meta name="color-scheme" content="dark">
   <title>ByMeVPN — вход через Google</title>
   <style>
-    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #090f1d; color: #eef4f4; }
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #030a1c; color: #f0f6ff; }
     * { box-sizing: border-box; }
-    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #142638 0, #090f1d 66%); }
-    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #263647; border-radius: 24px; background: linear-gradient(145deg, #142638, #121c2b 62%, #101e1d); text-align: center; box-shadow: 0 24px 72px #02060d80; }
-    .mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #69d3bc80; border-radius: 50%; background: #69d3bc18; color: #69d3bc; font-size: 28px; font-weight: 700; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #0e2145 0, #030a1c 66%); }
+    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #1c3566; border-radius: 24px; background: linear-gradient(145deg, #0e2145, #0a1632 62%, #07122b); text-align: center; box-shadow: 0 24px 72px #02060d80; }
+    .mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #2ee9b880; border-radius: 50%; background: #2ee9b818; color: #2ee9b8; font-size: 28px; font-weight: 700; }
     .brand { margin: 0 0 22px; font-size: 15px; font-weight: 750; letter-spacing: -.2px; }
-    .brand span { color: #79d9bc; }
+    .brand span { color: #42f59b; }
     h1 { margin: 0 0 10px; font-size: clamp(23px, 5vw, 28px); line-height: 1.2; }
-    p { margin: 0; color: #9cacbd; font-size: 15px; line-height: 1.65; }
-    .hint { margin-top: 22px; padding-top: 18px; border-top: 1px solid #263647; color: #7d94a8; font-size: 12px; }
+    p { margin: 0; color: #9eb4d4; font-size: 15px; line-height: 1.65; }
+    .hint { margin-top: 22px; padding-top: 18px; border-top: 1px solid #1c3566; color: #6d86ab; font-size: 12px; }
     @media (max-width: 420px) { main { padding: 30px 22px; } }
   </style>
 </head>
@@ -53,13 +53,13 @@ const CALLBACK_REJECTED_HTML: &str = r#"<!doctype html>
   <meta name="color-scheme" content="dark">
   <title>ByMeVPN — вход не подтверждён</title>
   <style>
-    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #090f1d; color: #eef4f4; }
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; background: #030a1c; color: #f0f6ff; }
     * { box-sizing: border-box; }
-    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #142638 0, #090f1d 66%); }
-    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #263647; border-radius: 24px; background: #121c2b; text-align: center; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0, #0e2145 0, #030a1c 66%); }
+    main { width: min(100%, 460px); padding: 36px 32px; border: 1px solid #1c3566; border-radius: 24px; background: #0a1632; text-align: center; }
     .mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #e8bc8480; border-radius: 50%; background: #e8bc8418; color: #e8bc84; font-size: 28px; font-weight: 700; }
     h1 { margin: 0 0 10px; font-size: 25px; }
-    p { margin: 0; color: #9cacbd; font-size: 15px; line-height: 1.65; }
+    p { margin: 0; color: #9eb4d4; font-size: 15px; line-height: 1.65; }
   </style>
 </head>
 <body><main><div class="mark" aria-hidden="true">×</div><h1>Вход не подтверждён</h1><p>Вернитесь в ByMeVPN и попробуйте ещё раз.<br>Google sign-in was not accepted. Return to ByMeVPN and try again.</p></main></body>
@@ -389,8 +389,8 @@ mod tests {
         assert!(accepted.starts_with("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8"));
         assert!(accepted.contains("Вход через Google подтверждён"));
         assert!(accepted.contains("Google approved sign-in"));
-        assert!(accepted.contains("#090f1d"));
-        assert!(accepted.contains("#69d3bc"));
+        assert!(accepted.contains("#030a1c"));
+        assert!(accepted.contains("#2ee9b8"));
         assert!(accepted.contains("Content-Security-Policy: default-src 'none'"));
         assert!(!accepted.contains("<script"));
         assert!(!accepted.contains("https://"));

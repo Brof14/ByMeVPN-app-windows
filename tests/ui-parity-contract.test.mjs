@@ -11,7 +11,7 @@ const css = read('ui/styles.css');
 test('home navigation and visual tokens match current Android V2 baseline', () => {
   assert.match(js, /nav_connection: 'Главная'/);
   assert.match(js, /nav_connection: 'Home'/);
-  for (const token of ['#090f1d', '#121c2b', '#69d3bc']) {
+  for (const token of ['#030a1c', '#0a1632', '#2ee9b8', '#00d8ff', '#42f59b']) {
     assert.ok(css.toLowerCase().includes(token), 'Android V2 token missing: ' + token);
   }
   assert.match(css, /assets\/byme-connect-shield\.png/);

@@ -52,7 +52,7 @@
   cursor: pointer;
 }
 #tab-home .mobile-health-button:hover { background: rgba(232, 174, 109, .18); }
-#tab-home .mobile-health-button:focus-visible { outline: 2px solid #69d3bc; outline-offset: 3px; }
+#tab-home .mobile-health-button:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 3px; }
 .mobile-vpn-health-modal .mobile-health-results {
   margin: 15px 0;
   padding: 13px 15px;
@@ -81,7 +81,7 @@
   margin: 0;
   padding: 18px 20px calc(20px + env(safe-area-inset-bottom));
   overflow-y: auto;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-bottom: 0;
   border-radius: 24px 24px 0 0;
   background: var(--bg-deep);
@@ -110,7 +110,7 @@
 .account-settings-overline {
   display: block;
   margin-bottom: 6px;
-  color: #69d3bc;
+  color: #2ee9b8;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 1.6px;
@@ -152,7 +152,7 @@
   width: 45px;
   height: 45px;
   border-radius: 15px;
-  background: rgba(105, 211, 188, .15);
+  background: rgba(46, 233, 184, .15);
   color: #8be1d1;
 }
 .account-settings-avatar svg { width: 25px; height: 25px; }
@@ -185,7 +185,7 @@
   width: 27px;
   height: 27px;
   border-radius: 50%;
-  background: rgba(105, 211, 188, .14);
+  background: rgba(46, 233, 184, .14);
   color: #8fe7ce;
   font-weight: 800;
 }
@@ -232,9 +232,9 @@
   cursor: pointer;
   transition: background .16s ease;
 }
-.account-settings-action:hover { background: rgba(114, 166, 180, .12); }
+.account-settings-action:hover { background: rgba(158, 180, 212, .12); }
 .account-settings-action:focus-visible {
-  outline: 2px solid #69d3bc;
+  outline: 2px solid #2ee9b8;
   outline-offset: -2px;
 }
 .account-settings-action-icon {
@@ -243,9 +243,9 @@
   place-items: center;
   width: 35px;
   height: 35px;
-  border: 1px solid rgba(105, 211, 188, .12);
+  border: 1px solid rgba(46, 233, 184, .12);
   border-radius: 11px;
-  background: rgba(105, 211, 188, .08);
+  background: rgba(46, 233, 184, .08);
   color: #86d9c9;
 }
 .account-settings-section.billing .account-settings-action-icon {
@@ -299,13 +299,13 @@
 .account-settings-profile-card {
   margin: 0 0 18px;
   padding: 15px 16px 10px;
-  border: 1px solid #263647;
+  border: 1px solid #1c3566;
   border-radius: 18px;
-  background: #121c2b;
+  background: #0a1632;
 }
 .account-settings-profile-card h4 {
   margin: 0 0 8px;
-  color: #69d3bc;
+  color: #2ee9b8;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 1px;
@@ -318,16 +318,16 @@
   gap: 16px;
   min-height: 34px;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(38, 54, 71, .68);
+  border-bottom: 1px solid rgba(28, 53, 102, .68);
 }
 .account-settings-profile-card dl > div:last-child { border-bottom: 0; }
 .account-settings-profile-card dt {
-  color: #9cacbd;
+  color: #9eb4d4;
   font-size: 12px;
 }
 .account-settings-profile-card dd {
   max-width: 65%;
-  color: #eef4f4;
+  color: #f0f6ff;
   font-size: 12px;
   font-weight: 600;
   text-align: right;
@@ -340,23 +340,23 @@
   gap: 16px;
   min-height: 38px;
   padding-top: 5px;
-  border-top: 1px solid rgba(38, 54, 71, .68);
-  color: #9cacbd;
+  border-top: 1px solid rgba(28, 53, 102, .68);
+  color: #9eb4d4;
   font-size: 12px;
 }
 .account-copy-id {
   min-height: 32px;
   padding: 5px 11px;
-  border: 1px solid rgba(105, 211, 188, .24);
+  border: 1px solid rgba(46, 233, 184, .24);
   border-radius: 9px;
-  background: rgba(105, 211, 188, .08);
+  background: rgba(46, 233, 184, .08);
   color: #8fe1cf;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
 }
-.account-copy-id:hover:not(:disabled) { background: rgba(105, 211, 188, .16); }
-.account-copy-id:focus-visible { outline: 2px solid #69d3bc; outline-offset: 2px; }
+.account-copy-id:hover:not(:disabled) { background: rgba(46, 233, 184, .16); }
+.account-copy-id:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 2px; }
 .account-copy-id:disabled { opacity: .5; cursor: not-allowed; }
 .account-settings-refresh {
   width: 100%;
@@ -382,7 +382,7 @@
   cursor: pointer;
 }
 .account-settings-text-action:hover { background: rgba(198, 84, 92, .10); }
-.account-settings-text-action:focus-visible { outline: 2px solid #69d3bc; outline-offset: 2px; }
+.account-settings-text-action:focus-visible { outline: 2px solid #2ee9b8; outline-offset: 2px; }
 
 /* Boolean "off" and absent metadata are not payment failures. */
 .renewal-status-neutral {

@@ -113,7 +113,7 @@ test('home Telegram recovery is an accessible native action and trial errors rem
   assert.match(source, /btn-no-plan-telegram'\)\?\.addEventListener\('click', startTelegramAuthFlow\)/);
   const parityCss = read('ui/mobile-parity.css');
   assert.match(parityCss, /\.no-plan-telegram-recovery:focus-visible/);
-  assert.match(parityCss, /\.mobile-primary-cta:disabled\s*\{[^}]*background:\s*linear-gradient\(90deg,\s*#25364a,\s*#253b4d\)/);
+  assert.match(parityCss, /\.mobile-primary-cta:disabled\s*\{[^}]*background:\s*linear-gradient\(90deg,\s*#11254e,\s*#14284e\)/);
   assert.match(parityCss, /\.no-plan-trial-dock p\s*\{[^}]*text-align:\s*left/);
   const app = makeHarness();
   assert.equal(app.run('I18N.en.no_plan_pricing_button'), 'See all plans');

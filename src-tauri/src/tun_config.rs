@@ -1316,7 +1316,8 @@ mod tests {
             "C:\\Apps\\bad\n.exe".to_string(),
             "  C:\\Apps\\Two.exe  ".to_string(),
         ];
-        let config = build_tun_config_split(&session(), false, "none", "cloudflare", &apps).unwrap();
+        let config =
+            build_tun_config_split(&session(), false, "none", "cloudflare", &apps).unwrap();
         assert_eq!(
             config["routing"]["rules"][0]["process"],
             json!(["C:\\Apps\\One.exe", "C:\\Apps\\Two.exe"])
@@ -1325,10 +1326,12 @@ mod tests {
 
     #[test]
     fn empty_split_tunnel_keeps_the_dns_rule_first() {
-        let config =
-            build_tun_config_split(&session(), false, "none", "cloudflare", &[]).unwrap();
+        let config = build_tun_config_split(&session(), false, "none", "cloudflare", &[]).unwrap();
         assert_eq!(config["routing"]["rules"][0]["port"], "53");
         assert!(config["routing"]["rules"][0]["process"].is_null());
-        assert_eq!(build_tun_config_ext(&session(), false, "none", "cloudflare").unwrap(), config);
+        assert_eq!(
+            build_tun_config_ext(&session(), false, "none", "cloudflare").unwrap(),
+            config
+        );
     }
 }

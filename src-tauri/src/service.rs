@@ -2,8 +2,7 @@ use crate::api_transport::{send_to_bases, API_BASES};
 use crate::egress::{preflight_xray_server, verify_tunnel_path, TunnelProof};
 use crate::tun_config::{
     add_attestation_http_inbound, build_tun_config_ext, build_tun_config_split,
-    preflight_attestation_config,
-    supports_windows_session,
+    preflight_attestation_config, supports_windows_session,
 };
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;

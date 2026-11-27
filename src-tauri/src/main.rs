@@ -4,6 +4,7 @@ mod api_transport;
 mod egress;
 mod google_desktop;
 mod installed_apps;
+mod net_watch;
 mod service;
 mod tun_config;
 mod tun_health;
@@ -80,16 +81,45 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut physical_link = crate::net_watch::current_interface_index();
+                let mut was_connected = false;
                 loop {
                     interval.tick().await;
+                    // Wi-Fi → Ethernet, a new Wi-Fi network or a lost link are
+                    // Android's ConnectivityManager events. Sample the physical
+                    // path before polling status so the tunnel re-probes now
+                    // instead of serving the old adapter's proof for 20 s.
+                    let link = crate::net_watch::current_interface_index();
+                    let event = crate::net_watch::classify(physical_link, link);
+                    physical_link = link;
+                    if crate::net_watch::requires_immediate_probe(event) {
+                        service::on_physical_network_change(&watchdog, link.is_some());
+                    }
                     let status = service::vpn_status(
                         watchdog.clone(),
                         watchdog.state::<service::AppState>(),
                     )
                     .await;
-                    if status.is_ok_and(|metrics| {
-                        !metrics.connected && metrics.proof != "network_recovery_required"
-                    }) {
+                    let connected = status
+                        .as_ref()
+                        .map(|metrics| metrics.connected)
+                        .unwrap_or(false);
+                    // A tunnel that was up and is now down needs route/DNS
+                    // recovery and a restart. An idle client must not spawn an
+                    // elevated PowerShell pass on every tick.
+                    let dropped = was_connected && !connected;
+                    was_connected = connected;
+                    if connected {
+                        continue;
+                    }
+                    if let Ok(metrics) = &status {
+                        if metrics.proof == "network_recovery_required" {
+                            // Repair already failed; the UI keeps that visible and
+                            // retrying every 2 s would only thrash the network stack.
+                            continue;
+                        }
+                    }
+                    if dropped {
                         // Record the Xray crash reason from xray_startup.log so the
                         // next reconnect attempt can surface a safe, non-raw diagnosis.
                         let _diagnosis = if let Ok(dir) = watchdog.path().app_data_dir() {
@@ -99,6 +129,11 @@ fn main() {
                         };
                         // Restore IPv4/IPv6/DNS on the failure path before restart.
                         let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
+                    }
+                    // Retrying while offline only burns attempts on a network
+                    // that does not exist yet; the restored link resets the
+                    // backoff and reconnects on the following tick.
+                    if link.is_some() {
                         service::auto_reconnect_if_due(watchdog.clone()).await;
                     }
                 }

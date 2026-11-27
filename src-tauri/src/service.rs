@@ -156,6 +156,9 @@ pub struct ActiveTunnel {
     pub country: String,
     pub server_ip: String,
     pub last_egress_probe: std::time::Instant,
+    /// A physical network switch invalidates the last proof immediately; the
+    /// next status poll probes instead of waiting out the 20 s window.
+    pub force_egress_probe: bool,
     pub cached_ping_ms: u32,
     pub baseline_ip: Option<std::net::IpAddr>,
     pub egress_verified: bool,
@@ -357,6 +360,17 @@ impl ReconnectState {
         let delay = RETRY_DELAYS[self.attempt.min(RETRY_DELAYS.len() - 1)];
         self.next_attempt = Some(now + delay);
         Some(node_code)
+    }
+
+    /// A network switch or a restored link invalidates the backoff built up
+    /// while the old path was down: retry on the next tick instead of waiting
+    /// out a delay that was earned by a network that no longer exists.
+    pub fn retry_now(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.attempt = 0;
+        self.next_attempt = Some(std::time::Instant::now());
     }
 }
 
@@ -2812,6 +2826,7 @@ async fn vpn_start_inner(
             country: country.clone(),
             server_ip: verified_ip.map(|ip| ip.to_string()).unwrap_or_default(),
             last_egress_probe: std::time::Instant::now(),
+            force_egress_probe: false,
             cached_ping_ms: ping,
             baseline_ip,
             egress_verified: verified_ip.is_some(),
@@ -2886,7 +2901,9 @@ pub async fn vpn_status(
     let probe = {
         let lock = state.tunnel.lock().map_err(|e| e.to_string())?;
         lock.as_ref().and_then(|active| {
-            (active.last_egress_probe.elapsed() >= Duration::from_secs(20)).then(|| {
+            let due = active.force_egress_probe
+                || active.last_egress_probe.elapsed() >= Duration::from_secs(20);
+            due.then(|| {
                 (
                     active.started_at,
                     active.baseline_ip,
@@ -2922,6 +2939,7 @@ pub async fn vpn_status(
         if let Some(active) = lock.as_mut() {
             if active.started_at == started_at {
                 active.last_egress_probe = std::time::Instant::now();
+                active.force_egress_probe = false;
                 active.last_tunnel_proof = result;
                 if let Some(ping) = measured_ping {
                     active.cached_ping_ms = ping;
@@ -3031,6 +3049,35 @@ pub async fn vpn_status(
         country: String::new(),
         ip: String::new(),
     })
+}
+
+/// Called by the native watchdog when Windows reports that a different
+/// physical interface now carries public traffic (Wi-Fi → Ethernet, a new
+/// Wi-Fi network) or that the link disappeared and came back.
+///
+/// The Android client re-probes routes the moment ConnectivityManager reports
+/// a network change; without this, a desktop tunnel kept serving the previous
+/// adapter's proof for up to 20 seconds and then waited out a reconnect
+/// backoff earned by a network that no longer existed.
+///
+/// `link_available` is false while the machine is offline: the pending probe is
+/// still forced (so a dead tunnel is noticed), but the reconnect timer is only
+/// reset once there is a path to try it on.
+pub fn on_physical_network_change(app: &AppHandle, link_available: bool) {
+    let state = app.state::<AppState>();
+    if let Ok(mut tunnel) = state.tunnel.lock() {
+        if let Some(active) = tunnel.as_mut() {
+            active.force_egress_probe = true;
+            // Fresh path, fresh evidence: a probe that failed on the old link
+            // must not count towards restarting this one.
+            active.failed_health_probes = 0;
+        }
+    }
+    if link_available {
+        if let Ok(mut reconnect) = state.reconnect.lock() {
+            reconnect.retry_now();
+        }
+    }
 }
 
 /// Called only by the native watchdog after it has confirmed the tunnel is
@@ -3443,6 +3490,34 @@ mod tests {
                 Some("node-de".into())
             );
         }
+    }
+
+    #[test]
+    fn a_network_switch_drops_a_backoff_earned_on_the_old_link() {
+        let mut reconnect = ReconnectState::default();
+        let now = std::time::Instant::now();
+        reconnect.connected("de-fra".into());
+        assert_eq!(reconnect.due_node(true, now), None);
+        assert_eq!(
+            reconnect.due_node(true, now + Duration::from_secs(2)),
+            Some("de-fra".to_string())
+        );
+        // The next retry is 4 s away; a new physical path must not wait it out.
+        assert_eq!(reconnect.due_node(true, now + Duration::from_secs(3)), None);
+        reconnect.retry_now();
+        assert_eq!(
+            reconnect.due_node(true, std::time::Instant::now()),
+            Some("de-fra".to_string())
+        );
+    }
+
+    #[test]
+    fn a_manual_stop_is_not_overridden_by_a_network_signal() {
+        let mut reconnect = ReconnectState::default();
+        reconnect.connected("de-fra".into());
+        reconnect.manually_stopped();
+        reconnect.retry_now();
+        assert_eq!(reconnect.due_node(true, std::time::Instant::now()), None);
     }
 
     #[test]

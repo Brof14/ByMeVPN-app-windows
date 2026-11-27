@@ -1383,12 +1383,28 @@ async fn measure_proxy_latency(
         .then_some(ping)
 }
 
+/// Round-trip time to the server's own endpoint over a single TCP handshake:
+/// no Xray process, no TUN, no payload. The catalogue shows this while the
+/// HTTPS-through-VPN probe has to stay off.
+async fn measure_tcp_rtt(host: &str, port: u16) -> Option<u32> {
+    let started = std::time::Instant::now();
+    tokio::time::timeout(
+        Duration::from_millis(1500),
+        tokio::net::TcpStream::connect((host, port)),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    u32::try_from(started.elapsed().as_millis())
+        .ok()
+        .filter(|ms| *ms > 0)
+}
+
 async fn wait_for_server_probe_cancellation(epoch: u64) {
     while SERVER_PING_EPOCH.load(Ordering::SeqCst) == epoch {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
-
 fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
     let serialized = serde_json::to_vec(config).unwrap_or_default();
     let mut digest = Sha256::new();
@@ -1446,7 +1462,9 @@ pub async fn get_servers(
     let app_dir = needs_proxy_probe
         .then(|| app.path().app_data_dir().ok())
         .flatten();
+    let client_epoch = client_epoch.unwrap_or(0);
     let mut pending_probes = Vec::new();
+    let mut rtt_targets = Vec::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
         let config = server.get("config").unwrap_or(server);
@@ -1562,13 +1580,44 @@ pub async fn get_servers(
                 }
             }
         }
+        if ping <= 0 && probe_supported {
+            rtt_targets.push((code.to_string(), host.clone(), port as u16));
+        }
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
             "protocol":protocol, "security":security,
             "ping_method": "vpn_https",
             "flag":flag, "supported":supported,
-            "ping":ping}));
+            "ping":ping, "rtt_ms":0}));
+    }
+    // The HTTPS-through-VPN probe runs a temporary Xray process, so it is off
+    // while a tunnel is up. Without a second, cheap number every row stayed
+    // "not tested". One TCP handshake to the same endpoint answers the question
+    // the list asks — which server is near — without a process or a payload.
+    if !rtt_targets.is_empty() {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
+            let mut tasks = tokio::task::JoinSet::new();
+            for (code, host, port) in rtt_targets {
+                let app = app.clone();
+                let slots = slots.clone();
+                tasks.spawn(async move {
+                    let Ok(_permit) = slots.acquire_owned().await else {
+                        return;
+                    };
+                    let Some(rtt) = measure_tcp_rtt(&host, port).await else {
+                        return;
+                    };
+                    let _ = app.emit(
+                        "server-latency-update",
+                        json!({"epoch":client_epoch, "code":code, "rtt":rtt}),
+                    );
+                });
+            }
+            while tasks.join_next().await.is_some() {}
+        });
     }
     // Return the server list immediately. Each protocol-aware latency check
     // runs independently so startup, refresh and Connect never wait for probes.
@@ -1576,7 +1625,6 @@ pub async fn get_servers(
         let app = app.clone();
         let runtime_dir = runtime_dir.expect("probe runtime checked above");
         let app_dir = app_dir.expect("probe app directory checked above");
-        let client_epoch = client_epoch.unwrap_or(0);
         tauri::async_runtime::spawn(async move {
             let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
             let mut tasks = tokio::task::JoinSet::new();
@@ -2914,16 +2962,10 @@ pub async fn vpn_status(
         })
     };
     if let Some((started_at, baseline_ip, port, password)) = probe {
-        let (result, measured_ping) =
-            tokio::join!(verify_tunnel_path(baseline_ip, port, &password), async {
-                tokio::time::timeout(
-                    Duration::from_millis(2500),
-                    crate::egress::measure_xray_server_latency(port, &password),
-                )
-                .await
-                .ok()
-                .flatten()
-            },);
+        // Latency is measured once, when the tunnel becomes usable. Re-measuring
+        // it on every status poll kept a second HTTPS round trip alive for the
+        // whole session, and the number it produced moved for no user benefit.
+        let result = verify_tunnel_path(baseline_ip, port, &password).await;
         let path_ready = if result.traffic_confirmed() {
             let routes = crate::tun_health::inspect().await;
             crate::tun_health::health_proves_connection(
@@ -2941,9 +2983,6 @@ pub async fn vpn_status(
                 active.last_egress_probe = std::time::Instant::now();
                 active.force_egress_probe = false;
                 active.last_tunnel_proof = result;
-                if let Some(ping) = measured_ping {
-                    active.cached_ping_ms = ping;
-                }
                 active.egress_verified = path_ready && result.verified_ip().is_some();
                 let restart = should_restart_after_health_probe(
                     result,

@@ -115,7 +115,7 @@ test('healthy live diagnostics reconcile egress and suppress false startup-error
   const node = id => {
     if (!nodes.has(id)) nodes.set(id, {
       textContent: '', disabled: false, className: '',
-      classList: { add(){}, remove(){}, toggle(){} },
+      classList: { add(){}, remove(){}, toggle(){} }, dataset: {},
       querySelector(){return null}, setAttribute(){}, toggleAttribute(){}
     });
     return nodes.get(id);
@@ -160,7 +160,7 @@ test('a completed diagnostic immediately updates Home and ignores older status r
   const node = id => {
     if (!nodes.has(id)) nodes.set(id, {
       textContent: '', disabled: false, className: '',
-      classList: { add(){}, remove(){}, toggle(){} },
+      classList: { add(){}, remove(){}, toggle(){} }, dataset: {},
       querySelector(){return null}, setAttribute(){}, toggleAttribute(){}
     });
     return nodes.get(id);

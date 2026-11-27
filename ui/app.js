@@ -328,7 +328,7 @@ const I18N = {
     server_latency_checking: "Проверяем…",
     server_latency_help: "Измеряется задержка через каждый сервер до интернета. VPN включать не нужно.",
     home_connection_kicker: "ВАШЕ ПОДКЛЮЧЕНИЕ",
-    vpn_unverified_help: "Туннель работает, но проверка защиты не завершена. Пока статус не подтверждён, не считайте соединение защищённым.",
+    vpn_unverified_help: "Туннель работает. Внешнюю проверку выхода выполнить не удалось, поэтому защита не подтверждена.",
     vpn_health_action: "Диагностика соединения",
     vpn_health_title: "Проверка подключения",
     vpn_health_desc: "Проверка выполняется локально. Пароли и ключи не отображаются.",
@@ -720,7 +720,7 @@ const I18N = {
     server_latency_checking: "Checking…",
     server_latency_help: "Measures internet latency through each server. VPN does not need to be connected.",
     home_connection_kicker: "YOUR CONNECTION",
-    vpn_unverified_help: "The tunnel is running, but protection checks are incomplete. Do not treat the connection as protected until its status is verified.",
+    vpn_unverified_help: "The tunnel is running. The external exit check could not be completed, so protection is not verified.",
     vpn_health_action: "Connection diagnostics",
     vpn_health_title: "Connection diagnostics",
     vpn_health_desc: "Local checks only. Passwords and keys are not displayed.",
@@ -921,17 +921,25 @@ async function setupServerLatencyListener() {
   try {
     await events.listen('server-latency-update', event => {
       const result = event?.payload;
+      // Two measurements arrive on their own schedules: the HTTPS probe through
+      // the server and the plain TCP round trip. Apply whichever one this
+      // event carries and leave the other field alone.
+      const hasPing = Number.isInteger(result?.ping);
+      const hasRtt = Number.isInteger(result?.rtt) && result.rtt > 0;
       if (!state.user || Number(result?.epoch) !== state.sessionEpoch ||
-          typeof result?.code !== 'string' || !Number.isInteger(result?.ping)) return;
+          typeof result?.code !== 'string' || (!hasPing && !hasRtt)) return;
       const index = state.servers.findIndex(server => server.code === result.code);
       if (index < 0) return;
-      const updated = { ...state.servers[index], ping: result.ping };
+      const patch = {};
+      if (hasPing) patch.ping = result.ping;
+      if (hasRtt) patch.rtt_ms = result.rtt;
+      const updated = { ...state.servers[index], ...patch };
       state.servers = state.servers.map((server, i) => i === index ? updated : server);
       if (state.selectedServer.code === result.code) {
-        state.selectedServer = { ...state.selectedServer, ping: result.ping };
+        state.selectedServer = { ...state.selectedServer, ...patch };
       }
       if (state.autoSelectedServer?.code === result.code) {
-        state.autoSelectedServer = { ...state.autoSelectedServer, ping: result.ping };
+        state.autoSelectedServer = { ...state.autoSelectedServer, ...patch };
       }
       // Patch only the affected card. Rebuilding the full list for every
       // server probe stalled the WebView on PCs with long catalogs.
@@ -1193,6 +1201,7 @@ function sanitizeCachedServerCatalog(value) {
     // Cached catalog entries can outlive the network and server settings.
     // Never show an old measurement as current latency.
     safe.ping = 0;
+    safe.rtt_ms = 0;
     return [safe];
   });
 }
@@ -1899,11 +1908,6 @@ function setupEventListeners() {
   document.getElementById('set-background')?.addEventListener('change', (e) => handleSettingChange('stayConnectedInBackground', e.target.checked));
   document.getElementById('set-bypass')?.addEventListener('change', (e) => handleSettingChange('bypassRu', e.target.checked));
   document.getElementById('set-dns-mode')?.addEventListener('change', e => handleSettingChange('dnsMode', e.target.value));
-  document.getElementById('set-killswitch')?.addEventListener('change', (e) => handleSettingChange('killSwitch', e.target.checked));
-
-  document.querySelectorAll('input[name="adblock"]').forEach(radio => {
-    radio.addEventListener('change', (e) => handleSettingChange('adBlock', e.target.value));
-  });
 
   // Language buttons
   document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -2403,20 +2407,26 @@ async function refreshVpnHealth() {
         'HTTPS works through Xray and TUN; the external IPv4 differs from the original.'),
       routing_bypass: uiText('Windows использует исходный IPv4: возможен обход VPN',
         'Windows uses the original IPv4: the VPN may be bypassed'),
-      server_unreachable: uiText('Не прошёл защищённый тест через Xray (причина не установлена)',
-        'Protected request through Xray failed (cause not confirmed)'),
+      // Проверяющий сервис не ответил — это недоступность проверки, а не ошибка сети.
+      server_unreachable: uiText('проверка недоступна (внешний сервис проверки не ответил)',
+        'check unavailable (the external check service did not respond)'),
       tun_no_traffic: uiText('Сервер Xray отвечает, но Windows TUN не передаёт проверочный HTTPS-запрос',
         'Xray server responds, but Windows TUN cannot pass the HTTPS probe'),
-      baseline_unknown: uiText('HTTPS через Xray и TUN проходит, но исходный IPv4 неизвестен; проверка защиты не завершена',
-        'HTTPS through Xray and TUN works, but the baseline IPv4 is unknown; protection is not fully verified'),
-      traffic_observed_unverified: uiText('HTTPS через Xray и TUN проходит, но IP-проверка недоступна; защита не подтверждена',
-        'HTTPS through Xray and TUN works, but IP verification is unavailable; protection is unverified'),
+      baseline_unknown: uiText('HTTPS через Xray и TUN проходит; внешний IPv4 не записан при подключении',
+        'HTTPS through Xray and TUN works; the external IPv4 was not recorded at connect time'),
+      traffic_observed_unverified: uiText('HTTPS через Xray и TUN проходит; IP-проверка недоступна',
+        'HTTPS through Xray and TUN works; IP verification is unavailable'),
       exit_unchanged: uiText('Внешний IPv4 не изменился — защита не подтверждена',
         'External IPv4 unchanged — protection unverified'),
-      probe_unavailable: uiText('Проверка реального VPN-пути временно недоступна',
-        'End-to-end VPN verification temporarily unavailable'),
-      not_running: uiText('Проверка не проводилась', 'Not checked')
+      probe_unavailable: uiText('проверка недоступна', 'check unavailable'),
+      not_running: uiText('проверка не проводилась', 'not checked'),
+      unknown: uiText('проверка недоступна', 'check unavailable')
     };
+    // Локальные признаки туннеля без выхода наружу: адаптер, маршрут и DNS
+    // работают, но внешний проверяющий сервис не ответил. Это не ошибка.
+    const runtimeHealthy = report?.runtime_healthy === true;
+    const localPathHealthy = report?.adapter === 'up' && report?.ipv4_default === true &&
+      report?.effective_ipv4 === true && report?.dns_resolution === true;
     const lines = [
       uiText('Процесс Xray: ', 'Xray process: ') +
         checked(report?.process_tracked, uiText('запущен приложением', 'managed by app'), uiText('не запущен', 'not running')),
@@ -2436,15 +2446,22 @@ async function refreshVpnHealth() {
         checked(report?.dns_resolution, uiText('тестовый домен разрешён', 'test hostname resolved'),
           uiText('тестовый запрос не прошёл', 'test lookup unsuccessful')),
       uiText('Свежий HTTPS-тест выхода: ', 'Live HTTPS egress test: ') +
-        (freshEgress[report?.egress_probe] || freshEgress.unavailable),
+        (freshEgress[report?.egress_probe] || freshEgress.unknown),
       uiText('Проверка внешнего IP: ', 'Exit IP verification: ') +
-        checked(report?.ip_verified, uiText('подтверждена', 'verified'), uiText('не подтверждена', 'unverified')),
-      report?.runtime_healthy === true
+        (report?.ip_verified === true
+          ? uiText('подтверждена', 'verified')
+          : report?.egress_probe === 'routing_bypass' || report?.egress_probe === 'exit_unchanged'
+            ? uiText('не подтверждена', 'unverified')
+            : uiText('недоступна', 'unavailable')),
+      runtimeHealthy
         ? uiText('Текущие сетевые проверки пройдены.', 'Current connectivity checks passed.')
-        : report?.xray_hint === 'dns' && report?.dns_resolution === true
-          ? uiText('Ранее Xray сообщал о DNS-сбое; текущий DNS-тест успешен.',
-            'Xray logged a DNS error; the current DNS test succeeded.')
-          : (issues[report?.xray_hint] || issues.unknown)
+        : localPathHealthy
+          ? uiText('Локальные проверки пройдены. Внешняя проверка выхода недоступна.',
+            'Local checks passed. The external exit check is unavailable.')
+          : report?.xray_hint === 'dns' && report?.dns_resolution === true
+            ? uiText('Ранее Xray сообщал о DNS-сбое; текущий DNS-тест успешен.',
+              'Xray logged a DNS error; the current DNS test succeeded.')
+            : (issues[report?.xray_hint] || issues.unknown)
     ];
     if (report?.baseline_known === false) {
       lines.push(uiText('Исходный IP не удалось определить до подключения.',
@@ -3053,19 +3070,21 @@ function updateVpnUi() {
     if (heading) heading.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Отключаем VPN…', 'Disconnecting VPN…')
       : state.vpnVerified ? uiText('VPN подключён', 'VPN connected')
-      : proof === 'server_unreachable' ? uiText('Не прошёл тест через VPN-сервер', 'VPN server test failed')
       : proof === 'tun_no_traffic' ? uiText('Нет трафика через Windows TUN', 'Windows TUN has no traffic')
-      : uiText('Соединение не подтверждено', 'Connection unverified');
+      // Недоступный проверяющий сервис — не ошибка подключения.
+      : proof === 'server_unreachable' || proof === 'probe_unavailable'
+        ? uiText('VPN подключён', 'VPN connected')
+        : uiText('Соединение не подтверждено', 'Connection unverified');
     const description = document.querySelector('#home-state-connected [data-i18n="conn_secured"]');
     if (description) description.textContent = state.vpnPhase === 'disconnecting'
       ? uiText('Завершаем соединение…', 'Closing the connection…')
       : state.vpnVerified
         ? uiText('Внешний IPv4 подтверждён', 'External IPv4 verified')
         : proof === 'baseline_unknown' || proof === 'traffic_observed_unverified' ?
-          uiText('Трафик и маршрут через TUN обнаружены, но проверка внешнего IP недоступна. Защита от утечек не подтверждена.',
-            'Traffic and the TUN route are detected, but external IP verification is unavailable. Leak protection is unverified.')
-        : proof === 'server_unreachable' ?
-          uiText('Проверьте диагностику подключения.', 'Review connection diagnostics.')
+          uiText('Трафик идёт через TUN; внешний IP проверить не удалось.',
+            'Traffic passes through TUN; the external IP could not be checked.')
+        : proof === 'server_unreachable' || proof === 'probe_unavailable' ?
+          uiText('Проверка выхода недоступна.', 'The exit check is unavailable.')
           : proof === 'tun_no_traffic' ?
             uiText('Xray отвечает, но системный трафик Windows не проходит.', 'Xray responds, but Windows system traffic does not pass.')
             : uiText('Реальный VPN-трафик пока не подтверждён.', 'Real VPN traffic is not yet verified.');
@@ -3196,7 +3215,7 @@ function updateVpnUi() {
       || (state.servers.length ? automaticFallbackCandidates(state.servers)[0] : null))
     : null;
   const cardServer = s.code === 'auto' ? (autoCandidate || null) : s;
-  if (homeFlag) homeFlag.textContent = (cardServer && cardServer.flag) || s.flag || '🌐';
+  applyCountryFlag(homeFlag, cardServer || s);
   const englishLocale = effectiveLanguage() === 'en';
   if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
     (automaticConnected && state.metrics?.country ? state.metrics.country
@@ -3231,14 +3250,14 @@ function updateVpnUi() {
   if (pingBadge) {
     const tunnelPing = Number(state.metrics?.ping_ms) > 0 ? Math.round(Number(state.metrics.ping_ms)) : 0;
     const catalogPing = Number(cardServer?.ping) > 0 ? Math.round(Number(cardServer.ping)) : 0;
-    const pingMs = tunnelPing || catalogPing;
+    const catalogRtt = Number(cardServer?.rtt_ms) > 0 ? Math.round(Number(cardServer.rtt_ms)) : 0;
+    const pingMs = tunnelPing || catalogPing || catalogRtt;
     pingBadge.textContent = pingMs > 0 ? uiText(`${pingMs} мс`, `${pingMs} ms`) : '';
     pingBadge.classList.toggle('hidden', pingMs <= 0);
-    pingBadge.classList.toggle('is-live', tunnelPing > 0 && isConn);
     // One status per row, like Android: latency replaces the word "Connected".
     if (pingMs > 0) connectedLabel?.classList.add('hidden');
   }
-  if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn && !(Number(cardServer?.ping) > 0));
+  if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn && !(Number(cardServer?.ping) > 0 || Number(cardServer?.rtt_ms) > 0));
   const cardTitle = document.getElementById('home-server-card-title');
   if (cardTitle) cardTitle.textContent = state.connectionError && !isConn
     ? uiText('ВЫБРАННЫЙ СЕРВЕР', 'SELECTED SERVER')
@@ -3891,7 +3910,12 @@ function automaticServerSubtitle() {
 }
 
 function serverLatencyPresentation(server) {
-  const latency = Number(server?.ping) || 0;
+  const probePing = Number(server?.ping) || 0;
+  // The HTTPS probe starts a temporary Xray process, so it stays off while a
+  // tunnel is up. The TCP round trip to the same endpoint is cheap and keeps
+  // the row honest instead of permanently reading "not tested".
+  const rtt = Number(server?.rtt_ms) || 0;
+  const latency = probePing > 0 ? probePing : rtt > 0 ? rtt : probePing;
   const tone = latency > 0 ? (latency <= 200 ? 'measured' : latency <= 350 ? 'medium' : 'slow')
     : latency === -2 ? 'failed'
       : latency === -3 ? 'checking'
@@ -3901,10 +3925,29 @@ function serverLatencyPresentation(server) {
       : latency === -3 ? uiText('Проверяем…', 'Checking…')
         : latency === -4 ? uiText('В очереди', 'Queued')
           : uiText('Не проверен', 'Not tested');
-  const title = latency > 0
+  const title = probePing > 0
     ? uiText('Время HTTPS-запроса через выбранный VPN-сервер', 'HTTPS request time through the selected VPN server')
-    : label;
+    : latency > 0
+      ? uiText('Сетевая задержка до сервера (TCP)', 'Network round trip to the server (TCP)')
+      : label;
   return { latency, tone, label, title, aria: latency > 0 ? `${title}: ${latency} ms` : label };
+}
+
+// Windows draws no colour flag emoji, so a flag is painted in CSS from the ISO
+// country code. Countries without a rule fall back to the two-letter code.
+function applyCountryFlag(element, server) {
+  if (!element) return;
+  const code = String(server?.country_code || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(code)) {
+    element.dataset.country = code;
+    element.textContent = '';
+    element.classList.add('country-flag');
+  } else {
+    delete element.dataset.country;
+    element.textContent = '🌐';
+    element.classList.remove('country-flag');
+  }
+  element.setAttribute('aria-hidden', 'true');
 }
 
 // Update a single rendered server row in place without touching the rest of
@@ -3973,7 +4016,7 @@ function renderServersList(filter = state.serverSearchQuery) {
     card.dataset.code = srv.code;
     const flag = document.createElement('span');
     flag.className = 'server-item-flag';
-    flag.textContent = srv.flag || '🌐';
+    applyCountryFlag(flag, srv);
     const details = document.createElement('div');
     details.className = 'server-item-text';
     const title = document.createElement('strong');
@@ -4674,7 +4717,6 @@ function applySettingsToUi() {
   if (setSplitTunnel) setSplitTunnel.checked = s.splitTunneling === true;
   updateSplitTunnelSummary();
   updateSplitToolbar();
-  const setKill = document.getElementById('set-killswitch');
 
   if (setAuto) setAuto.checked = !!s.autoStart;
   if (setAutoConnect) setAutoConnect.checked = !!s.autoConnect;
@@ -4682,10 +4724,6 @@ function applySettingsToUi() {
   if (setBg) setBg.checked = !!s.stayConnectedInBackground;
   if (setBypass) setBypass.checked = !!s.bypassRu;
   if (setDnsMode) setDnsMode.value = s.dnsMode || 'cloudflare';
-  if (setKill) setKill.checked = false;
-
-  const adRadio = document.querySelector(`input[name="adblock"][value="${s.adBlock || 'recommended'}"]`);
-  if (adRadio) adRadio.checked = true;
 
   applyLanguage(s.language || 'system');
 }

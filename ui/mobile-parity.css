@@ -1596,14 +1596,14 @@ html, body, .app-root, .app-shell-layout {
   padding: 0 26px 28px;
 }
 
-/* FaqDialog.kt: compact 460dp dialog with numbered, single-open answers. */
+/* FaqDialog.kt: один список вопросов в общей карточке, без нумерации. */
 #modal-faq .modal-faq-window {
   display: flex;
   flex-direction: column;
-  width: min(94vw, 460px);
-  max-width: 460px;
+  width: min(94vw, 480px);
+  max-width: 480px;
   max-height: 84dvh;
-  padding: 20px;
+  padding: 22px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: 24px;
@@ -1611,17 +1611,20 @@ html, body, .app-root, .app-shell-layout {
 }
 #modal-faq .faq-modal-head {
   flex: 0 0 auto;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
   margin: 0 0 16px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 #modal-faq .modal-icon-badge {
-  flex: 0 0 36px;
-  width: 36px;
-  height: 36px;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: rgba(66, 245, 155, .12);
   color: var(--android-mint);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 #modal-faq .faq-heading-copy { flex: 1 1 auto; min-width: 0; }
@@ -1630,113 +1633,120 @@ html, body, .app-root, .app-shell-layout {
   color: var(--android-text);
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -.01em;
 }
 #modal-faq .faq-heading-copy p {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--android-secondary);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 16px;
 }
 #modal-faq .btn-modal-close {
-  flex: 0 0 48px;
+  flex: 0 0 44px;
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--android-secondary);
   font-size: 16px;
 }
-#modal-faq .btn-modal-close:hover { background: var(--bg-card-hover); }
 #modal-faq .btn-modal-close:focus-visible,
 #modal-faq .faq-item-toggle:focus-visible {
   outline: 2px solid var(--android-mint);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 #modal-faq .faq-accordion-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .015);
 }
 #modal-faq .faq-accordion-item {
   flex: 0 0 auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  background: var(--bg-card-hover);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transition: background-color 180ms ease;
 }
-#modal-faq .faq-accordion-item.expanded {
-  border-color: var(--android-mint);
-  background: var(--bg-card-selected);
+#modal-faq .faq-accordion-item + .faq-accordion-item {
+  border-top: 1px solid var(--border-subtle);
 }
+#modal-faq .faq-accordion-item.expanded { background: var(--bg-card-selected); }
 #modal-faq .faq-item-toggle {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 26px;
+  grid-template-columns: minmax(0, 1fr) 20px;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   width: 100%;
-  min-height: 60px;
-  padding: 14px;
+  min-height: 58px;
+  padding: 17px 18px;
   border: 0;
-  border-radius: 13px;
   background: transparent;
   color: var(--android-text);
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -.005em;
   text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
 }
-#modal-faq .faq-number,
+#modal-faq .faq-question {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 #modal-faq .faq-disclosure {
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  color: var(--android-mint);
-  background: var(--bg-surface);
-}
-#modal-faq .faq-number {
-  width: 28px;
-  height: 28px;
-  font-size: 9px;
-  font-weight: 700;
-}
-#modal-faq .expanded .faq-number { background: rgba(66, 245, 155, .12); }
-#modal-faq .faq-disclosure {
-  width: 26px;
-  height: 26px;
-  font-size: 17px;
-  font-weight: 500;
-}
-#modal-faq .expanded .faq-disclosure::before { content: '−'; font-size: 17px; }
-#modal-faq .expanded .faq-disclosure { font-size: 0; }
-#modal-faq .faq-item-body {
-  display: none;
-  padding: 0 14px 14px 52px;
+  width: 20px;
+  height: 20px;
   color: var(--android-secondary);
-  font-size: 14px;
-  line-height: 20px;
-  overflow-wrap: anywhere;
+  transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1), color 160ms ease;
+}
+#modal-faq .faq-disclosure svg {
+  width: 20px;
+  height: 20px;
+}
+#modal-faq .faq-accordion-item.expanded .faq-disclosure {
+  transform: rotate(180deg);
+  color: var(--android-mint);
+}
+@media (hover: hover) and (pointer: fine) {
+  #modal-faq .faq-accordion-item:not(.expanded):hover { background: var(--bg-card-hover); }
+  #modal-faq .btn-modal-close:hover { background: var(--bg-card-hover); }
+}
+/* Плавное раскрытие: трек 0fr -> 1fr, содержимое обрезается по мере роста. */
+#modal-faq .faq-item-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  opacity: 0;
+  transition: grid-template-rows 220ms cubic-bezier(0.23, 1, 0.32, 1), opacity 140ms ease;
 }
 #modal-faq .faq-accordion-item.expanded .faq-item-body {
-  display: block;
-  animation: faq-answer-in 140ms ease-out;
+  grid-template-rows: 1fr;
+  opacity: 1;
 }
-#modal-faq .faq-item-body::before {
-  content: '';
-  display: block;
-  height: 1px;
-  margin: 0 0 10px;
-  background: var(--border-subtle);
-}
-@keyframes faq-answer-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+#modal-faq .faq-item-body-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 18px 18px;
+  color: var(--android-secondary);
+  font-size: 13.5px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
-  #modal-faq .faq-accordion-item.expanded .faq-item-body { animation: none; }
+  #modal-faq .faq-item-body { transition: opacity 150ms ease; }
+  #modal-faq .faq-disclosure { transition: color 160ms ease; }
 }
 #tab-pricing .mobile-pricing-topbar {
   display: flex;
@@ -2573,3 +2583,208 @@ button:active, [role="button"]:active, .btn:active, .btn-primary:active, .btn-go
   font-size: 13px;
   text-align: center;
 }
+
+/* Flags on Windows ---------------------------------------------------------
+   WebView2 has no colour flag glyphs, so a flag is painted from the ISO country
+   code instead of an emoji. Countries whose flag is simple geometry get a drawn
+   flag; the rest fall back to the two-letter code in the same badge shape.
+   The rule for a country and the rule that hides the code always ship together,
+   so a new country can never render as an empty box. */
+.chip-flag.country-flag,
+.server-item-flag.country-flag {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 27px;
+  min-width: 0;
+  height: 19px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: rgba(233, 242, 255, 0.74);
+  border-radius: 4px;
+  background-color: #17233f;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+#tab-home .mobile-location-row .chip-flag.country-flag {
+  width: 31px;
+  height: 21px;
+  border-radius: 5px;
+}
+
+.chip-flag.country-flag::before,
+.server-item-flag.country-flag::before {
+  content: attr(data-country);
+}
+
+.chip-flag.country-flag[data-country="DE"],
+.server-item-flag.country-flag[data-country="DE"] { background-image: linear-gradient(to bottom, #141414 0 33.33%, #d7141a 33.33% 66.66%, #ffce00 66.66%); }
+.chip-flag.country-flag[data-country="DE"]::before,
+.server-item-flag.country-flag[data-country="DE"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="NL"],
+.server-item-flag.country-flag[data-country="NL"] { background-image: linear-gradient(to bottom, #ae1c28 0 33.33%, #fff 33.33% 66.66%, #21468b 66.66%); }
+.chip-flag.country-flag[data-country="NL"]::before,
+.server-item-flag.country-flag[data-country="NL"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="AT"],
+.server-item-flag.country-flag[data-country="AT"] { background-image: linear-gradient(to bottom, #ed2939 0 33.33%, #fff 33.33% 66.66%, #ed2939 66.66%); }
+.chip-flag.country-flag[data-country="AT"]::before,
+.server-item-flag.country-flag[data-country="AT"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="HU"],
+.server-item-flag.country-flag[data-country="HU"] { background-image: linear-gradient(to bottom, #c8102e 0 33.33%, #fff 33.33% 66.66%, #477050 66.66%); }
+.chip-flag.country-flag[data-country="HU"]::before,
+.server-item-flag.country-flag[data-country="HU"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="BG"],
+.server-item-flag.country-flag[data-country="BG"] { background-image: linear-gradient(to bottom, #fff 0 33.33%, #00966e 33.33% 66.66%, #d62612 66.66%); }
+.chip-flag.country-flag[data-country="BG"]::before,
+.server-item-flag.country-flag[data-country="BG"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="LT"],
+.server-item-flag.country-flag[data-country="LT"] { background-image: linear-gradient(to bottom, #fdb913 0 33.33%, #006a44 33.33% 66.66%, #c1272d 66.66%); }
+.chip-flag.country-flag[data-country="LT"]::before,
+.server-item-flag.country-flag[data-country="LT"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="LV"],
+.server-item-flag.country-flag[data-country="LV"] { background-image: linear-gradient(to bottom, #9e3039 0 40%, #fff 40% 60%, #9e3039 60%); }
+.chip-flag.country-flag[data-country="LV"]::before,
+.server-item-flag.country-flag[data-country="LV"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="EE"],
+.server-item-flag.country-flag[data-country="EE"] { background-image: linear-gradient(to bottom, #0072ce 0 33.33%, #000 33.33% 66.66%, #fff 66.66%); }
+.chip-flag.country-flag[data-country="EE"]::before,
+.server-item-flag.country-flag[data-country="EE"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="RU"],
+.server-item-flag.country-flag[data-country="RU"] { background-image: linear-gradient(to bottom, #fff 0 33.33%, #0039a6 33.33% 66.66%, #d52b1e 66.66%); }
+.chip-flag.country-flag[data-country="RU"]::before,
+.server-item-flag.country-flag[data-country="RU"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="UA"],
+.server-item-flag.country-flag[data-country="UA"] { background-image: linear-gradient(to bottom, #0057b7 0 50%, #ffd700 50%); }
+.chip-flag.country-flag[data-country="UA"]::before,
+.server-item-flag.country-flag[data-country="UA"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="PL"],
+.server-item-flag.country-flag[data-country="PL"] { background-image: linear-gradient(to bottom, #fff 0 50%, #dc143c 50%); }
+.chip-flag.country-flag[data-country="PL"]::before,
+.server-item-flag.country-flag[data-country="PL"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="ID"],
+.server-item-flag.country-flag[data-country="ID"] { background-image: linear-gradient(to bottom, #ce1126 0 50%, #fff 50%); }
+.chip-flag.country-flag[data-country="ID"]::before,
+.server-item-flag.country-flag[data-country="ID"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="ES"],
+.server-item-flag.country-flag[data-country="ES"] { background-image: linear-gradient(to bottom, #aa151b 0 25%, #f1bf00 25% 75%, #aa151b 75%); }
+.chip-flag.country-flag[data-country="ES"]::before,
+.server-item-flag.country-flag[data-country="ES"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="TH"],
+.server-item-flag.country-flag[data-country="TH"] { background-image: linear-gradient(to bottom, #a51931 0 16.66%, #f4f5f8 16.66% 33.33%, #2d2a4a 33.33% 66.66%, #f4f5f8 66.66% 83.33%, #a51931 83.33%); }
+.chip-flag.country-flag[data-country="TH"]::before,
+.server-item-flag.country-flag[data-country="TH"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="GR"],
+.server-item-flag.country-flag[data-country="GR"] { background-image: repeating-linear-gradient(to bottom, #0d5eaf 0 11.11%, #fff 11.11% 22.22%); }
+.chip-flag.country-flag[data-country="GR"]::before,
+.server-item-flag.country-flag[data-country="GR"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="FR"],
+.server-item-flag.country-flag[data-country="FR"] { background-image: linear-gradient(to right, #002395 0 33.33%, #fff 33.33% 66.66%, #ed2939 66.66%); }
+.chip-flag.country-flag[data-country="FR"]::before,
+.server-item-flag.country-flag[data-country="FR"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="IT"],
+.server-item-flag.country-flag[data-country="IT"] { background-image: linear-gradient(to right, #008c45 0 33.33%, #f4f5f0 33.33% 66.66%, #cd212a 66.66%); }
+.chip-flag.country-flag[data-country="IT"]::before,
+.server-item-flag.country-flag[data-country="IT"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="BE"],
+.server-item-flag.country-flag[data-country="BE"] { background-image: linear-gradient(to right, #000 0 33.33%, #fdda24 33.33% 66.66%, #ef3340 66.66%); }
+.chip-flag.country-flag[data-country="BE"]::before,
+.server-item-flag.country-flag[data-country="BE"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="IE"],
+.server-item-flag.country-flag[data-country="IE"] { background-image: linear-gradient(to right, #169b62 0 33.33%, #fff 33.33% 66.66%, #ff883e 66.66%); }
+.chip-flag.country-flag[data-country="IE"]::before,
+.server-item-flag.country-flag[data-country="IE"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="RO"],
+.server-item-flag.country-flag[data-country="RO"] { background-image: linear-gradient(to right, #002b7f 0 33.33%, #fcd116 33.33% 66.66%, #ce1126 66.66%); }
+.chip-flag.country-flag[data-country="RO"]::before,
+.server-item-flag.country-flag[data-country="RO"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="PT"],
+.server-item-flag.country-flag[data-country="PT"] { background-image: linear-gradient(to right, #046a38 0 40%, #da291c 40%); }
+.chip-flag.country-flag[data-country="PT"]::before,
+.server-item-flag.country-flag[data-country="PT"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="CA"],
+.server-item-flag.country-flag[data-country="CA"] { background-image: linear-gradient(to right, #d80621 0 25%, #fff 25% 75%, #d80621 75%); }
+.chip-flag.country-flag[data-country="CA"]::before,
+.server-item-flag.country-flag[data-country="CA"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="DK"],
+.server-item-flag.country-flag[data-country="DK"] { background-image: linear-gradient(to right, transparent 0 26%, #fff 26% 42%, transparent 42%), linear-gradient(to bottom, transparent 0 38%, #fff 38% 62%, transparent 62%); background-color: #c8102e; }
+.chip-flag.country-flag[data-country="DK"]::before,
+.server-item-flag.country-flag[data-country="DK"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="SE"],
+.server-item-flag.country-flag[data-country="SE"] { background-image: linear-gradient(to right, transparent 0 26%, #fecc00 26% 42%, transparent 42%), linear-gradient(to bottom, transparent 0 38%, #fecc00 38% 62%, transparent 62%); background-color: #006aa7; }
+.chip-flag.country-flag[data-country="SE"]::before,
+.server-item-flag.country-flag[data-country="SE"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="FI"],
+.server-item-flag.country-flag[data-country="FI"] { background-image: linear-gradient(to right, transparent 0 26%, #002f6c 26% 42%, transparent 42%), linear-gradient(to bottom, transparent 0 38%, #002f6c 38% 62%, transparent 62%); background-color: #fff; }
+.chip-flag.country-flag[data-country="FI"]::before,
+.server-item-flag.country-flag[data-country="FI"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="NO"],
+.server-item-flag.country-flag[data-country="NO"] { background-image: linear-gradient(to right, transparent 0 28%, #00205b 28% 40%, transparent 40%), linear-gradient(to bottom, transparent 0 36%, #00205b 36% 60%, transparent 60%), linear-gradient(to right, transparent 0 24%, #fff 24% 44%, transparent 44%), linear-gradient(to bottom, transparent 0 30%, #fff 30% 66%, transparent 66%); background-color: #ba0c2f; }
+.chip-flag.country-flag[data-country="NO"]::before,
+.server-item-flag.country-flag[data-country="NO"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="IS"],
+.server-item-flag.country-flag[data-country="IS"] { background-image: linear-gradient(to right, transparent 0 28%, #d7282f 28% 40%, transparent 40%), linear-gradient(to bottom, transparent 0 36%, #d7282f 36% 60%, transparent 60%), linear-gradient(to right, transparent 0 24%, #fff 24% 44%, transparent 44%), linear-gradient(to bottom, transparent 0 30%, #fff 30% 66%, transparent 66%); background-color: #02529c; }
+.chip-flag.country-flag[data-country="IS"]::before,
+.server-item-flag.country-flag[data-country="IS"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="CH"],
+.server-item-flag.country-flag[data-country="CH"] { background-image: linear-gradient(to right, transparent 0 40%, #fff 40% 60%, transparent 60%), linear-gradient(to bottom, transparent 0 28%, #fff 28% 72%, transparent 72%); background-color: #d52b1e; }
+.chip-flag.country-flag[data-country="CH"]::before,
+.server-item-flag.country-flag[data-country="CH"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="GB"],
+.server-item-flag.country-flag[data-country="GB"] { background-image: linear-gradient(to right, transparent 0 40%, #cf142b 40% 60%, transparent 60%), linear-gradient(to bottom, transparent 0 34%, #cf142b 34% 66%, transparent 66%), linear-gradient(45deg, transparent 0 46%, #fff 46% 54%, transparent 54%), linear-gradient(-45deg, transparent 0 46%, #fff 46% 54%, transparent 54%), linear-gradient(to right, transparent 0 36%, #fff 36% 64%, transparent 64%), linear-gradient(to bottom, transparent 0 26%, #fff 26% 74%, transparent 74%); background-color: #012169; }
+.chip-flag.country-flag[data-country="GB"]::before,
+.server-item-flag.country-flag[data-country="GB"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="US"],
+.server-item-flag.country-flag[data-country="US"] { background-image: linear-gradient(to right, #3c3b6e 0 42%, transparent 42%), repeating-linear-gradient(to bottom, #b22234 0 7.7%, #fff 7.7% 15.4%); }
+.chip-flag.country-flag[data-country="US"]::before,
+.server-item-flag.country-flag[data-country="US"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="JP"],
+.server-item-flag.country-flag[data-country="JP"] { background-image: radial-gradient(circle at 50% 50%, #bc002d 0 27%, #fff 27%); }
+.chip-flag.country-flag[data-country="JP"]::before,
+.server-item-flag.country-flag[data-country="JP"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="TR"],
+.server-item-flag.country-flag[data-country="TR"] { background-image: radial-gradient(circle at 36% 50%, #e30a17 0 24%, transparent 24%), radial-gradient(circle at 44% 50%, #fff 0 36%, transparent 36%); background-color: #e30a17; }
+.chip-flag.country-flag[data-country="TR"]::before,
+.server-item-flag.country-flag[data-country="TR"]::before { content: ""; }
+
+.chip-flag.country-flag[data-country="AE"],
+.server-item-flag.country-flag[data-country="AE"] { background-image: linear-gradient(to right, #ce1126 0 26%, transparent 26%), linear-gradient(to bottom, #00732f 0 33.33%, #fff 33.33% 66.66%, #000 66.66%); }
+.chip-flag.country-flag[data-country="AE"]::before,
+.server-item-flag.country-flag[data-country="AE"]::before { content: ""; }

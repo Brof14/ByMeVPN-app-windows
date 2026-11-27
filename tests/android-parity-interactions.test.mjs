@@ -121,8 +121,10 @@ test('FAQ follows the current Android five-question single-open accordion', () =
   assert.match(faq, /id="faq-answer-5"/);
   assert.match(source, /function nextFaqExpandedIndex\(expandedIndex, selectedIndex\)/);
   assert.match(source, /aria-expanded/);
-  assert.match(parityCss, /#modal-faq \.faq-item-body\s*\{[^}]*display:\s*none/);
-  assert.match(parityCss, /#modal-faq \.faq-accordion-item\.expanded \.faq-item-body/);
+  // Ответ раскрывается плавно: трек 0fr -> 1fr вместо мгновенного display.
+  assert.match(parityCss, /#modal-faq \.faq-item-body\s*\{[^}]*grid-template-rows:\s*0fr/);
+  assert.match(parityCss, /#modal-faq \.faq-accordion-item\.expanded \.faq-item-body\s*\{[^}]*grid-template-rows:\s*1fr/);
+  assert.doesNotMatch(faq, /class="faq-number"/);
   const app = harness();
   assert.equal(app.eval('nextFaqExpandedIndex(null,0)'), 0);
   assert.equal(app.eval('nextFaqExpandedIndex(0,0)'), null);
@@ -273,9 +275,13 @@ test('Android primary settings contains the everyday connection toggles and lang
   }
   assert.match(advanced, /id="set-autoconnect"/);
   assert.doesNotMatch(primary, /id="set-autoconnect"/);
-  for (const id of ['set-autostart', 'set-background', 'set-killswitch', 'adblock-group', 'set-dns-mode']) {
+  for (const id of ['set-autostart', 'set-background', 'set-dns-mode']) {
     assert.match(advanced, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));
+  }
+  // Неактивные переключатели убраны из расширенных настроек.
+  for (const id of ['set-killswitch', 'adblock-group']) {
+    assert.doesNotMatch(advanced, new RegExp('id="' + id + '"'));
   }
   assert.match(primary, /id="btn-language-dialog"/);
   assert.doesNotMatch(primary, /class="lang-segmented-control"/);

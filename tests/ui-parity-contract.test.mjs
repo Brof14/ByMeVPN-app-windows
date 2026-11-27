@@ -26,7 +26,9 @@ test('unknown or unavailable entitlement never renders active VPN controls', () 
   assert.match(js, /noPlanBox\?\.classList\.remove\('hidden'\)/);
   assert.match(js, /Retry to refresh your account details/);
   assert.match(js, /ring\?\.setAttribute\('aria-disabled', String\(accessUnknown && !isConn\)\)/);
-  assert.match(js, /ring\.disabled = state\.connectionBusy \|\| \(accessUnknown && !isConn\)/);
+  // A connect attempt must stay pressable so the user can cancel it.
+  assert.match(js, /ring\.disabled = \(state\.connectionBusy && !cancelable\) \|\| \(accessUnknown && !isConn\)/);
+  assert.match(js, /invoke\('vpn_cancel_connect'\)/);
   assert.match(js, /void refreshAccountSnapshot\(true\)/);
   assert.doesNotMatch(js, /'active', 'trial', 'grace', 'unknown'\]\.includes\(sub\.status\)/);
 });

@@ -11,7 +11,9 @@ test('Android Compose home has one shared server and subscription dock for conne
   assert.match(html,/id="home-state-no-plan"/);
   assert.match(html,/id="home-state-connected"/);
   assert.match(html,/id="home-state-disconnected"/);
-  assert.match(html,/data-i18n="home_connection_kicker"/);
+  // Android HomeScreen.kt has no kicker above the power control.
+  assert.doesNotMatch(html,/home_connection_kicker/);
+  assert.match(html,/id="home-server-ping"/);
   assert.match(html,/data-i18n="home_location_title"/);
   assert.match(html,/id="home-server-country">Автоматически/);
   assert.equal((html.match(/id="home-sub-title"/g)||[]).length,1);
@@ -22,7 +24,7 @@ test('Tauri frontend loads Android mobile parity CSS after historical desktop st
   assert.match(html,/<link rel="stylesheet" href="\.\/mobile-parity\.css">/);
   assert.ok(html.indexOf('styles.css') < html.indexOf('mobile-parity.css'));
   assert.match(css,/\.app-shell-layout \.app-sidebar/);
-  assert.match(css,/\.mobile-connection-kicker/);
+  assert.match(css,/\.mobile-server-ping/);
   assert.match(css,/\.mobile-home-dock/);
   assert.match(css,/\.app-shell-layout \.app-main-frame/);
 });

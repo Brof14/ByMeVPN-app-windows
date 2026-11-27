@@ -43,6 +43,7 @@ const state = {
     ping_ms: 0
   },
   connectionBusy: false,
+  cancelRequested: false,
   serverSwitchBusy: false,
   vpnSequence: 0,
   connectionError: null,
@@ -2469,21 +2470,50 @@ async function refreshVpnHealth() {
 }
 
 // VPN Lifecycle & Real-time Metrics
+// Android's power control stops a tunnel in progress: one more tap while the
+// engine is still connecting must abort it instead of being ignored.
+function canCancelConnect() {
+  return state.connectionBusy && state.vpnPhase === 'connecting' && !state.cancelRequested;
+}
+
+async function cancelVpnConnect() {
+  if (!canCancelConnect()) return;
+  state.cancelRequested = true;
+  updateVpnUi();
+  try {
+    await invoke('vpn_cancel_connect');
+  } catch (_) {
+    // Older engine builds have no cancel command; vpn_stop below still stops
+    // the tunnel once the connect attempt releases the lifecycle gate.
+  }
+  // The pending vpn_start rejects with a cancellation error and resets the UI.
+  // If an engine ignores the flag, stop the tunnel as a bounded fallback.
+  const epoch = state.sessionEpoch;
+  setTimeout(() => {
+    if (epoch !== state.sessionEpoch || !state.connectionBusy || !state.cancelRequested) return;
+    invoke('vpn_stop').catch(() => {});
+  }, 1200);
+}
+
 async function toggleVpn(allowServerSwitch = false) {
-  if (state.connectionBusy || (state.serverSwitchBusy && allowServerSwitch !== true)) return;
+  if (state.connectionBusy) {
+    if (canCancelConnect()) await cancelVpnConnect();
+    return;
+  }
+  if (state.serverSwitchBusy && allowServerSwitch !== true) return;
   const disconnectRequested = state.vpnConnected || state.reconnectPending;
   if (!disconnectRequested && (!state.subscription || state.subscription.status === 'unknown' || subscriptionExpired(state.subscription))) {
     openTrialScreen();
     return;
   }
   state.connectionBusy = true;
+  state.cancelRequested = false;
   state.vpnSequence += 1;
   state.connectionError = null;
   state.vpnPhase = disconnectRequested ? 'disconnecting' : 'connecting';
   updateVpnUi();
   try {
   if (disconnectRequested) {
-    showToast('Отключение VPN...');
     try {
       await invoke('vpn_stop');
       state.vpnConnected = false;
@@ -2532,7 +2562,6 @@ async function toggleVpn(allowServerSwitch = false) {
       return;
     }
 
-    showToast('Запуск туннеля Xray + Wintun...');
     try {
       // Match Android's automatic selection: use the fastest measured node,
       // otherwise pick a concrete catalog candidate instead of letting the
@@ -2562,25 +2591,29 @@ async function toggleVpn(allowServerSwitch = false) {
       startLiveTimer();
       startStatusPolling();
       updateVpnUi();
-      // A persistent transport-health state belongs beside the VPN control;
-      // a transient toast would obscure navigation and hide the problem.
-      if (state.vpnVerified) {
-        showToast(uiText('Внешний IPv4 подтверждён.', 'External IPv4 verified.'));
-      }
+      // The verified state is already shown next to the power control; a toast
+      // on every connect only added noise (Android has none).
     } catch (err) {
       state.vpnConnected = false;
       state.vpnVerified = false;
-      const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
-      state.connectionError = errMsg;
-      showToast(errMsg, true);
-      // HTTP 403 may be caused by HWID or unavailable 3x-ui; never erase
-      // entitlement or advertise a new purchase solely because VPN failed.
+      if (state.cancelRequested) {
+        // Cancelling is a user action, not a failure: no red error state.
+        state.connectionError = null;
+        showToast(uiText('Подключение отменено.', 'Connection canceled.'));
+      } else {
+        const errMsg = typeof err === 'string' ? err : (err?.message || 'Не удалось подключиться');
+        state.connectionError = errMsg;
+        showToast(errMsg, true);
+        // HTTP 403 may be caused by HWID or unavailable 3x-ui; never erase
+        // entitlement or advertise a new purchase solely because VPN failed.
+        if (errMsg.includes('подписки')) void refreshAccountSnapshot();
+      }
       updateVpnUi();
-      if (errMsg.includes('подписки')) void refreshAccountSnapshot();
     }
   }
   } finally {
     state.connectionBusy = false;
+    state.cancelRequested = false;
     state.vpnPhase = state.vpnConnected ? 'connected' : 'idle';
     updateVpnUi();
   }
@@ -2769,13 +2802,12 @@ const TOAST_EN = Object.freeze({
   "Дождитесь завершения работы VPN": "Wait for the VPN operation to finish.",
   "Аккаунт удалён": "Account deleted.",
   "Не удалось удалить аккаунт": "Could not delete your account.",
-  "Отключение VPN...": "Disconnecting VPN...",
   "VPN отключён": "VPN disconnected.",
   "Ошибка отключения": "Could not disconnect VPN.",
   "Не удалось проверить подписку. Обновите аккаунт и повторите попытку.": "Could not verify your subscription. Refresh the account and retry.",
   "Для подключения требуется активный доступ (3 дня бесплатно или тариф).": "You need an active subscription or free trial to connect.",
   "Не удалось получить совместимые серверы. Проверьте сеть и обновите список.": "No compatible servers available. Check your network and refresh.",
-  "Запуск туннеля Xray + Wintun...": "Starting Xray + Wintun tunnel...",
+  "Подключение отменено.": "Connection canceled.",
   "Подключение проверено и установлено": "VPN connection established and verified.",
   "Соединение VPN прервано. Защита не подтверждена.": "VPN disconnected. Protection is not verified.",
   "Устройство успешно отключено": "Device disconnected.",
@@ -3051,6 +3083,10 @@ function updateVpnUi() {
       ? uiText('Восстанавливаем VPN', 'Reconnecting VPN')
       : state.vpnPhase === 'disconnecting'
         ? uiText('Отключаем VPN', 'Disconnecting VPN')
+      : state.vpnPhase === 'connecting'
+        ? (state.cancelRequested
+          ? uiText('Отмена…', 'Canceling…')
+          : uiText('Подключение…', 'Connecting…'))
       : state.connectionError
         ? uiText('Не удалось подключиться', 'Could not connect')
       : uiText('VPN выключен', 'VPN off');
@@ -3064,12 +3100,14 @@ function updateVpnUi() {
     const promoBox = document.querySelector('.promo-trial-box');
     const ringOff = document.getElementById('vpn-power-ring-off');
 
-    if (desc) desc.textContent = state.vpnPhase === 'reconnecting' ?
+    if (desc) desc.textContent = state.cancelRequested
+      ? uiText('Отменяем подключение…', 'Canceling the connection…')
+      : state.vpnPhase === 'reconnecting' ?
       uiText('Пытаемся восстановить соединение…', 'Trying to restore the connection…') :
       state.vpnPhase === 'disconnecting' ?
         uiText('Останавливаем соединение и повторные попытки…', 'Stopping the connection and retry attempts…') :
       state.vpnPhase === 'connecting' ?
-        uiText('Запуск и проверка VPN...', 'Starting and verifying VPN...') :
+        uiText('Нажмите ещё раз, чтобы отменить', 'Tap again to cancel') :
         uiText('Нажмите, чтобы подключиться', 'Click to connect');
     if (btn) btn.textContent = state.vpnPhase === 'reconnecting' ?
       uiText('Восстанавливаем...', 'Reconnecting...') : state.vpnPhase === 'connecting' ?
@@ -3131,30 +3169,47 @@ function updateVpnUi() {
   const friendlyAutoServer = friendlyServerLabel(state.metrics?.server_name);
   if (nameEl) nameEl.textContent = isConn && s.code === 'auto' && friendlyAutoServer ?
     friendlyAutoServer : (isConn && s.code === 'auto' && state.metrics?.country ? state.metrics.country : serverDisplayName(s));
+  const cancelable = canCancelConnect();
   for (const id of ['vpn-power-ring', 'vpn-power-ring-off']) {
     const ring = document.getElementById(id);
     ring?.setAttribute('aria-busy', String(state.connectionBusy));
     ring?.setAttribute('aria-disabled', String(accessUnknown && !isConn));
     if (ring) {
       ring.setAttribute('aria-pressed', String(isConn));
-      ring.disabled = state.connectionBusy || (accessUnknown && !isConn);
+      // A connect attempt stays pressable so it can be cancelled.
+      ring.disabled = (state.connectionBusy && !cancelable) || (accessUnknown && !isConn);
+      ring.classList.toggle('is-cancelling', state.cancelRequested);
       ring.setAttribute('aria-label', id === 'vpn-power-ring'
         ? uiText('Отключить VPN', 'Disconnect VPN')
+        : cancelable ? uiText('Отменить подключение', 'Cancel connection')
         : uiText('Включить VPN', 'Connect VPN'));
     }
   }
   document.getElementById('btn-toggle-vpn')?.toggleAttribute('disabled', state.connectionBusy || state.serverSwitchBusy);
-  if (homeFlag) homeFlag.textContent = s.flag || '🌐';
-  if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
-    (automaticConnected && state.metrics?.country ? state.metrics.country : uiText('Автоматически', 'Automatic')) :
-    (effectiveLanguage() === 'en' ? s.country_en : s.country) || serverDisplayName(s);
-  if (homeCity) homeCity.textContent = s.code === 'auto' ?
-    (automaticConnected ? (friendlyServerLabel(state.metrics.server_name) || state.metrics.country || '') : uiText('Автовыбор', 'Auto select')) :
-    ((effectiveLanguage() === 'en' ? s.city_en : s.city) || '');
-
   // Android shows the outbound protocol and a connected marker under the
-  // location name, so the card explains how the tunnel actually runs.
-  const cardServer = s.code === 'auto' ? (state.autoSelectedServer || null) : s;
+  // location name, so the card explains how the tunnel actually runs. In auto
+  // mode the dock names the node the app would pick instead of saying only
+  // "Automatic".
+  const autoCandidate = s.code === 'auto'
+    ? (state.autoSelectedServer
+      || (state.servers.length ? chooseAutomaticServer(state.servers) : null)
+      || (state.servers.length ? automaticFallbackCandidates(state.servers)[0] : null))
+    : null;
+  const cardServer = s.code === 'auto' ? (autoCandidate || null) : s;
+  if (homeFlag) homeFlag.textContent = (cardServer && cardServer.flag) || s.flag || '🌐';
+  const englishLocale = effectiveLanguage() === 'en';
+  if (homeCountry) homeCountry.textContent = s.code === 'auto' ?
+    (automaticConnected && state.metrics?.country ? state.metrics.country
+      : (cardServer ? ((englishLocale ? cardServer.country_en : cardServer.country) || serverDisplayName(cardServer)) : '')
+      || uiText('Автоматически', 'Automatic')) :
+    (englishLocale ? s.country_en : s.country) || serverDisplayName(s);
+  if (homeCity) homeCity.textContent = s.code === 'auto' ?
+    (automaticConnected
+      ? (friendlyServerLabel(state.metrics.server_name) || state.metrics.country || '')
+      : ((cardServer && (englishLocale ? cardServer.city_en : cardServer.city))
+        || uiText('Автовыбор', 'Auto select'))) :
+    ((englishLocale ? s.city_en : s.city) || '');
+
   const cardProtocol = cardServer && cardServer.code !== 'auto' ? serverProtocolLabel(cardServer) : '';
   const protocolBadge = document.getElementById('home-server-protocol');
   const statusRow = document.getElementById('home-server-status');
@@ -3170,6 +3225,20 @@ function updateVpnUi() {
   }
   if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn);
   if (connectedLabel) connectedLabel.classList.toggle('hidden', !isConn);
+  // Android shows the measured latency beside the protocol chip; a tunnel
+  // measurement wins over the catalog probe because it is the live path.
+  const pingBadge = document.getElementById('home-server-ping');
+  if (pingBadge) {
+    const tunnelPing = Number(state.metrics?.ping_ms) > 0 ? Math.round(Number(state.metrics.ping_ms)) : 0;
+    const catalogPing = Number(cardServer?.ping) > 0 ? Math.round(Number(cardServer.ping)) : 0;
+    const pingMs = tunnelPing || catalogPing;
+    pingBadge.textContent = pingMs > 0 ? uiText(`${pingMs} мс`, `${pingMs} ms`) : '';
+    pingBadge.classList.toggle('hidden', pingMs <= 0);
+    pingBadge.classList.toggle('is-live', tunnelPing > 0 && isConn);
+    // One status per row, like Android: latency replaces the word "Connected".
+    if (pingMs > 0) connectedLabel?.classList.add('hidden');
+  }
+  if (statusRow) statusRow.classList.toggle('hidden', !cardProtocol && !isConn && !(Number(cardServer?.ping) > 0));
   const cardTitle = document.getElementById('home-server-card-title');
   if (cardTitle) cardTitle.textContent = state.connectionError && !isConn
     ? uiText('ВЫБРАННЫЙ СЕРВЕР', 'SELECTED SERVER')

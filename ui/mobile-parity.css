@@ -197,14 +197,6 @@ html, body, .app-root, .app-shell-layout {
   padding: 25px 25px 0;
   text-align: center;
 }
-#tab-home .mobile-connection-kicker {
-  flex: 0 0 auto;
-  margin: 0;
-  font-size: 10px;
-  font-weight: 700;
-  color: #6d86ab;
-  letter-spacing: 2px;
-}
 #tab-home .mobile-power-space {
   display: flex;
   flex: 1 0 auto;
@@ -222,20 +214,23 @@ html, body, .app-root, .app-shell-layout {
   width: clamp(166px, 32dvh, 300px);
   height: clamp(166px, 32dvh, 300px);
   margin: 0;
-  border: 1.5px solid rgba(158, 180, 212, .8);
+  border: 1.5px solid rgba(84, 129, 198, .55);
   border-radius: 50%;
-  background: transparent;
-  box-shadow: none;
+  /* Android's VpnPowerButton halo: a soft glow inside the ring. */
+  background: radial-gradient(circle at 50% 52%, rgba(0, 216, 255, .10), rgba(0, 119, 255, .05) 52%, transparent 74%);
+  box-shadow: 0 0 46px rgba(0, 119, 255, .14);
   overflow: hidden;
   cursor: pointer;
   outline-offset: 4px;
-  transition: border-color .42s ease, transform .3s ease;
+  transition: border-color .42s ease, background .42s ease, box-shadow .42s ease, transform .3s ease;
 }
 #tab-home .pulse-power-ring.ring-connected {
-  background: transparent;
-  border-color: rgba(46, 233, 184, .8);
-  box-shadow: none;
+  border-color: rgba(46, 233, 184, .78);
+  background: radial-gradient(circle at 50% 52%, rgba(0, 216, 255, .16), rgba(46, 233, 184, .10) 50%, transparent 74%);
+  box-shadow: 0 0 64px rgba(46, 233, 184, .18);
 }
+#tab-home .pulse-power-ring:hover { box-shadow: 0 0 70px rgba(0, 136, 255, .22); }
+#tab-home .pulse-power-ring.is-cancelling { border-color: rgba(255, 143, 150, .8); }
 #tab-home .pulse-power-ring .inner-shield-circle {
   display: grid;
   place-items: center;
@@ -294,12 +289,15 @@ html, body, .app-root, .app-shell-layout {
 #tab-home .pulse-power-ring[aria-busy="true"]::before {
   content: '';
   position: absolute;
-  inset: 4px;
+  inset: 3px;
   border: 2px solid transparent;
-  border-top-color: #2ee9b8;
+  border-top-color: #00d8ff;
+  border-right-color: rgba(0, 216, 255, .45);
   border-radius: 50%;
   animation: mobile-vpn-spin 1s linear infinite;
+  pointer-events: none;
 }
+#tab-home .pulse-power-ring[aria-busy="true"] .vpn-shield-image { opacity: .84; }
 @keyframes mobile-vpn-spin { to { transform: rotate(360deg); } }
 #tab-home .mobile-status-summary {
   display: flex;
@@ -336,7 +334,7 @@ html, body, .app-root, .app-shell-layout {
 }
 #tab-home .mobile-connection-timer {
   margin-top: 4px;
-  color: #6d86ab;
+  color: #00d8ff;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 2px;
@@ -392,7 +390,24 @@ html, body, .app-root, .app-shell-layout {
   font-weight: 700;
 }
 #tab-home .mobile-location-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-#tab-home .mobile-location-row .chip-flag { font-size: 23px; line-height: 28px; }
+/* Windows has no colour flag emoji, so the same element renders the ISO code;
+   give it a deliberate badge shape instead of a bare two-letter word. */
+#tab-home .mobile-location-row .chip-flag {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  min-width: 34px;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid #1c3566;
+  border-radius: 8px;
+  background: #0e2046;
+  color: #b3d5ee;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  line-height: 1;
+}
 #tab-home .mobile-server-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 #tab-home .mobile-server-copy strong {
   overflow: hidden;
@@ -437,6 +452,14 @@ html, body, .app-root, .app-shell-layout {
   font-weight: 600;
 }
 #tab-home .mobile-server-connected.hidden { display: none; }
+#tab-home .mobile-server-ping {
+  color: #9eb4d4;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+#tab-home .mobile-server-ping.is-live { color: #2ee9b8; }
+#tab-home .mobile-server-ping.hidden { display: none; }
 #tab-home .mobile-card-chevron {
   display: grid;
   flex: 0 0 32px;

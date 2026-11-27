@@ -15,7 +15,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex, OnceLock,
     },
     time::Duration,
@@ -38,6 +38,10 @@ static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 // Changes only when the signed-in account is replaced or cleared, not when
 // its access token rotates. Protected requests retain this identity on retry.
 static AUTH_GENERATION: AtomicU64 = AtomicU64::new(0);
+// Set by the UI while a connect attempt is still running. Each stage of
+// vpn_start_inner checks it between awaits so a slow server can be abandoned
+// instead of forcing the user to wait for the whole handoff.
+static CANCEL_CONNECT: AtomicBool = AtomicBool::new(false);
 static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 // reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
@@ -201,6 +205,61 @@ async fn stop_failed_tun(
     let _ = child.wait();
     let _ = fs::remove_file(config_path);
     crate::tun_health::cleanup_bymevpn_routes_after_exit().await
+}
+
+const CONNECTION_CANCELLED: &str = "Подключение отменено.";
+
+fn connect_cancelled() -> bool {
+    CANCEL_CONNECT.load(Ordering::SeqCst)
+}
+
+fn cancellation_requested() -> Result<(), String> {
+    if connect_cancelled() {
+        Err(CONNECTION_CANCELLED.into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Resolves as soon as the user cancels the connect attempt in progress.
+async fn wait_for_connect_cancel() {
+    while !connect_cancelled() {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+    }
+}
+
+/// Cancellable listener wait: an aborted attempt must not sit through the
+/// whole listener timeout before the UI can return to its idle state.
+async fn wait_for_probe_listener(port: u16, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if connect_cancelled() {
+            return false;
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        let slice = remaining.min(Duration::from_millis(120));
+        if crate::egress::wait_for_attestation_listener(port, slice).await {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+    }
+}
+
+/// The user can abandon a connect attempt at any stage. The pending
+/// `vpn_start` then returns this as a plain message and restores networking.
+#[tauri::command]
+pub async fn vpn_cancel_connect(state: State<'_, AppState>) -> Result<(), String> {
+    CANCEL_CONNECT.store(true, Ordering::SeqCst);
+    // No attempt holds the gate: clear the flag so the next connect is clean.
+    if state.connection_gate.try_lock().is_ok() {
+        CANCEL_CONNECT.store(false, Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 pub fn should_restart_after_health_probe(
@@ -2308,10 +2367,15 @@ async fn vpn_start_inner(
     node_code: Option<String>,
     automatic: bool,
 ) -> Result<TunnelMetrics, String> {
-    // Restore any stale routes/DNS before changing the network again.
-    let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
     cancel_server_ping_probes();
     let _connection_guard = state.connection_gate.lock().await;
+    // This attempt owns the cancel flag only after it owns the gate, so a tap
+    // that cancels while the attempt is still queued is never lost.
+    CANCEL_CONNECT.store(false, Ordering::SeqCst);
+    // Stale ByMeVPN routes are cleaned at startup and whenever a failed
+    // disconnect raised `network_recovery_required` (checked below); an extra
+    // PowerShell pass here delayed every connect by a full process start.
+    cancellation_requested()?;
     if automatic {
         let enabled = load_settings(&app)
             .get("autoReconnect")
@@ -2343,6 +2407,7 @@ async fn vpn_start_inner(
         }
     }
 
+    cancellation_requested()?;
     // Check that user has an active or trial subscription before launching tunnel
     let sub_status = request_in_session(
         &app,
@@ -2495,38 +2560,10 @@ async fn vpn_start_inner(
         #[cfg(not(windows))]
         const CREATE_NO_WINDOW: u32 = 0;
 
-        // Process startup and config validation are blocking Win32 operations.
-        // Keep them off the Tauri async executor so auth, UI and watchdog
-        // requests remain responsive while Xray initializes.
-        let check_runtime = runtime_dir.clone();
-        let check_config = config_path.clone();
-        let test_res = tauri::async_runtime::spawn_blocking(move || {
-            std::process::Command::new(check_runtime.join("xray.exe"))
-                .current_dir(&check_runtime)
-                .env("XRAY_LOCATION_ASSET", &check_runtime)
-                .args(["run", "-test", "-config"])
-                .arg(&check_config)
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-        })
-        .await
-        .map_err(|e| format!("Ошибка фоновой проверки Xray: {e}"))?
-        .map_err(|e| format!("Не удалось проверить конфигурацию Xray: {e}"))?;
-
-        if !test_res.status.success() {
-            let _ = fs::remove_file(&config_path);
-            // Xray emits actionable parser/config diagnostics on stderr.
-            let cause = String::from_utf8_lossy(&test_res.stderr);
-            let detail: String = cause.trim().chars().take(500).collect();
-            return Err(if detail.is_empty() {
-                format!(
-                    "Конфигурация Xray отклонена (код {:?}).",
-                    test_res.status.code()
-                )
-            } else {
-                format!("Ошибка конфигурации Xray: {detail}")
-            });
-        }
+        // The preflight below parses and runs this exact configuration, so a
+        // separate `xray run -test` launch only added a cold process start to
+        // every connection without catching anything the preflight misses.
+        cancellation_requested()?;
 
         // Preflight the REAL selected VPN outbound while Windows networking
         // is untouched. A broken VLESS/Reality/Hysteria server must never be
@@ -2578,18 +2615,20 @@ async fn vpn_start_inner(
         };
         let preflight_process_running = matches!(preflight_child.try_wait(), Ok(None));
         let preflight_listener_ready = preflight_process_running
-            && crate::egress::wait_for_attestation_listener(
-                probe_port,
-                Duration::from_secs(8),
-            )
-            .await;
+            && wait_for_probe_listener(probe_port, Duration::from_secs(8)).await;
         let preflight_server_reachable = preflight_listener_ready
-            && preflight_xray_server(probe_port, &probe_password).await;
+            && tokio::select! {
+                reachable = preflight_xray_server(probe_port, &probe_password) => reachable,
+                _ = wait_for_connect_cancel() => false,
+            };
         // Shut down the process with NO TUN before enabling the system route.
         let _ = preflight_child.kill();
         let _ = preflight_child.wait();
         #[cfg(windows)]
         drop(preflight_job);
+        // Windows networking is still untouched here, so a cancelled attempt can
+        // return without any rollback beyond the session revoke below.
+        cancellation_requested()?;
         if !preflight_process_running {
             return Err(format!(
                 "Xray завершился во время локальной проверки сервера.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
@@ -2615,10 +2654,17 @@ async fn vpn_start_inner(
         // A missing external baseline is not a tunnel failure by itself, but
         // it must remain explicitly unverified. Join before TUN route changes
         // so this request can never accidentally measure the VPN egress.
-        let baseline_ip = baseline_task.await.ok().and_then(Result::ok);
+        // A slow baseline lookup must never hold the tunnel hostage; without it
+        // the connection stays explicitly unverified until the next probe.
+        let baseline_ip = match tokio::time::timeout(Duration::from_millis(3000), baseline_task)
+            .await
+        {
+            Ok(Ok(Ok(ip))) => Some(ip),
+            _ => None,
+        };
 
         // Preserve bounded, local diagnostics for failures that happen only
-        // after 'xray run -test' succeeds (Wintun, routes, WFP, DNS).
+        // after the preflight succeeds (Wintun, routes, WFP, DNS).
         // This log is private to the current Windows profile and is reset on
         // each connection attempt. Never transmit it automatically.
         let log_path = app_dir.join("xray_startup.log");
@@ -2631,6 +2677,7 @@ async fn vpn_start_inner(
         let xray_stdout = xray_log
             .try_clone()
             .map_err(|e| format!("Не удалось подготовить журнал Xray: {e}"))?;
+        cancellation_requested()?;
         let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))
             .current_dir(&runtime_dir)
             .env("XRAY_LOCATION_ASSET", &runtime_dir)
@@ -2661,7 +2708,14 @@ async fn vpn_start_inner(
 
         // Bound the ENTIRE period that Windows routes through an unverified
         // TUN. Includes the full HTTPS probe, route inspection and DNS.
-        let handoff = tokio::time::timeout(Duration::from_secs(12), async {
+        let handoff = tokio::select! {
+            // A cancel tap during the TUN handoff must roll the network back
+            // immediately instead of waiting out the 12-second budget.
+            _ = wait_for_connect_cancel() => {
+                stop_failed_tun(&mut child, &config_path).await?;
+                return Err(CONNECTION_CANCELLED.into());
+            }
+            result = tokio::time::timeout(Duration::from_secs(12), async {
             if !crate::egress::wait_for_attestation_listener(
                 probe_port,
                 Duration::from_secs(2),
@@ -2702,8 +2756,8 @@ async fn vpn_start_inner(
                 proof.traffic_confirmed(),
             );
             (proof, healthy, ping)
-        })
-        .await;
+            }) => result,
+        };
 
         let (proof, route_and_dns_ok, initial_ping) = match handoff {
             Ok(result) => result,
@@ -2803,11 +2857,16 @@ async fn vpn_start_inner(
 
 #[tauri::command]
 pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Signal the attempt that may still hold the lifecycle gate, then wait for
+    // it. Disconnect therefore interrupts a connect instead of queueing behind
+    // it until the whole handoff finishes.
+    CANCEL_CONNECT.store(true, Ordering::SeqCst);
     let _connection_guard = state.connection_gate.lock().await;
     let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
     let cleanup = stop_tunnel_and_restore_network(&state).await;
     // Revoke even if route cleanup failed: don't retain an active server slot.
     let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    CANCEL_CONNECT.store(false, Ordering::SeqCst);
     cleanup
 }
 

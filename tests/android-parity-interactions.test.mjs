@@ -311,7 +311,11 @@ test('VPN captures original egress before starting the full tunnel and rolls bac
   const baselineStart = startupHeader.indexOf('let baseline_task = tauri::async_runtime::spawn');
   const session = rust.indexOf('"/vpn/session"', start);
   const startup = rust.slice(session, rust.indexOf('pub async fn vpn_stop', session));
-  const baselineAwait = startup.indexOf('let baseline_ip = baseline_task.await');
+  // The baseline stays ordered before the TUN, but is bounded so a slow IP
+  // lookup cannot hold the connection open.
+  const baselineAwait = startup.indexOf(
+    'let baseline_ip = match tokio::time::timeout(Duration::from_millis(3000), baseline_task)'
+  );
   const preflightEnd = startup.indexOf('if !preflight_server_reachable');
   const fullTunnelStart = startup.indexOf(
     'let mut child = match std::process::Command::new(runtime_dir.join("xray.exe"))', baselineAwait

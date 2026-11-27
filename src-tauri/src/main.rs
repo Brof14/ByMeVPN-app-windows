@@ -131,6 +131,7 @@ fn main() {
             service::get_pending_payment,
             service::delete_device,
             service::vpn_start,
+            service::vpn_cancel_connect,
             service::vpn_stop,
             service::vpn_status,
             service::vpn_health_report,

@@ -679,51 +679,62 @@
 
   .app-shell-layout .app-tab-pages { padding: 28px clamp(28px, 4vw, 56px) 40px; }
 
+  /* Android keeps one centered power control above a bottom dock. The desktop
+     version keeps that single-column composition and only widens the dock. */
   .app-shell-layout #tab-home.active {
-    display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(330px, .92fr);
-    align-items: center;
-    align-content: center;
-    gap: clamp(24px, 4vw, 56px);
-    width: 100%;
-    max-width: 1320px;
-    min-height: 100%;
-    margin-inline: auto;
-    padding: clamp(20px, 3vh, 44px) clamp(4px, 1vw, 16px);
-  }
-
-  .app-shell-layout #tab-home:has(#home-state-no-plan:not(.hidden)).active {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
+    gap: clamp(10px, 2.4vh, 30px);
+    width: 100%;
+    min-height: 100%;
+    padding: clamp(12px, 2.4vh, 34px) clamp(4px, 1vw, 16px);
   }
 
   #tab-home > #home-state-no-plan:not(.hidden),
   #tab-home > #home-state-connected:not(.hidden),
-  #tab-home > #home-state-disconnected:not(.hidden) { display: contents; }
-
-  #tab-home .mobile-status-layout {
-    grid-column: 1;
-    grid-row: 1;
+  #tab-home > #home-state-disconnected:not(.hidden) {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
     width: 100%;
-    min-height: min(68vh, 600px);
-    padding: 12px;
   }
 
-  #tab-home .mobile-power-space { flex: 1 0 250px; min-height: 250px; padding: 16px 0; }
-  #tab-home .pulse-power-ring { width: clamp(220px, 32dvh, 300px); height: clamp(220px, 32dvh, 300px); }
-  #tab-home .mobile-status-summary { width: min(100%, 520px); padding-bottom: 0; }
+  #tab-home .mobile-status-layout {
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+  }
+
+  #tab-home .mobile-power-space { flex: 0 0 auto; min-height: 0; padding: 6px 0 24px; }
+  #tab-home .pulse-power-ring { width: clamp(238px, 33vh, 318px); height: clamp(238px, 33vh, 318px); }
+  #tab-home .mobile-status-summary {
+    gap: 9px;
+    width: min(100%, 560px);
+    padding-bottom: 0;
+  }
+  #tab-home .status-title-text { font-size: 31px; letter-spacing: -.7px; }
+  #tab-home .connection-substatus { font-size: 14px; }
+  #tab-home .mobile-connection-timer { font-size: 14px; }
   #tab-home .connection-error,
   #tab-home .mobile-verification-notice { width: min(100%, 500px); max-width: 500px; }
 
   #tab-home #home-shared-dock:not(.hidden) {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 14px;
+    flex: 0 0 auto;
     width: 100%;
-    max-width: 500px;
-    margin: 0;
-    padding: 0;
+    max-width: 790px;
+    margin: 0 auto;
+    padding: 0 0 8px;
   }
+  #tab-home .mobile-server-card { min-height: 104px; padding: 18px 18px 18px 20px; border-radius: 22px; }
+  #tab-home .mobile-subscription-card { min-height: 104px; border-radius: 22px; }
+  #tab-home .mobile-server-copy strong { font-size: 17px; }
 
   #tab-home .mobile-no-plan {
     display: grid;
@@ -784,3 +795,26 @@
 .advanced-gear-icon .byme-icon { width: 24px; height: 24px; }
 .radar-core .byme-icon { width: 16px; height: 16px; }
 .btn-tg-reopen > .byme-icon { display: inline-block; width: 18px; height: 18px; margin-right: 5px; vertical-align: middle; }
+
+/* The shell has its own brand row (sidebar on desktop, header bar on narrow
+   windows), so the titlebar shows no second logo. Toasts sit beside the home
+   dock on desktop instead of covering it. */
+.app-root:has(#view-app-shell:not(.hidden)) .window-title-left { visibility: hidden; }
+
+@media (min-width: 1060px) {
+  .toast-popup {
+    right: 28px;
+    bottom: 26px;
+    left: auto;
+    max-width: min(420px, 40vw);
+    text-align: left;
+    transform: translateY(14px);
+  }
+  .toast-popup.show { transform: translateY(0); }
+}
+
+/* Bottom navigation owns the last ~72px on narrow windows; snackbars must sit
+   above it instead of hiding the tab labels. */
+@media (max-width: 759px) {
+  .toast-popup { bottom: 92px; }
+}

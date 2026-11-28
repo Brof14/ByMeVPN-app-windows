@@ -1001,11 +1001,17 @@ async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String>
     if let Some(active) = active {
         let _ = fs::remove_file(active.config_path);
     }
-    let cleanup = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
+    // Disconnect must return in well under a second: killing Xray already
+    // drops the tunnel. Route/DNS cleanup (a PowerShell spawn) runs in the
+    // background; the recovery flag keeps the next connect retrying it if it
+    // fails, so the network is never left half-configured.
     if let Ok(mut required) = state.network_recovery_required.lock() {
-        *required = cleanup.is_err();
+        *required = true;
     }
-    cleanup
+    tauri::async_runtime::spawn(async {
+        let _ = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -2138,17 +2144,6 @@ pub fn select_fastest_server_latency<S: AsRef<str>>(candidates: &[(S, u32)]) -> 
         .map(|(code, _)| code.as_ref().to_string())
 }
 
-pub fn select_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
-    select_fastest_server_latency(candidates)
-}
-
-pub fn choose_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
-    select_fastest_server_latency(candidates)
-}
-
-pub fn auto_select_fastest_server<S: AsRef<str>>(candidates: &[(S, u32)]) -> Option<String> {
-    select_fastest_server_latency(candidates)
-}
 
 async fn vpn_start_inner(
     app: AppHandle,
@@ -2674,10 +2669,19 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     // it until the whole handoff finishes.
     CANCEL_CONNECT.store(true, Ordering::SeqCst);
     let _connection_guard = state.connection_gate.lock().await;
-    let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
+    // Restore routes/DNS in the background so disconnect returns immediately;
+    // the process kill below already drops the tunnel.
+    tauri::async_runtime::spawn(async {
+        let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
+    });
     let cleanup = stop_tunnel_and_restore_network(&state).await;
     // Revoke even if route cleanup failed: don't retain an active server slot.
-    let _ = request(&app, Method::DELETE, "/vpn/session", None, true, false).await;
+    // Run in the background so disconnect stays instant; a failed revoke is
+    // retried on the next connect's session creation.
+    let app_for_revoke = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = request(&app_for_revoke, Method::DELETE, "/vpn/session", None, true, false).await;
+    });
     CANCEL_CONNECT.store(false, Ordering::SeqCst);
     cleanup
 }

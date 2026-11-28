@@ -72,7 +72,12 @@ test('catalogue latency is one TCP handshake and never starts Xray per row', () 
   // cold tunnel, so the displayed ping stays truthful.
   assert.match(
     native,
-    /measure_tcp_rtt\(host, endpoint_port, Duration::from_millis\(1400\)\)/,
+    /measure_tcp_rtt\(&latency_host, endpoint_port, Duration::from_millis\(1400\)\)/,
+  );
+  // The handshake needs neither the HTTPS proof nor the route inspection, so it
+  // is spawned before the proof instead of after it.
+  assert.ok(
+    native.indexOf('let latency_task') < native.indexOf('let mut proof = verify_tunnel_path'),
   );
 });
 

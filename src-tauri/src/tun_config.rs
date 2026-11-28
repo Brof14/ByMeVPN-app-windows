@@ -464,12 +464,14 @@ pub fn build_tun_config_split(
     }
 
     if bypass_ru {
-        // Domains only. An earlier build also sent every host sitting on a
-        // Russian address straight out; a foreign site behind such an address
-        // then bypassed the tunnel and would not open. The domain lists below
-        // match the sniffed request name, so a Russian site reached through a
-        // foreign CDN still goes direct and a foreign site on a Russian host
-        // still goes through the VPN.
+        // The same two rules the Android client uses, because that is the
+        // configuration customers confirm works. TUN carries addresses, not
+        // names, so the address rule is the one that actually matches: dropping
+        // it (an attempt to keep foreign sites on Russian addresses inside the
+        // tunnel) removed every Russian site from the matching set at once and
+        // they all started going through the proxy and failing to open. The
+        // domain lists stay first so a name, when the core does have one, still
+        // decides before the address does.
         rules.push(json!({
             "type": "field",
             "domain": [
@@ -480,6 +482,11 @@ pub fn build_tun_config_split(
                 "domain:xn--p1ai",
                 "domain:gosuslugi.ru"
             ],
+            "outboundTag": "direct"
+        }));
+        rules.push(json!({
+            "type": "field",
+            "ip": ["geoip:ru"],
             "outboundTag": "direct"
         }));
     }
@@ -494,21 +501,6 @@ pub fn build_tun_config_split(
         "inbounds": [{
             "tag": "tun",
             "protocol": "tun",
-            // TUN carries addresses, not names, so without sniffing the RU
-            // bypass could only match whole IP ranges. Reading the name off
-            // each connection lets the domain rules decide on their own:
-            // Russian sites go direct, everything else stays in the tunnel.
-            // `routeOnly` keeps the original destination intact — the name is
-            // used for the routing decision and nothing else. `sniffing` is a
-            // property of the inbound, next to `settings`; the tun settings
-            // object does not accept it and would silently drop it.
-            "sniffing": {
-                "enabled": true,
-                // QUIC too, or a Russian site reached over HTTP/3 would still
-                // be tunnelled and hit the geo-block it avoids by going direct.
-                "destOverride": ["http", "tls", "quic"],
-                "routeOnly": true
-            },
             "settings": {
                 "name": "ByMeVPN",
                 "mtu": 1500,
@@ -1319,18 +1311,24 @@ mod tests {
         assert!(rules
             .iter()
             .any(|rule| rule["domain"][0] == json!("geosite:category-ru")));
-        // A Russian address alone is no longer a reason to leave the tunnel.
-        assert!(!rules.iter().any(|rule| rule["ip"] == json!(["geoip:ru"])));
-        // The bypass needs request names to work off, and TUN only carries IPs.
-        // Sniffing belongs to the inbound object, not to the tun settings.
-        let sniffing = &config["inbounds"][0]["sniffing"];
-        assert_eq!(sniffing["enabled"], json!(true));
-        assert_eq!(sniffing["routeOnly"], json!(true));
-        assert!(sniffing["destOverride"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("tls")));
-        assert!(config["inbounds"][0]["settings"]["sniffing"].is_null());
+        // Android parity: Russian names first, then Russian addresses. The
+        // address rule is what matches on TUN traffic, so a build without it
+        // stopped opening Russian sites altogether.
+        assert!(rules.iter().any(
+            |rule| rule["ip"] == json!(["geoip:ru"]) && rule["outboundTag"] == json!("direct")
+        ));
+        let domain_index = rules
+            .iter()
+            .position(|rule| rule["domain"][0] == json!("geosite:category-ru"))
+            .expect("RU domain rule must stay");
+        let address_index = rules
+            .iter()
+            .position(|rule| rule["ip"] == json!(["geoip:ru"]))
+            .expect("RU address rule must stay");
+        assert!(domain_index < address_index);
+        // TUN sniffing is not relied on: the pinned core accepted the config but
+        // the tunnelled path stopped carrying traffic with it enabled.
+        assert!(config["inbounds"][0].get("sniffing").is_none());
     }
 
     #[test]

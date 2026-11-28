@@ -348,7 +348,7 @@ test('VPN captures original egress before starting the full tunnel and rolls bac
   // The baseline stays ordered before the TUN, but is bounded so a slow IP
   // lookup cannot hold the connection open.
   const baselineAwait = startup.indexOf(
-    'let baseline_ip = match tokio::time::timeout(Duration::from_millis(800), baseline_task)'
+    'let baseline_ip = match tokio::time::timeout(Duration::from_millis(500), baseline_task)'
   );
   const preflightEnd = startup.indexOf('if !preflight_server_reachable');
   const fullTunnelStart = startup.indexOf(

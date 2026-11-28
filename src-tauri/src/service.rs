@@ -2503,7 +2503,7 @@ async fn vpn_start_inner(
         // so this request can never accidentally measure the VPN egress.
         // A slow baseline lookup must never hold the tunnel hostage; without it
         // the connection stays explicitly unverified until the next probe.
-        let baseline_ip = match tokio::time::timeout(Duration::from_millis(800), baseline_task)
+        let baseline_ip = match tokio::time::timeout(Duration::from_millis(500), baseline_task)
             .await
         {
             Ok(Ok(Ok(ip))) => Some(ip),
@@ -2554,15 +2554,16 @@ async fn vpn_start_inner(
         };
 
         // Bound the ENTIRE period that Windows routes through an unverified
-        // TUN. Includes the full HTTPS probe, route inspection and DNS.
+        // TUN. Includes the HTTPS probe (with one bounded retry), route
+        // inspection and DNS.
         let handoff = tokio::select! {
             // A cancel tap during the TUN handoff must roll the network back
-            // immediately instead of waiting out the 12-second budget.
+            // immediately instead of waiting out the whole budget.
             _ = wait_for_connect_cancel() => {
                 stop_failed_tun(&mut child, &config_path).await?;
                 return Err(CONNECTION_CANCELLED.into());
             }
-            result = tokio::time::timeout(Duration::from_secs(12), async {
+            result = tokio::time::timeout(Duration::from_secs(15), async {
             if !crate::egress::wait_for_attestation_listener(
                 probe_port,
                 Duration::from_secs(2),
@@ -2575,21 +2576,41 @@ async fn vpn_start_inner(
             // alongside the HTTPS proof instead of after it. The connect path
             // no longer pays for both in sequence.
             let routes_task = tauri::async_runtime::spawn(crate::tun_health::inspect());
-            let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
-            if !proof.traffic_confirmed() {
-                routes_task.abort();
-                return (proof, false, None);
-            }
             // Report the network round trip to the server endpoint. An HTTPS
             // request through the fresh tunnel also pays for Xray and TLS, so
-            // it read as a 400–500 ms "ping" on a healthy 40 ms link.
-            let latency = async {
-                measure_tcp_rtt(host, endpoint_port, Duration::from_millis(1400)).await
-            };
+            // it read as a 400–500 ms "ping" on a healthy 40 ms link. The TCP
+            // handshake needs neither the HTTPS proof nor the route inspection,
+            // so it now runs beside them instead of after a 1.4 s wait.
+            let latency_host = host.to_string();
+            let latency_task = tauri::async_runtime::spawn(async move {
+                measure_tcp_rtt(&latency_host, endpoint_port, Duration::from_millis(1400)).await
+            });
+            let mut proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
+            if !proof.traffic_confirmed() {
+                // The very first HTTPS attempt can race the Wintun adapter
+                // coming up, which is how a healthy server was once reported
+                // as "no traffic". One bounded retry costs a working
+                // connection nothing and removes that false failure.
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                proof = match tokio::time::timeout(
+                    Duration::from_secs(4),
+                    verify_tunnel_path(baseline_ip, probe_port, &probe_password),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => proof,
+                };
+            }
+            if !proof.traffic_confirmed() {
+                routes_task.abort();
+                latency_task.abort();
+                return (proof, false, None);
+            }
             let (mut routes, dns, ping) = tokio::join!(
                 async { routes_task.await.unwrap_or_default() },
                 crate::tun_health::dns_resolution_check(),
-                latency,
+                async { latency_task.await.unwrap_or_default() },
             );
             if routes.definitely_missing() {
                 tokio::time::sleep(Duration::from_millis(250)).await;
@@ -2609,11 +2630,10 @@ async fn vpn_start_inner(
             Ok(result) => result,
             Err(_) => {
                 stop_failed_tun(&mut child, &config_path).await?;
-                return Err(format!(
-                    "Проверка VPN превысила безопасный лимит.{} Системный интернет восстановлен. Журнал: {}.",
-                    log_diagnosis(&log_path),
-                    log_path.display()
-                ));
+                return Err(
+                    "Сервер отвечает слишком медленно. Обычный интернет уже восстановлен — попробуйте другую страну."
+                        .into(),
+                );
             }
         };
         let tunnel_ready = route_and_dns_ok && matches!(child.try_wait(), Ok(None));
@@ -2621,18 +2641,11 @@ async fn vpn_start_inner(
         if !tunnel_ready {
             stop_failed_tun(&mut child, &config_path).await?;
             return Err(if !proof.traffic_confirmed() {
-                format!(
-                    "VPN не передаёт трафик ({}).{} Сетевые настройки Windows восстановлены. Журнал: {}.",
-                    proof.status(),
-                    log_diagnosis(&log_path),
-                    log_path.display()
-                )
+                "Сервер не пропустил интернет-трафик. Обычный интернет уже восстановлен — нажмите «Повторить» или выберите другую страну."
+                    .into()
             } else {
-                format!(
-                    "VPN-сервер отвечает, но Windows TUN или DNS не работает.{} Подключение отменено, обычный интернет восстановлен. Журнал: {}.",
-                    log_diagnosis(&log_path),
-                    log_path.display()
-                )
+                "Сервер отвечает, но интернет через него не идёт. Обычный интернет уже восстановлен — выберите другую страну."
+                    .into()
             });
         }
 

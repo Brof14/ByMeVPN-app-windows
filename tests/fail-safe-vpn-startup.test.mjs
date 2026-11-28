@@ -31,7 +31,10 @@ test('observed traffic without IP proof stays unverified; failed TUN proof is ro
   assert.match(start, /let verified_ip = tunnel_ready\.then\(\|\| proof\.verified_ip\(\)\)\.flatten\(\)/);
   assert.match(start, /if !tunnel_ready \{/);
   assert.match(start, /stop_failed_tun\(&mut child, &config_path\)\.await/);
-  assert.match(start, /tokio::time::timeout\(Duration::from_secs\(12\)/);
+  // The verified window stays bounded; it now also covers one retry of the
+  // traffic proof, which removed a false "no traffic" failure on a healthy
+  // server.
+  assert.match(start, /tokio::time::timeout\(Duration::from_secs\(15\)/);
   assert.match(start, /return Err\(/);
   assert.ok(start.indexOf('if !tunnel_ready') < start.indexOf('*lock = Some(ActiveTunnel {'));
   assert.match(egress, /TrafficObservedUnverified/);

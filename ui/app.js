@@ -4147,7 +4147,7 @@ function serverHasFreshMeasurement(server) {
 
 function isRetryableAutomaticServerFailure(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
-  return /Выбранный сервер не передал проверочный HTTPS-запрос|VPN не передаёт трафик \(server_unreachable\)|Xray завершился во время локальной проверки|Xray не открыл локальный порт проверки|Ошибка конфигурации Xray|Сервер вернул|Сервер не вернул|Сервер использует|Некорректные параметры Hysteria/i.test(message);
+  return /Выбранный сервер не передал проверочный HTTPS-запрос|VPN не передаёт трафик \(server_unreachable\)|Сервер не пропустил интернет-трафик|Сервер отвечает, но интернет через него не идёт|Сервер отвечает слишком медленно|Xray завершился во время локальной проверки|Xray не открыл локальный порт проверки|Ошибка конфигурации Xray|Сервер вернул|Сервер не вернул|Сервер использует|Некорректные параметры Hysteria/i.test(message);
 }
 
 // Automatic selection must also fail over when no latency result pinned a

@@ -12,6 +12,10 @@ test('desktop launches wide and remains resizable', () => {
   assert.ok(win.width > win.height);
   assert.ok(win.minWidth <= win.width);
   assert.ok(win.minHeight <= win.height);
+  // A hard floor keeps the desktop layout legible instead of collapsing into
+  // unreadable millimetres when the window is dragged small.
+  assert.ok(win.minWidth >= 880, 'minimum width must keep the layout readable');
+  assert.ok(win.minHeight >= 560, 'minimum height must keep the layout readable');
   assert.equal(win.resizable, true);
   assert.equal(win.maximized, false);
 });

@@ -113,12 +113,14 @@ test('Support page follows current Android Telegram hero, email row, and informa
   assert.match(native, /mailto:support@bymevpn\.com\?subject=ByMeVPN%20support/);
 });
 
-test('FAQ follows the current Android five-question single-open accordion', () => {
+test('FAQ keeps six useful questions in one single-open accordion', () => {
   const faq = html.slice(html.indexOf('id="modal-faq"'), html.indexOf('<!-- Legal Terms/Privacy Modal -->'));
-  assert.equal((faq.match(/class="faq-accordion-item"/g) || []).length, 5);
-  assert.match(faq, /data-i18n="faq_subtitle"/);
+  assert.equal((faq.match(/class="faq-accordion-item"/g) || []).length, 6);
+  assert.doesNotMatch(faq, /faq_subtitle/);
   assert.match(faq, /aria-expanded="false"/);
-  assert.match(faq, /id="faq-answer-5"/);
+  assert.match(faq, /id="faq-answer-6"/);
+  // Auth questions contradict an app the user is already signed in to.
+  assert.doesNotMatch(faq, /faq_q[0-9]"[^>]*>Не получается войти|data-i18n="faq_q[0-9]">Не получается войти/);
   assert.match(source, /function nextFaqExpandedIndex\(expandedIndex, selectedIndex\)/);
   assert.match(source, /aria-expanded/);
   // Ответ раскрывается плавно: трек 0fr -> 1fr вместо мгновенного display.
@@ -325,7 +327,7 @@ test('VPN captures original egress before starting the full tunnel and rolls bac
   // The baseline stays ordered before the TUN, but is bounded so a slow IP
   // lookup cannot hold the connection open.
   const baselineAwait = startup.indexOf(
-    'let baseline_ip = match tokio::time::timeout(Duration::from_millis(3000), baseline_task)'
+    'let baseline_ip = match tokio::time::timeout(Duration::from_millis(800), baseline_task)'
   );
   const preflightEnd = startup.indexOf('if !preflight_server_reachable');
   const fullTunnelStart = startup.indexOf(

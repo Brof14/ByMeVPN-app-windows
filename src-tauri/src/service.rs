@@ -1,8 +1,8 @@
 use crate::api_transport::{send_to_bases, API_BASES};
 use crate::egress::{preflight_xray_server, verify_tunnel_path, TunnelProof};
 use crate::tun_config::{
-    add_attestation_http_inbound, build_tun_config_ext, build_tun_config_split,
-    preflight_attestation_config, supports_windows_session,
+    add_attestation_http_inbound, build_tun_config_split, preflight_attestation_config,
+    supports_windows_session,
 };
 use crate::tunnel_runtime::verify_runtime;
 use keyring::Entry;
@@ -20,7 +20,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
@@ -46,102 +46,30 @@ static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(())
 // reqwest::Client is internally pooled and inexpensive to clone. Avoid a new
 // TLS/DNS connection pool and new X-HWID file reads for every API request.
 static API_CLIENT: OnceLock<Client> = OnceLock::new();
-static SERVER_PING_CACHE: OnceLock<Mutex<ServerPingCache>> = OnceLock::new();
-static SERVER_PING_IN_FLIGHT: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
-static SERVER_PING_EPOCH: AtomicU64 = AtomicU64::new(0);
-const SERVER_PING_CACHE_TTL: Duration = Duration::from_secs(600);
-// A failed measurement is usually a cold-start or transient network timeout.
-// Keeping it for the full success TTL left every row on "could not measure"
-// for ten minutes even after the server became healthy again.
-const SERVER_PING_FAILURE_TTL: Duration = Duration::from_secs(60);
-const SERVER_PING_CACHE_LIMIT: usize = 512;
+// A successful preflight proves the selected server config end to end. Keeping
+// that proof for a few minutes lets a reconnect skip a whole extra Xray process
+// and a second HTTPS round trip while staying bounded to one server config.
+static PREFLIGHT_CACHE: OnceLock<Mutex<HashMap<String, std::time::Instant>>> = OnceLock::new();
+const PREFLIGHT_CACHE_TTL: Duration = Duration::from_secs(600);
 
-fn server_ping_entry_fresh(
-    measured_at: std::time::Instant,
-    ping: u32,
-    now: std::time::Instant,
-) -> bool {
-    let ttl = if ping > 0 {
-        SERVER_PING_CACHE_TTL
-    } else {
-        SERVER_PING_FAILURE_TTL
-    };
-    now.saturating_duration_since(measured_at) < ttl
+fn preflight_cache_hit(key: &str) -> bool {
+    let now = std::time::Instant::now();
+    PREFLIGHT_CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map(|mut entries| {
+            entries.retain(|_, seen| now.saturating_duration_since(*seen) < PREFLIGHT_CACHE_TTL);
+            entries.contains_key(key)
+        })
+        .unwrap_or(false)
 }
 
-fn cancel_server_ping_probes() {
-    SERVER_PING_EPOCH.fetch_add(1, Ordering::SeqCst);
-}
-
-#[derive(Default)]
-struct ServerPingCache {
-    entries: HashMap<String, (std::time::Instant, u32)>,
-}
-
-impl ServerPingCache {
-    fn get(&mut self, key: &str, now: std::time::Instant) -> Option<u32> {
-        self.entries
-            .retain(|_, (measured_at, ping)| server_ping_entry_fresh(*measured_at, *ping, now));
-        self.entries.get(key).map(|(_, ping)| *ping)
-    }
-
-    fn insert(&mut self, key: String, ping: u32, now: std::time::Instant) {
-        self.entries
-            .retain(|_, (measured_at, stored)| server_ping_entry_fresh(*measured_at, *stored, now));
-        if self.entries.len() >= SERVER_PING_CACHE_LIMIT && !self.entries.contains_key(&key) {
-            if let Some(oldest) = self
-                .entries
-                .iter()
-                .min_by_key(|(_, (measured_at, _))| *measured_at)
-                .map(|(key, _)| key.clone())
-            {
-                self.entries.remove(&oldest);
-            }
-        }
-        self.entries.insert(key, (now, ping));
-    }
-}
-
-enum ProbeRegistration {
-    Started,
-    Existing(bool),
-    Unavailable,
-}
-
-fn register_server_ping(key: &str) -> ProbeRegistration {
-    let flights = SERVER_PING_IN_FLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
-    let Ok(mut flights) = flights.lock() else {
-        return ProbeRegistration::Unavailable;
-    };
-    if let Some(running) = flights.get(key) {
-        ProbeRegistration::Existing(*running)
-    } else {
-        flights.insert(key.to_string(), false);
-        ProbeRegistration::Started
-    }
-}
-
-fn set_server_ping_running(key: &str, running: bool) {
-    if let Ok(mut flights) = SERVER_PING_IN_FLIGHT
+fn remember_preflight(key: String) {
+    if let Ok(mut entries) = PREFLIGHT_CACHE
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
     {
-        if let Some(status) = flights.get_mut(key) {
-            *status = running;
-        }
-    }
-}
-
-struct ServerPingFlight(String);
-
-impl Drop for ServerPingFlight {
-    fn drop(&mut self) {
-        if let Ok(mut flights) = SERVER_PING_IN_FLIGHT
-            .get_or_init(|| Mutex::new(HashMap::new()))
-            .lock()
-        {
-            flights.remove(&self.0);
-        }
+        entries.insert(key, std::time::Instant::now());
     }
 }
 
@@ -474,7 +402,6 @@ fn save_secret(name: &str, value: &str) -> Result<(), String> {
 
 fn clear_secrets() {
     AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
-    cancel_server_ping_probes();
     for key in [
         ACCESS_KEY,
         REFRESH_KEY,
@@ -797,7 +724,6 @@ async fn store_auth(value: Value, generation: u64) -> Result<AuthResult, String>
     let _guard = REFRESH_LOCK.lock().await;
     require_same_session(generation, AUTH_GENERATION.load(Ordering::SeqCst))?;
     AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
-    cancel_server_ping_probes();
     // A newly authenticated identity must not inherit another account's invoice.
     clear_pending_payment();
     // Fail closed on partial Credential Manager failures: a new access token
@@ -957,7 +883,6 @@ pub async fn telegram_check_session(
         // Telegram may switch the active account. Invalidate any previous
         // identity's invoice before saving the new signed-in credentials.
         AUTH_GENERATION.fetch_add(1, Ordering::SeqCst);
-        cancel_server_ping_probes();
         clear_pending_payment();
         if let Err(err) = save_secret(REFRESH_KEY, &refresh_token)
             .and_then(|_| save_secret(ACCESS_KEY, access_token))
@@ -1291,98 +1216,6 @@ fn server_array(data: &Value) -> Option<&Vec<Value>> {
         .or_else(|| data.get("raw_array").and_then(Value::as_array))
 }
 
-struct ProbeChild {
-    child: std::process::Child,
-    #[cfg(windows)]
-    _job: crate::windows_job::ChildJob,
-}
-
-impl Drop for ProbeChild {
-    fn drop(&mut self) {
-        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
-            let _ = self.child.kill();
-        }
-        let _ = self.child.wait();
-    }
-}
-
-fn spawn_probe_child(
-    runtime_dir: &std::path::Path,
-    config_path: &std::path::Path,
-) -> Option<ProbeChild> {
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    let mut command = std::process::Command::new(runtime_dir.join("xray.exe"));
-    command
-        .current_dir(runtime_dir)
-        .env("XRAY_LOCATION_ASSET", runtime_dir)
-        .args(["run", "-config"])
-        .arg(config_path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-    let mut child = command.spawn().ok()?;
-    #[cfg(windows)]
-    let job = match crate::windows_job::ChildJob::attach(&child) {
-        Ok(job) => job,
-        Err(_) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            return None;
-        }
-    };
-    Some(ProbeChild {
-        child,
-        #[cfg(windows)]
-        _job: job,
-    })
-}
-
-/// Measure latency through the server's configured Xray outbound. The
-/// temporary process has no TUN, system routes, DNS changes, or listener
-/// beyond the authenticated loopback HTTP proxy.
-async fn measure_proxy_latency(
-    runtime_dir: PathBuf,
-    app_dir: PathBuf,
-    session: Value,
-) -> Option<u32> {
-    let mut config = build_tun_config_ext(&session, false, "none", "cloudflare").ok()?;
-    let reservation = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
-    let port = reservation.local_addr().ok()?.port();
-    let password = Uuid::new_v4().simple().to_string();
-    add_attestation_http_inbound(&mut config, port, "bymevpn-ping", &password).ok()?;
-    let preflight = preflight_attestation_config(&config).ok()?;
-    fs::create_dir_all(&app_dir).ok()?;
-    let config_path = app_dir.join(format!("server-ping-{}.json", Uuid::new_v4()));
-    let _temporary_config = TemporaryConfig(config_path.clone());
-    fs::write(&config_path, serde_json::to_vec(&preflight).ok()?).ok()?;
-    drop(reservation);
-
-    let runtime_for_spawn = runtime_dir.clone();
-    let config_for_spawn = config_path.clone();
-    let mut process = tauri::async_runtime::spawn_blocking(move || {
-        spawn_probe_child(&runtime_for_spawn, &config_for_spawn)
-    })
-    .await
-    .ok()??;
-    // A cold Xray start can take well over a second on mechanical disks and
-    // slower laptops. The old 1.2 s window made every latency probe return
-    // "could not measure" even though the server was fine. Give the local
-    // listener a realistic start-up window; the request itself stays bounded.
-    if !crate::egress::wait_for_attestation_listener(port, Duration::from_millis(3000)).await {
-        return None;
-    }
-    let ping = crate::egress::measure_xray_server_latency(port, &password).await?;
-    process
-        .child
-        .try_wait()
-        .ok()
-        .is_some_and(|status| status.is_none())
-        .then_some(ping)
-}
-
 /// Round-trip time to the server's own endpoint over a single TCP handshake:
 /// no Xray process, no TUN, no payload. The catalogue shows this while the
 /// HTTPS-through-VPN probe has to stay off.
@@ -1400,11 +1233,6 @@ async fn measure_tcp_rtt(host: &str, port: u16) -> Option<u32> {
         .map(|ms| ms.max(1))
 }
 
-async fn wait_for_server_probe_cancellation(epoch: u64) {
-    while SERVER_PING_EPOCH.load(Ordering::SeqCst) == epoch {
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-}
 fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
     let serialized = serde_json::to_vec(config).unwrap_or_default();
     let mut digest = Sha256::new();
@@ -1414,29 +1242,11 @@ fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
     format!("{:x}", digest.finalize())
 }
 
-fn cached_server_ping(key: &str) -> Option<u32> {
-    SERVER_PING_CACHE
-        .get_or_init(|| Mutex::new(ServerPingCache::default()))
-        .lock()
-        .ok()?
-        .get(key, std::time::Instant::now())
-}
-
-fn cache_server_ping(key: String, ping: u32) {
-    if let Ok(mut cache) = SERVER_PING_CACHE
-        .get_or_init(|| Mutex::new(ServerPingCache::default()))
-        .lock()
-    {
-        cache.insert(key, ping, std::time::Instant::now());
-    }
-}
-
 #[tauri::command]
 pub async fn get_servers(
     app: AppHandle,
     state: State<'_, AppState>,
     force_probe: Option<bool>,
-    client_epoch: Option<u64>,
 ) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
@@ -1448,7 +1258,6 @@ pub async fn get_servers(
             .lock()
             .map(|tunnel| tunnel.is_none())
             .unwrap_or(false);
-    let client_epoch = client_epoch.unwrap_or(0);
     let mut rtt_targets = Vec::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
@@ -1562,36 +1371,48 @@ pub async fn get_servers(
             "country":country, "country_en":country_en, "country_code":code_upper,
             "city":city, "city_en":city_en,
             "protocol":protocol, "security":security, "network":network,
-            "ping_method": "vpn_https",
+            "ping_method": "tcp_rtt",
             "flag":flag, "supported":supported,
             "ping":0, "rtt_ms":0}));
     }
     // One TCP handshake per endpoint answers the question the list asks —
-    // which server is near — without a process or a payload. Six probes at a
-    // time keep a long catalogue from opening hundreds of sockets at once.
+    // which server is near — without a process or a payload. The values are
+    // joined back into the catalogue itself: background latency events used to
+    // arrive after the rows were painted, so every server read "not tested".
+    let mut latencies: HashMap<String, u32> = HashMap::new();
     if should_probe && !rtt_targets.is_empty() {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(6));
-            let mut tasks = tokio::task::JoinSet::new();
-            for (code, host, port) in rtt_targets {
-                let app = app.clone();
-                let slots = slots.clone();
-                tasks.spawn(async move {
-                    let Ok(_permit) = slots.acquire_owned().await else {
-                        return;
-                    };
-                    let Some(rtt) = measure_tcp_rtt(&host, port).await else {
-                        return;
-                    };
-                    let _ = app.emit(
-                        "server-latency-update",
-                        json!({"epoch":client_epoch, "code":code, "rtt":rtt}),
-                    );
-                });
+        let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(12));
+        let mut tasks = tokio::task::JoinSet::new();
+        for (code, host, port) in rtt_targets {
+            let slots = slots.clone();
+            tasks.spawn(async move {
+                let Ok(_permit) = slots.acquire_owned().await else {
+                    return None;
+                };
+                measure_tcp_rtt(&host, port).await.map(|rtt| (code, rtt))
+            });
+        }
+        let collect = async {
+            while let Some(joined) = tasks.join_next().await {
+                if let Ok(Some((code, rtt))) = joined {
+                    latencies.insert(code, rtt);
+                }
             }
-            while tasks.join_next().await.is_some() {}
-        });
+        };
+        // A filtered or rate-limited network must never hold the catalogue
+        // open; unanswered rows simply stay unmeasured.
+        let _ = tokio::time::timeout(Duration::from_millis(900), collect).await;
+    }
+    for server in normalized.iter_mut() {
+        let code = server
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if let Some(rtt) = latencies.get(&code).copied() {
+            server["ping"] = json!(rtt);
+            server["rtt_ms"] = json!(rtt);
+        }
     }
     Ok(normalized)
 }
@@ -2335,7 +2156,6 @@ async fn vpn_start_inner(
     node_code: Option<String>,
     automatic: bool,
 ) -> Result<TunnelMetrics, String> {
-    cancel_server_ping_probes();
     let _connection_guard = state.connection_gate.lock().await;
     // This attempt owns the cancel flag only after it owns the gate, so a tap
     // that cancels while the attempt is still queued is never lost.
@@ -2552,78 +2372,89 @@ async fn vpn_start_inner(
         .map_err(|_| "Не удалось создать локальный тест сервера VPN.")?;
         let _temporary_config = TemporaryConfig(preflight_path.clone());
 
-        // Preserve preflight failures for local diagnostics, overwriting the
-        // log only when the real TUN stage starts. Never upload raw Xray logs.
-        let startup_log = app_dir.join("xray_startup.log");
+        // A successful preflight for this exact endpoint and protocol is still
+        // valid, so a reconnect skips another Xray process start and another
+        // HTTPS round trip. Any different config is always checked again.
+        let preflight_key = server_ping_cache_key(&chosen_node, session);
         let log_diagnosis = |path: &std::path::Path| {
             crate::tun_health::xray_failure_diagnosis(path)
                 .map(|cause| format!(" Причина: {cause}."))
                 .unwrap_or_default()
         };
-        let preflight_log = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&startup_log)
-            .map_err(|_| "Не удалось открыть журнал проверки VPN.")?;
-        let preflight_stdout = preflight_log
-            .try_clone()
-            .map_err(|_| "Не удалось подготовить журнал проверки VPN.")?;
-        let mut preflight_child = std::process::Command::new(runtime_dir.join("xray.exe"))
-            .current_dir(&runtime_dir)
-            .env("XRAY_LOCATION_ASSET", &runtime_dir)
-            .args(["run", "-config"])
-            .arg(&preflight_path)
-            .stdout(std::process::Stdio::from(preflight_stdout))
-            .stderr(std::process::Stdio::from(preflight_log))
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|_| "Не удалось запустить проверку VPN-сервера.")?;
-        #[cfg(windows)]
-        let preflight_job = match crate::windows_job::ChildJob::attach(&preflight_child) {
-            Ok(job) => job,
-            Err(error) => {
-                let _ = preflight_child.kill();
-                let _ = preflight_child.wait();
-                return Err(error);
-            }
-        };
-        let preflight_process_running = matches!(preflight_child.try_wait(), Ok(None));
-        let preflight_listener_ready = preflight_process_running
-            && wait_for_probe_listener(probe_port, Duration::from_secs(8)).await;
-        let preflight_server_reachable = preflight_listener_ready
-            && tokio::select! {
-                reachable = preflight_xray_server(probe_port, &probe_password) => reachable,
-                _ = wait_for_connect_cancel() => false,
+        if preflight_cache_hit(&preflight_key) {
+            remember_preflight(preflight_key);
+            cancellation_requested()?;
+        } else {
+            let startup_log = app_dir.join("xray_startup.log");
+
+            // Preserve preflight failures for local diagnostics, overwriting the
+            // log only when the real TUN stage starts. Never upload raw Xray logs.
+            let preflight_log = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&startup_log)
+                .map_err(|_| "Не удалось открыть журнал проверки VPN.")?;
+            let preflight_stdout = preflight_log
+                .try_clone()
+                .map_err(|_| "Не удалось подготовить журнал проверки VPN.")?;
+            let mut preflight_child = std::process::Command::new(runtime_dir.join("xray.exe"))
+                .current_dir(&runtime_dir)
+                .env("XRAY_LOCATION_ASSET", &runtime_dir)
+                .args(["run", "-config"])
+                .arg(&preflight_path)
+                .stdout(std::process::Stdio::from(preflight_stdout))
+                .stderr(std::process::Stdio::from(preflight_log))
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|_| "Не удалось запустить проверку VPN-сервера.")?;
+            #[cfg(windows)]
+            let preflight_job = match crate::windows_job::ChildJob::attach(&preflight_child) {
+                Ok(job) => job,
+                Err(error) => {
+                    let _ = preflight_child.kill();
+                    let _ = preflight_child.wait();
+                    return Err(error);
+                }
             };
-        // Shut down the process with NO TUN before enabling the system route.
-        let _ = preflight_child.kill();
-        let _ = preflight_child.wait();
-        #[cfg(windows)]
-        drop(preflight_job);
-        // Windows networking is still untouched here, so a cancelled attempt can
-        // return without any rollback beyond the session revoke below.
-        cancellation_requested()?;
-        if !preflight_process_running {
-            return Err(format!(
-                "Xray завершился во время локальной проверки сервера.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
-                log_diagnosis(&startup_log),
-                startup_log.display()
-            ));
-        }
-        if !preflight_listener_ready {
-            return Err(format!(
-                "Xray не открыл локальный порт проверки за 8 секунд.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
-                log_diagnosis(&startup_log),
-                startup_log.display()
-            ));
-        }
-        if !preflight_server_reachable {
-            return Err(format!(
-                "Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер или проверьте его параметры.",
-                log_diagnosis(&startup_log),
-                startup_log.display()
-            ));
+            let preflight_process_running = matches!(preflight_child.try_wait(), Ok(None));
+            let preflight_listener_ready = preflight_process_running
+                && wait_for_probe_listener(probe_port, Duration::from_secs(8)).await;
+            let preflight_server_reachable = preflight_listener_ready
+                && tokio::select! {
+                    reachable = preflight_xray_server(probe_port, &probe_password) => reachable,
+                    _ = wait_for_connect_cancel() => false,
+                };
+            // Shut down the process with NO TUN before enabling the system route.
+            let _ = preflight_child.kill();
+            let _ = preflight_child.wait();
+            #[cfg(windows)]
+            drop(preflight_job);
+            // Windows networking is still untouched here, so a cancelled attempt can
+            // return without any rollback beyond the session revoke below.
+            cancellation_requested()?;
+            if !preflight_process_running {
+                return Err(format!(
+                    "Xray завершился во время локальной проверки сервера.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
+                    log_diagnosis(&startup_log),
+                    startup_log.display()
+                ));
+            }
+            if !preflight_listener_ready {
+                return Err(format!(
+                    "Xray не открыл локальный порт проверки за 8 секунд.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер.",
+                    log_diagnosis(&startup_log),
+                    startup_log.display()
+                ));
+            }
+            if !preflight_server_reachable {
+                return Err(format!(
+                    "Выбранный сервер не передал проверочный HTTPS-запрос через свой протокол.{} Маршруты Windows не менялись. Журнал: {}. Попробуйте другой сервер или проверьте его параметры.",
+                    log_diagnosis(&startup_log),
+                    startup_log.display()
+                ));
+            }
+            remember_preflight(preflight_key);
         }
 
         // A missing external baseline is not a tunnel failure by itself, but
@@ -2631,7 +2462,7 @@ async fn vpn_start_inner(
         // so this request can never accidentally measure the VPN egress.
         // A slow baseline lookup must never hold the tunnel hostage; without it
         // the connection stays explicitly unverified until the next probe.
-        let baseline_ip = match tokio::time::timeout(Duration::from_millis(3000), baseline_task)
+        let baseline_ip = match tokio::time::timeout(Duration::from_millis(800), baseline_task)
             .await
         {
             Ok(Ok(Ok(ip))) => Some(ip),
@@ -2699,8 +2530,13 @@ async fn vpn_start_inner(
             {
                 return (TunnelProof::ProbeUnavailable, false, None);
             }
+            // Route inspection shells out to Windows networking, so it runs
+            // alongside the HTTPS proof instead of after it. The connect path
+            // no longer pays for both in sequence.
+            let routes_task = tauri::async_runtime::spawn(crate::tun_health::inspect());
             let proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
             if !proof.traffic_confirmed() {
+                routes_task.abort();
                 return (proof, false, None);
             }
             // Report the network round trip to the server endpoint. An HTTPS
@@ -2716,7 +2552,7 @@ async fn vpn_start_inner(
                 .flatten()
             };
             let (mut routes, dns, ping) = tokio::join!(
-                crate::tun_health::inspect(),
+                async { routes_task.await.unwrap_or_default() },
                 crate::tun_health::dns_resolution_check(),
                 latency,
             );
@@ -3302,16 +3138,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn server_probe_cancellation_advances_the_generation() {
-        let previous = SERVER_PING_EPOCH.load(Ordering::SeqCst);
-        cancel_server_ping_probes();
-        assert_eq!(
-            SERVER_PING_EPOCH.load(Ordering::SeqCst),
-            previous.wrapping_add(1)
-        );
-    }
-
-    #[test]
     fn renewal_changes_are_accepted_only_with_explicit_server_confirmation() {
         assert_eq!(renewal_status(&json!({"auto_renew": true})).unwrap(), true);
         assert!(renewal_status(&json!({"auto_renew": "false"})).is_err());
@@ -3350,26 +3176,17 @@ mod tests {
     }
 
     #[test]
-    fn server_tcp_ping_cache_is_config_scoped_keeps_failures_and_expires() {
-        let now = std::time::Instant::now();
+    fn preflight_cache_is_scoped_to_the_endpoint_config() {
         let config = json!({"protocol":"vless","server":"vpn.example","port":443});
         let key = server_ping_cache_key("node-a", &config);
-        let mut cache = ServerPingCache::default();
-        cache.insert(key.clone(), 0, now);
-
-        assert_eq!(cache.get(&key, now), Some(0));
-        assert_eq!(cache.get(&key, now + Duration::from_secs(59)), Some(0));
-        assert_eq!(cache.get(&key, now + Duration::from_secs(60)), None);
-        assert_ne!(
-            key,
-            server_ping_cache_key(
-                "node-a",
-                &json!({"protocol":"vless","server":"vpn2.example","port":443})
-            )
+        let other = server_ping_cache_key(
+            "node-a",
+            &json!({"protocol":"vless","server":"vpn2.example","port":443}),
         );
-        cache.insert(key.clone(), 42, now);
-        assert_eq!(cache.get(&key, now + Duration::from_secs(599)), Some(42));
-        assert_eq!(cache.get(&key, now + Duration::from_secs(600)), None);
+        assert_ne!(key, other);
+        remember_preflight(key.clone());
+        assert!(preflight_cache_hit(&key));
+        assert!(!preflight_cache_hit(&other));
     }
 
     #[test]

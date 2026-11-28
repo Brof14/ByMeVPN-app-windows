@@ -264,7 +264,7 @@
               </span>
             </div>
             <div class="header-right-actions">
-              <button type="button" id="btn-top-help" class="header-circle-btn" title="Помощь" data-i18n-title="help_tooltip">?</button>
+              <button type="button" id="btn-top-help" class="header-circle-btn header-faq-btn" title="Частые вопросы" data-i18n-title="faq_title" aria-label="Частые вопросы">FAQ</button>
               
             </div>
           </div>
@@ -548,8 +548,7 @@
                     <span data-latency-label data-i18n="server_measure_latency">Проверить задержку</span>
                   </button>
                 </div>
-                <p class="server-latency-help" data-i18n="server_latency_help">Измеряется задержка через каждый сервер до интернета. VPN включать не нужно.</p>
-                <p id="server-latency-progress" class="server-latency-progress hidden" role="status" aria-live="polite"></p>
+                <p class="server-latency-help" data-i18n="server_latency_help">Задержка — это время ответа самого сервера. VPN включать не нужно.</p>
 
                 <!-- Recommended Auto Card -->
                 <button type="button" id="recommended-server-auto" class="glass-card recommended-server-card selected" data-server-code="auto" aria-pressed="true">
@@ -868,7 +867,7 @@
                 <div class="android-support-card-group">
                   <button type="button" class="android-support-row" id="card-support-about">
                     <span class="android-support-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg></span>
-                    <span class="android-support-row-copy"><strong data-i18n="support_about">О приложении</strong><span class="version-num" data-app-version="1.2.29">Версия 1.2.29</span></span>
+                    <span class="android-support-row-copy"><strong data-i18n="support_about">О приложении</strong><span class="version-num" data-app-version="1.2.30">Версия 1.2.30</span></span>
                     <span class="android-support-row-arrow" aria-hidden="true">›</span>
                   </button>
                   <button type="button" class="android-support-row" id="card-support-legal">
@@ -956,7 +955,7 @@
                         <path d="M12 51C21 26 35 34 46 44C57 34 72 26 80 51C71 75 58 67 46 55C34 67 21 75 12 51ZM17 51C24 61 31 59 41 51C31 42 23 40 17 51ZM51 51C62 59 70 61 75 51C69 40 61 42 51 51Z" fill="url(#vShieldGrad)"/>
                       </svg>
                     </div>
-                <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.29">Версия 1.2.29</span></span>
+                <span class="version-text">ByMeVPN <span class="version-num" data-app-version="1.2.30">Версия 1.2.30</span></span>
                   </div>
                 </div>
               </section>
@@ -1202,57 +1201,64 @@
     <div id="modal-faq" class="modal-backdrop hidden">
       <div class="glass-card modal-window modal-faq-window">
         <div class="modal-head faq-modal-head">
-          <div class="modal-icon-badge" aria-hidden="true">?</div>
           <div class="faq-heading-copy">
             <h3 data-i18n="faq_title">Частые вопросы</h3>
-            <p data-i18n="faq_subtitle">Короткие ответы по делу</p>
           </div>
           <button type="button" class="btn-modal-close" data-close-modal="modal-faq" data-i18n-title="faq_close_label" aria-label="Закрыть частые вопросы">×</button>
         </div>
         <div class="faq-accordion-list">
           <div class="faq-accordion-item">
             <button type="button" class="faq-item-toggle" data-faq-index="0" aria-expanded="false" aria-controls="faq-answer-1">
-              <span class="faq-question" data-i18n="faq_q1">Не удаётся подключиться</span>
+              <span class="faq-question" data-i18n="faq_q1">Серверы не загружаются</span>
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-1" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a1">Выберите другой доступный сервер и попробуйте ещё раз. Если ошибка повторяется, проверьте подключение к интернету и отправьте в поддержку код ошибки из приложения.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a1">Проверьте интернет и нажмите «Обновить» в разделе серверов. Если список остаётся пустым, перезапустите приложение: последние сохранённые локации подгрузятся сразу.</div>
             </div>
           </div>
           <div class="faq-accordion-item">
             <button type="button" class="faq-item-toggle" data-faq-index="1" aria-expanded="false" aria-controls="faq-answer-2">
-              <span class="faq-question" data-i18n="faq_q2">VPN отключается при блокировке Windows</span>
+              <span class="faq-question" data-i18n="faq_q2">Как выбрать сервер</span>
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-2" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a2">Если VPN нужен после закрытия окна, включите «Оставаться подключённым в фоне» в дополнительных настройках. При переходе компьютера в режим сна Windows приостанавливает сетевую активность.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a2">«Автоматически» выбирает сервер с наименьшей задержкой. Страну можно указать вручную: число рядом с названием показывает время ответа сервера, зелёное — меньше 200 мс.</div>
             </div>
           </div>
           <div class="faq-accordion-item">
             <button type="button" class="faq-item-toggle" data-faq-index="2" aria-expanded="false" aria-controls="faq-answer-3">
-              <span class="faq-question" data-i18n="faq_q3">Достигнут лимит устройств</span>
+              <span class="faq-question" data-i18n="faq_q3">Подключение занимает несколько секунд</span>
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-3" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a3">Отключите старое устройство в разделе «Мои устройства» или откройте Telegram-бота и проверьте стоимость увеличения лимита.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a3">Перед подключением приложение проверяет, что выбранный сервер действительно передаёт трафик. При повторном подключении к тому же серверу результат проверки переиспользуется, поэтому оно проходит быстрее.</div>
             </div>
           </div>
           <div class="faq-accordion-item">
             <button type="button" class="faq-item-toggle" data-faq-index="3" aria-expanded="false" aria-controls="faq-answer-4">
-              <span class="faq-question" data-i18n="faq_q4">Как включить пробный период?</span>
+              <span class="faq-question" data-i18n="faq_q4">VPN включён, но интернет не работает</span>
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-4" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a4">Нажмите «Активировать бесплатно» на главном экране. Пробный период доступен один раз на аккаунт. Если статус не обновился, откройте аккаунт и повторите проверку.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a4">Нажмите «Проверить снова» на главном экране. Если защита не подтверждается, переподключитесь или смените сервер: маршруты и DNS Windows восстанавливаются автоматически при отключении.</div>
             </div>
           </div>
           <div class="faq-accordion-item">
             <button type="button" class="faq-item-toggle" data-faq-index="4" aria-expanded="false" aria-controls="faq-answer-5">
-              <span class="faq-question" data-i18n="faq_q5">Не получается войти</span>
+              <span class="faq-question" data-i18n="faq_q5">VPN отключается при блокировке Windows</span>
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-5" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a5">Войдите тем же способом, которым регистрировались. Для аккаунта из Telegram-бота используйте кнопку входа через Telegram.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a5">Включите «Оставаться подключённым в фоне» в дополнительных настройках. При переходе компьютера в сон Windows приостанавливает сетевую активность.</div>
+            </div>
+          </div>
+          <div class="faq-accordion-item">
+            <button type="button" class="faq-item-toggle" data-faq-index="5" aria-expanded="false" aria-controls="faq-answer-6">
+              <span class="faq-question" data-i18n="faq_q6">Лимит устройств и пробный период</span>
+              <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
+            </button>
+            <div id="faq-answer-6" class="faq-item-body" aria-hidden="true">
+              <div class="faq-item-body-inner" data-i18n="faq_a6">Пробный период активируется на главном экране один раз на аккаунт. Освободить слот можно в «Моих устройствах», увеличить лимит — в Telegram-боте.</div>
             </div>
           </div>
         </div>

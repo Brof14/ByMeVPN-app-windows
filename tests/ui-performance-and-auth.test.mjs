@@ -44,18 +44,6 @@ test('latency values keep their Android-aligned presentation states', () => {
   assert.equal(app.run('serverLatencyPresentation({ ping: -3 }).tone'), 'checking');
   assert.equal(app.run('serverLatencyPresentation({ ping: -4 }).tone'), 'queued');
   assert.equal(app.run('serverLatencyPresentation({ ping: 0 }).tone'), 'unknown');
-  // A missing list must not throw while the server screen is closed.
-  assert.equal(app.run("updateServerLatencyCard({ code: 'de', ping: 12 })"), undefined);
-});
-
-test('each latency event patches one row instead of rebuilding the catalog', () => {
-  const start = js.indexOf("await events.listen('server-latency-update'");
-  assert.ok(start > 0, 'latency listener missing');
-  const listener = js.slice(start, js.indexOf('});', start) + 3);
-  assert.doesNotMatch(listener, /renderServersList\(/);
-  assert.match(listener, /updateServerLatencyCard\(updated\)/);
-  assert.match(listener, /scheduleVpnUiUpdate\(\)/);
-  assert.match(js, /function renderServersList\(filter = state\.serverSearchQuery\)/);
 });
 
 test('overlapping account refreshes share one native request', () => {

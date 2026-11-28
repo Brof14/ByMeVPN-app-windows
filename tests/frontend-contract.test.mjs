@@ -521,18 +521,18 @@ test('server catalog does not retry authorization errors and explains recovery',
 
 test('cached server catalogs do not present stale latency as current', () => {
   const app = harness();
-  const result = app.eval("sanitizeCachedServerCatalog([{code:'node-a',supported:true,ping:42,ping_method:'vpn_https'}])");
+  const result = app.eval("sanitizeCachedServerCatalog([{code:'node-a',supported:true,ping:42,ping_method:'tcp_rtt'}])");
   assert.equal(result[0].ping, 0);
-  assert.equal(result[0].ping_method, 'vpn_https');
+  assert.equal(result[0].ping_method, 'tcp_rtt');
 });
 
 test('automatic server choice uses the quickest measured proxy latency across supported protocols', () => {
   const app = harness();
   const result = app.eval(`chooseAutomaticServer([
-    {code:'hy2',supported:true,security:'tls',ping_method:'vpn_https',ping:20},
-    {code:'reality-slow',supported:true,security:'reality',ping_method:'vpn_https',ping:80},
-    {code:'reality-fast',supported:true,security:'reality',ping_method:'vpn_https',ping:35},
-    {code:'tls-fast',supported:true,security:'tls',ping_method:'vpn_https',ping:10}
+    {code:'hy2',supported:true,security:'tls',ping_method:'tcp_rtt',ping:20},
+    {code:'reality-slow',supported:true,security:'reality',ping_method:'tcp_rtt',ping:80},
+    {code:'reality-fast',supported:true,security:'reality',ping_method:'tcp_rtt',ping:35},
+    {code:'tls-fast',supported:true,security:'tls',ping_method:'tcp_rtt',ping:10}
   ])`);
   assert.equal(result.code, 'tls-fast');
   const unmeasured = app.eval("chooseAutomaticServer([{code:'first',supported:true,ping:0},{code:'measured-failure',supported:true,ping:-2}])");
@@ -669,8 +669,7 @@ test('server latency action requests fresh outbound probes and identifies suppor
   assert.equal(app.eval("serverTransportLabel({network:'grpc'})"), 'gRPC');
   assert.equal(app.eval("serverTransportLabel({network:'tcp'})"), 'TCP');
   assert.match(source, /loadAvailableServers\(\{ forceProbe: true \}\)/);
-  assert.match(source, /invoke\('get_servers', forceProbe[\s\S]{0,100}clientEpoch: epoch/);
-  assert.match(source, /events\.listen\('server-latency-update'/);
+  assert.match(source, /invoke\('get_servers', forceProbe \? \{ forceProbe: true \} : \{\}\)/);
   assert.match(html, /id="btn-measure-server-latency"/);
   assert.match(html, /data-i18n="server_latency_help"/);
   assert.match(source, /server_latency_help: "Latency is the server's own response time/);

@@ -166,7 +166,6 @@ const I18N = {
     window_maximize: "Развернуть",
     window_close: "Закрыть",
     window_hide_tray: "Свернуть в область уведомлений",
-    help_tooltip: "Помощь",
     vpn_toggle_label: "Переключить VPN",
     routing_settings_tooltip: "Настройки маршрутизации",
     trial_badge_simple: "3 ДНЯ БЕСПЛАТНО",
@@ -498,18 +497,19 @@ const I18N = {
     tg_modal_title: 'Вход через Telegram',
     google_modal_title: 'Вход через Google',
     faq_title: 'Частые вопросы',
-    faq_subtitle: 'Короткие ответы по делу',
     faq_close_label: 'Закрыть частые вопросы',
-    faq_q1: 'Не удаётся подключиться',
-    faq_a1: 'Выберите другой доступный сервер и попробуйте ещё раз. Если ошибка повторяется, проверьте подключение к интернету и отправьте в поддержку код ошибки из приложения.',
-    faq_q2: 'VPN отключается при блокировке Windows',
-    faq_a2: 'Если VPN нужен после закрытия окна, включите «Оставаться подключённым в фоне» в дополнительных настройках. При переходе компьютера в режим сна Windows приостанавливает сетевую активность.',
-    faq_q3: 'Достигнут лимит устройств',
-    faq_a3: 'Отключите старое устройство в разделе «Мои устройства» или откройте Telegram-бота и проверьте стоимость увеличения лимита.',
-    faq_q4: 'Как включить пробный период?',
-    faq_a4: 'Нажмите «Активировать бесплатно» на главном экране. Пробный период доступен один раз на аккаунт. Если статус не обновился, откройте аккаунт и повторите проверку.',
-    faq_q5: 'Не получается войти',
-    faq_a5: 'Войдите тем же способом, которым регистрировались. Для аккаунта из Telegram-бота используйте кнопку входа через Telegram.',
+    faq_q1: 'Серверы не загружаются',
+    faq_a1: 'Проверьте интернет и нажмите «Обновить» в разделе серверов. Если список остаётся пустым, перезапустите приложение: последние сохранённые локации подгрузятся сразу.',
+    faq_q2: 'Как выбрать сервер',
+    faq_a2: '«Автоматически» выбирает сервер с наименьшей задержкой. Страну можно указать вручную: число рядом с названием показывает время ответа сервера, зелёное — меньше 200 мс.',
+    faq_q3: 'Подключение занимает несколько секунд',
+    faq_a3: 'Перед подключением приложение проверяет, что выбранный сервер действительно передаёт трафик. При повторном подключении к тому же серверу результат проверки переиспользуется, поэтому оно проходит быстрее.',
+    faq_q4: 'VPN включён, но интернет не работает',
+    faq_a4: 'Нажмите «Проверить снова» на главном экране. Если защита не подтверждается, переподключитесь или смените сервер: маршруты и DNS Windows восстанавливаются автоматически при отключении.',
+    faq_q5: 'VPN отключается при блокировке Windows',
+    faq_a5: 'Включите «Оставаться подключённым в фоне» в дополнительных настройках. При переходе компьютера в сон Windows приостанавливает сетевую активность.',
+    faq_q6: 'Лимит устройств и пробный период',
+    faq_a6: 'Пробный период активируется на главном экране один раз на аккаунт. Освободить слот можно в «Моих устройствах», увеличить лимит — в Telegram-боте.',
     cancel: 'Отмена',
     confirm: 'Подтвердить'
   },
@@ -558,7 +558,6 @@ const I18N = {
     window_maximize: "Maximize",
     window_close: "Close",
     window_hide_tray: "Hide to notification area",
-    help_tooltip: "Help",
     vpn_toggle_label: "Toggle VPN",
     routing_settings_tooltip: "Routing settings",
     trial_badge_simple: "3 DAYS FREE",
@@ -890,18 +889,19 @@ const I18N = {
     tg_modal_title: 'Telegram Sign-in',
     google_modal_title: 'Google Sign-in',
     faq_title: 'FAQ',
-    faq_subtitle: 'Quick answers',
     faq_close_label: 'Close FAQ',
-    faq_q1: "I can't connect",
-    faq_a1: 'Choose another available server and try again. If the error persists, check your internet connection and send the error code shown by the app to support.',
-    faq_q2: 'VPN disconnects when Windows is locked',
-    faq_a2: 'To keep the VPN after closing the window, enable “Stay connected in background” in Advanced settings. Windows pauses network activity when the PC sleeps.',
-    faq_q3: "I've reached the device limit",
-    faq_a3: 'Remove an old device in My devices, or open the Telegram bot to review the device limit upgrade price.',
-    faq_q4: 'How do I start the free trial?',
-    faq_a4: 'Choose “Activate for free” on Home. The trial is available once per account. If the status does not update, open Account and refresh it.',
-    faq_q5: "I can't sign in",
-    faq_a5: 'Use the same method you registered with. For an account created through the Telegram bot, use the Telegram sign-in button.',
+    faq_q1: "Servers won't load",
+    faq_a1: 'Check your connection and press “Refresh” on the servers screen. If the list stays empty, restart the app: the last saved locations appear immediately.',
+    faq_q2: 'How the server is chosen',
+    faq_a2: '“Automatic” picks the server with the lowest delay. You can choose a country yourself: the number beside its name is the server response time, green means under 200 ms.',
+    faq_q3: 'Connecting takes a few seconds',
+    faq_a3: 'Before connecting, the app checks that the chosen server really carries traffic. Reconnecting to the same server reuses that check, so it is faster.',
+    faq_q4: 'VPN is on but the internet does not work',
+    faq_a4: 'Press “Check again” on Home. If protection is not confirmed, reconnect or pick another server: Windows routes and DNS are restored automatically on disconnect.',
+    faq_q5: 'VPN disconnects when Windows is locked',
+    faq_a5: 'Turn on “Stay connected in background” in Advanced settings. Windows pauses network activity while the PC sleeps.',
+    faq_q6: 'Device limit and free trial',
+    faq_a6: 'The trial is activated on Home, once per account. Free a device slot in My devices, or raise the limit in the Telegram bot.',
     cancel: 'Cancel',
     confirm: 'Confirm'
   }
@@ -911,50 +911,8 @@ const I18N = {
 document.addEventListener('DOMContentLoaded', async () => {
   setupWindowControls();
   setupEventListeners();
-  await setupServerLatencyListener();
   await loadInitialData();
 });
-
-async function setupServerLatencyListener() {
-  const events = window.__TAURI__?.event;
-  if (typeof events?.listen !== 'function') return;
-  try {
-    await events.listen('server-latency-update', event => {
-      const result = event?.payload;
-      // Two measurements arrive on their own schedules: the HTTPS probe through
-      // the server and the plain TCP round trip. Apply whichever one this
-      // event carries and leave the other field alone.
-      const hasPing = Number.isInteger(result?.ping);
-      const hasRtt = Number.isInteger(result?.rtt) && result.rtt > 0;
-      if (!state.user || Number(result?.epoch) !== state.sessionEpoch ||
-          typeof result?.code !== 'string' || (!hasPing && !hasRtt)) return;
-      const index = state.servers.findIndex(server => server.code === result.code);
-      if (index < 0) return;
-      const patch = {};
-      if (hasPing) patch.ping = result.ping;
-      if (hasRtt) patch.rtt_ms = result.rtt;
-      const updated = { ...state.servers[index], ...patch };
-      state.servers = state.servers.map((server, i) => i === index ? updated : server);
-      if (state.selectedServer.code === result.code) {
-        state.selectedServer = { ...state.selectedServer, ...patch };
-      }
-      if (state.autoSelectedServer?.code === result.code) {
-        state.autoSelectedServer = { ...state.autoSelectedServer, ...patch };
-      }
-      // Patch only the affected card. Rebuilding the full list for every
-      // server probe stalled the WebView on PCs with long catalogs.
-      updateServerLatencyCard(updated);
-      if (!state.vpnConnected && !state.connectionBusy && state.selectedServer.code === 'auto') {
-        state.autoSelectedServer = chooseAutomaticServer(state.servers);
-      }
-      if (state.latencyRefreshing && !state.servers.some(server => [-3, -4].includes(Number(server.ping)))) {
-        clearTimeout(state.latencyWatchdog);
-        state.latencyRefreshing = false;
-      }
-      scheduleVpnUiUpdate();
-    });
-  } catch (_) { /* A missing event bridge must not block app startup. */ }
-}
 
 // Window Controls (Minimize, Maximize, Close)
 function setupWindowControls() {
@@ -1085,7 +1043,7 @@ async function loadAvailableServersOnce(options, epoch) {
     if (epoch !== state.sessionEpoch) return false;
     if (!Array.isArray(servers)) throw new Error('Invalid server catalog');
     state.servers = servers;
-    if (servers.some(server => server?.ping_method === 'vpn_https' && Number(server.ping) > 0)) {
+    if (servers.some(server => Number(server?.ping) > 0 || Number(server?.rtt_ms) > 0)) {
       state.measurementsAt = Date.now();
     }
     state.serversStale = false;
@@ -1195,7 +1153,7 @@ function sanitizeCachedServerCatalog(value) {
     for (const field of SERVER_CATALOG_FIELDS) {
       if (typeof server[field] === 'string') safe[field] = server[field].slice(0, 100);
     }
-    if (server.ping_method === 'vpn_https' || server.ping_method === 'tcp_connect') {
+    if (['tcp_rtt', 'vpn_https', 'tcp_connect'].includes(server.ping_method)) {
       safe.ping_method = server.ping_method;
     }
     // Cached catalog entries can outlive the network and server settings.
@@ -1226,9 +1184,7 @@ function saveServerCatalogCache(servers) {
 async function fetchServerCatalog(epoch, { forceProbe = false } = {}) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await invoke('get_servers', forceProbe
-        ? { forceProbe: true, clientEpoch: epoch }
-        : { clientEpoch: epoch });
+      return await invoke('get_servers', forceProbe ? { forceProbe: true } : {});
     } catch (error) {
       const raw = String(typeof error === 'string' ? error : error?.message || '');
       const retryable = /HTTP (?:429|5\d\d)|timeout|истекло время ожидания|не удалось установить защищённое TLS-соединение|ошибка сетевого обмена|не удалось связаться с ByMeVPN API/i.test(raw);
@@ -3161,17 +3117,6 @@ function updateVpnUi() {
       !(!isConn && hasPlan && !accessUnknown && !!state.connectionError));
   }
 
-  const latencyProgress = document.getElementById('server-latency-progress');
-  if (latencyProgress) {
-    const checking = state.servers.filter(server => Number(server.ping) === -3).length;
-    const queued = state.servers.filter(server => Number(server.ping) === -4).length;
-    latencyProgress.textContent = checking + queued > 0
-      ? uiText(`Проверяем серверы: ${checking} сейчас, ${queued} в очереди`,
-        `Checking servers: ${checking} active, ${queued} queued`)
-      : '';
-    latencyProgress.classList.toggle('hidden', checking + queued === 0);
-  }
-
   // Update Server info in card
   const s = state.selectedServer;
   const flagEl = document.getElementById('conn-flag-chip');
@@ -3932,12 +3877,9 @@ function automaticServerSubtitle() {
 }
 
 function serverLatencyPresentation(server) {
-  const probePing = Number(server?.ping) || 0;
-  // The HTTPS probe starts a temporary Xray process, so it stays off while a
-  // tunnel is up. The TCP round trip to the same endpoint is cheap and keeps
-  // the row honest instead of permanently reading "not tested".
+  const measured = Number(server?.ping) || 0;
   const rtt = Number(server?.rtt_ms) || 0;
-  const latency = probePing > 0 ? probePing : rtt > 0 ? rtt : probePing;
+  const latency = measured > 0 ? measured : rtt > 0 ? rtt : measured;
   const tone = latency > 0 ? (latency <= 200 ? 'measured' : latency <= 350 ? 'medium' : 'slow')
     : latency === -2 ? 'failed'
       : latency === -3 ? 'checking'
@@ -3947,11 +3889,9 @@ function serverLatencyPresentation(server) {
       : latency === -3 ? uiText('Проверяем…', 'Checking…')
         : latency === -4 ? uiText('В очереди', 'Queued')
           : uiText('Не проверен', 'Not tested');
-  const title = probePing > 0
-    ? uiText('Время HTTPS-запроса через выбранный VPN-сервер', 'HTTPS request time through the selected VPN server')
-    : latency > 0
-      ? uiText('Сетевая задержка до сервера (TCP)', 'Network round trip to the server (TCP)')
-      : label;
+  const title = latency > 0
+    ? uiText('Сетевая задержка до сервера (TCP)', 'Network round trip to the server (TCP)')
+    : label;
   return { latency, tone, label, title, aria: latency > 0 ? `${title}: ${latency} ms` : label };
 }
 
@@ -3970,30 +3910,6 @@ function applyCountryFlag(element, server) {
     element.classList.remove('country-flag');
   }
   element.setAttribute('aria-hidden', 'true');
-}
-
-// Update a single rendered server row in place without touching the rest of
-// the list, the search field or keyboard focus.
-function updateServerLatencyCard(server) {
-  const container = document.getElementById('servers-dynamic-list');
-  if (!container || !Array.isArray(container.children)) return;
-  const card = Array.from(container.children)
-    .find(child => child?.dataset?.code === server.code);
-  if (!card?.querySelector) return;
-  const info = serverLatencyPresentation(server);
-  const ping = card.querySelector('.server-latency-label');
-  const dot = card.querySelector('.server-latency-dot');
-  if (ping) {
-    ping.className = `server-latency-label ${info.tone}`;
-    ping.textContent = info.label;
-    ping.title = info.title;
-    ping.setAttribute('aria-label', info.aria);
-  }
-  if (dot) dot.className = `server-latency-dot ${info.tone}`;
-  const protocol = card.querySelector('.server-protocol-badge');
-  const transport = card.querySelector('.server-transport-badge');
-  card.setAttribute('aria-label',
-    `${serverDisplayName(server)}, ${protocol?.textContent || serverProtocolLabel(server)}, ${transport?.textContent || serverTransportLabel(server)}, ${info.label}`);
 }
 
 // Several probes can finish inside one display frame. Collapse their UI work
@@ -4153,7 +4069,7 @@ function automaticServerProtocolRank(server) {
 function automaticServerCandidates(servers) {
   const supported = (Array.isArray(servers) ? servers : [])
     .filter(server => server && server.supported !== false && Number(server.ping) !== -2);
-  const latency = server => server.ping_method === 'vpn_https' && Number(server.ping) > 0
+  const latency = server => Number(server.ping) > 0
     ? Number(server.ping) : Number.POSITIVE_INFINITY;
   return supported.sort((a, b) =>
     latency(a) - latency(b) || automaticServerProtocolRank(a) - automaticServerProtocolRank(b));
@@ -4187,7 +4103,8 @@ function chooseAutomaticServer(servers) {
 // Only a measurement taken inside the native cache window may rank automatic
 // selection; anything older is treated like an unmeasured candidate.
 function serverHasFreshMeasurement(server) {
-  if (!server || server.ping_method !== 'vpn_https' || !(Number(server.ping) > 0)) return false;
+  if (!server || !['tcp_rtt', 'vpn_https'].includes(server.ping_method) ||
+      !(Number(server.ping) > 0)) return false;
   const measuredAt = Number(state.measurementsAt || 0);
   // Zero means the age is unknown (for example a catalog restored without a
   // load timestamp); do not discard a usable measurement in that case.

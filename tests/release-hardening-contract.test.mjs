@@ -53,11 +53,13 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
 test('catalogue latency is one TCP handshake and never starts Xray per row', () => {
   assert.match(native, /async fn measure_tcp_rtt\(/);
   assert.match(native, /tokio::net::TcpStream::connect\(\(host, port\)\)/);
-  assert.match(native, /Semaphore::new\(6\)/);
+  assert.match(native, /Semaphore::new\(12\)/);
   assert.match(native, /rtt_targets\.push\(/);
   assert.match(native, /JoinSet::new\(\)/);
-  assert.match(native, /"ping_method": "vpn_https"/);
-  assert.match(native, /app\.emit\(\s*"server-latency-update"/);
+  assert.match(native, /"ping_method": "tcp_rtt"/);
+  // The measured round trip travels back with the catalogue, so the list paints
+  // its values instead of waiting for a later event.
+  assert.match(native, /server\["rtt_ms"\] = json!\(rtt\)/);
   // A fresh connect reports the endpoint round trip, not the HTTPS time of a
   // cold tunnel, so the displayed ping stays truthful.
   assert.match(native, /measure_tcp_rtt\(host, endpoint_port\)/);
@@ -97,7 +99,12 @@ test('device deletion pins the request to the confirmed native session generatio
   assert.match(frontend, /if \(!sameAccount\(\) \|\| state\.deviceRemovalBusy\) return;/);
 });
 
-test('server latency events are subscribed before the initial catalog request', () => {
-  assert.match(frontend, /await setupServerLatencyListener\(\);\s*await loadInitialData\(\);/);
-  assert.match(frontend, /async function setupServerLatencyListener\(\)/);
+test('catalogue latency is painted from the catalogue response itself', () => {
+  // The old event subscription arrived after the rows were rendered, so the
+  // server list stayed on "not tested"; the round trip now travels with the
+  // JSON and renders synchronously.
+  assert.doesNotMatch(frontend, /setupServerLatencyListener/);
+  assert.doesNotMatch(frontend, /server-latency-update/);
+  assert.match(frontend, /const rtt = Number\(server\?\.rtt_ms\) \|\| 0;/);
+  assert.match(frontend, /serverLatencyPresentation/);
 });

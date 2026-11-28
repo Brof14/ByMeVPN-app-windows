@@ -145,28 +145,48 @@ test('Windows autostart registry state is rolled back if settings persistence fa
   assert.equal(app.eval('state.settings.autoStart'), false);
 });
 
-test('auto reconnect remains visible in the UI after a drop and recognizes recovery', async () => {
+test('a dropped server switches to another country automatically without a recovery state', async () => {
   const callbacks = [];
   const replies = [
-    { connected: false, proof: 'disconnected' },
+    { connected: false, proof: 'tun_no_traffic' },
     { connected: true, verified: true, connected_seconds: 1 }
   ];
-  const app = harness(async command => command === 'vpn_status' ? replies.shift() : null, {
+  const app = harness(async (command, args) => {
+    if (command === 'vpn_status') return replies.length > 1 ? replies.shift() : replies[0];
+    if (command === 'vpn_start') {
+      return { connected: true, verified: true, connected_seconds: 0, node_code: args.nodeCode };
+    }
+    return null;
+  }, {
     setInterval: callback => { callbacks.push(callback); return callbacks.length; },
     clearInterval() {}
   });
-  app.eval("state.user = { id: 'user' }; state.settings.autoReconnect = true; state.vpnConnected = true; startStatusPolling()");
+  app.eval(`
+    state.user = { id: 'user' };
+    state.subscription = { status: 'active' };
+    state.settings.autoReconnect = true;
+    state.vpnConnected = true;
+    state.servers = [
+      { code: 'de-1', name: 'Германия', country: 'Германия', supported: true, ping: 40, ping_method: 'tcp_rtt' },
+      { code: 'nl-1', name: 'Нидерланды', country: 'Нидерланды', supported: true, ping: 90, ping_method: 'tcp_rtt' }
+    ];
+    state.measurementsAt = Date.now();
+    state.autoSelectedServer = state.servers[0];
+    startStatusPolling();
+  `);
   await callbacks[0]();
-  assert.equal(app.eval('state.vpnConnected'), false);
-  assert.equal(app.eval('state.reconnectPending'), true);
-  assert.equal(app.eval('state.vpnPhase'), 'reconnecting');
-  assert.notEqual(app.eval('state.pollInterval'), null);
-  await callbacks[0]();
+  // Падение сервера снимает нативную попытку вернуть тот же узел и сразу
+  // подключается к другой стране — промежуточного «восстанавливаем» нет.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const started = app.calls.filter(call => call.command === 'vpn_start');
+  assert.equal(started.length, 1);
+  assert.equal(started[0].args.nodeCode, 'nl-1', 'the failed node must not be retried');
+  assert.ok(app.calls.some(call => call.command === 'vpn_stop'));
   assert.equal(app.eval('state.vpnConnected'), true);
-  assert.equal(app.eval('state.reconnectPending'), false);
   assert.equal(app.eval('state.vpnPhase'), 'connected');
-  assert.equal(app.eval('state.vpnVerified'), true);
   assert.equal(app.eval('state.connectionError'), null);
+  assert.equal(app.eval('state.recoverySkippedServer'), null);
+  assert.doesNotMatch(source, /Восстанавливаем/);
 });
 
 test('auto reconnect does not show a false recovery state before any connection', async () => {
@@ -269,14 +289,15 @@ test('startup switch reflects Windows registry instead of stale settings.json', 
 test('Android primary settings contains the everyday connection toggles and language', () => {
   const primary = html.split('id="tab-settings"')[1].split('id="tab-devices"')[0];
   const advanced = html.split('id="tab-advanced"')[1].split('<!-- MODALS')[0];
-  // SettingsScreen.kt 2.1: auto-reconnect and RU bypass only; the desktop-only
-  // auto-connect switch lives in Advanced settings.
-  for (const id of ['set-autoreconnect', 'set-bypass']) {
+  // «Подключение» держит повседневные переключатели: автоподключение и
+  // российские сайты напрямую. Автопереподключение — редкая настройка, поэтому
+  // оно живёт в расширенных настройках.
+  for (const id of ['set-autoconnect', 'set-bypass']) {
     assert.match(primary, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(advanced, new RegExp('id="' + id + '"'));
   }
-  assert.match(advanced, /id="set-autoconnect"/);
-  assert.doesNotMatch(primary, /id="set-autoconnect"/);
+  assert.match(advanced, /id="set-autoreconnect"/);
+  assert.doesNotMatch(primary, /id="set-autoreconnect"/);
   for (const id of ['set-autostart', 'set-background']) {
     assert.match(advanced, new RegExp('id="' + id + '"'));
     assert.doesNotMatch(primary, new RegExp('id="' + id + '"'));

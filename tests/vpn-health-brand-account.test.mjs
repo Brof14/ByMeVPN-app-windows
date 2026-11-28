@@ -124,7 +124,7 @@ test('healthy live diagnostics reconcile egress and suppress false startup-error
   const report = {
     process_tracked: true, ip_verified: true, baseline_known: true,
     adapter: 'up', ipv4_default: true, ipv6_default: true,
-    dns_resolution: true, egress_probe: 'changed', runtime_healthy: true,
+    dns_resolution: true, egress_probe: 'paths_match', runtime_healthy: true,
     xray_hint: 'xray'
   };
   const context = createContext({
@@ -148,8 +148,9 @@ test('healthy live diagnostics reconcile egress and suppress false startup-error
   runInContext("state.vpnConnected = true; state.subscription = {status: 'active'}", context);
   await runInContext("refreshVpnHealth()", context);
   const result = node('vpn-health-details').textContent;
-  assert.match(result, /Проверка внешнего IP: подтверждена/);
+  assert.match(result, /Доступ в интернет: сайты открываются через VPN/);
   assert.match(result, /Текущие сетевые проверки пройдены/);
+  assert.doesNotMatch(result, /внешний IP/i);
   assert.doesNotMatch(result, /ошибка запуска/);
   assert.equal(runInContext('state.vpnVerified', context), true);
   assert.ok(calls.includes('vpn_status'));

@@ -45,13 +45,14 @@ test('VPN UI only claims protection when native egress verification passed', () 
   assert.match(ui, /state\.vpnVerified = status\.verified === true/);
   assert.match(ui, /status\?\.connected === true && status\?\.verified === true/);
   assert.match(ui, /uiText\('VPN подключён', 'VPN connected'\)/);
-  // The heading names the connection state; verified protection is shown only
-  // by the check mark, the active pill and the muted notice.
-  assert.match(ui, /proof === 'tun_no_traffic' \? uiText\('Нет трафика через Windows TUN'/);
-  assert.match(ui, /activePill\?\.classList\.toggle\('hidden', !state\.vpnVerified/);
-  assert.match(ui, /verificationMark\.textContent = state\.vpnVerified \? '✓' : '·'/);
+  // Клиент никогда не видит внутренних проверок: заголовок и галочка просто
+  // называют состояние подключения. Единственное исключение — туннель, через
+  // который вообще не проходит трафик: там нужна подсказка сменить страну.
+  assert.match(ui, /'hidden', !isConn \|\| proof !== 'tun_no_traffic'/);
+  assert.match(ui, /verificationMark\.textContent = '✓'/);
   assert.match(ui, /home-verification-notice/);
-  assert.match(ui, /Защита не подтверждена/);
+  assert.doesNotMatch(ui, /Защита не подтверждена/);
+  assert.doesNotMatch(ui, /внешний IP/i);
 });
 
 test('Google login never sends raw tokens through UI and uses native PKCE S256', () => {

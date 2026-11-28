@@ -260,11 +260,13 @@
               <h1 id="page-title" class="page-title hidden">Главная</h1>
               <span id="vpn-active-pill" class="badge-active-pill hidden">
                 <span class="dot-green">●</span>
-                <span data-i18n="protection_active">Внешний IP подтверждён</span>
+                <span data-i18n="protection_active">VPN подключён</span>
               </span>
             </div>
             <div class="header-right-actions">
-              <button type="button" id="btn-top-help" class="header-circle-btn header-faq-btn" title="Частые вопросы" data-i18n-title="faq_title" aria-label="Частые вопросы">FAQ</button>
+              <button type="button" id="btn-top-help" class="header-circle-btn header-faq-btn" title="Частые вопросы" data-i18n-title="faq_title" aria-label="Частые вопросы">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.6 9.2a2.5 2.5 0 1 1 4.2 1.9c-1 .8-1.8 1.3-1.8 2.6"/><path d="M12 17.2h.01"/></svg>
+              </button>
               
             </div>
           </div>
@@ -324,11 +326,11 @@
                       <h2 class="status-title-text" data-i18n="vpn_connected">VPN запущен</h2>
                     </div>
                     <p class="connection-substatus">
-                      <span data-i18n="conn_secured">Проверяем внешний IP</span>
+                      <span data-i18n="conn_secured">Соединение установлено</span>
                     </p>
                     <span id="vpn-live-timer" class="mobile-connection-timer">00:00:00</span>
                     <div id="home-verification-notice" class="mobile-verification-notice hidden" role="status">
-                      <p data-i18n="vpn_unverified_help">Туннель работает. Внешнюю проверку выхода выполнить не удалось, поэтому защита не подтверждена.</p>
+                      <p data-i18n="vpn_unverified_help">VPN подключён, но сайты не открываются. Попробуйте другую страну или проверьте соединение.</p>
                       <button type="button" id="btn-vpn-health-check" class="mobile-health-button"
                               data-i18n="vpn_health_action">Диагностика соединения</button>
                     </div>
@@ -670,11 +672,11 @@
                   <div class="setting-item-row">
                     <span class="setting-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M7 6.8a9 9 0 1 0 10 0"/></svg></span>
                     <div class="setting-copy-column">
-                      <strong data-i18n="auto_reconnect_title">Автопереподключение</strong>
-                      <span data-i18n="auto_reconnect_desc">Восстанавливать VPN после потери сети</span>
+                      <strong data-i18n="autoconnect_title">Подключаться автоматически</strong>
+                      <span data-i18n="autoconnect_desc">Автоматически включать VPN после входа в приложение, если подписка активна</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-autoreconnect" checked />
+                      <input type="checkbox" id="set-autoconnect" />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -863,6 +865,15 @@
                   </button>
                 </div>
 
+                <h3 class="android-support-section-title" data-i18n="support_feedback_title">Нашли баг или есть идея?</h3>
+                <div class="android-support-card-group">
+                  <button type="button" class="android-support-row" id="card-support-feedback">
+                    <span class="android-support-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6.2a2.5 2.5 0 0 1 5 0"/><path d="M7.5 10.5h9a3.5 3.5 0 0 1 0 7h-9a3.5 3.5 0 0 1 0-7Z"/><path d="M4.5 12.5h3M16.5 12.5h3M6 8.5l1.7 1.7M18 8.5l-1.7 1.7M6 19.5l1.7-1.7M18 19.5l-1.7-1.7"/></svg></span>
+                    <span class="android-support-row-copy"><strong data-i18n="support_feedback_row">Написать в поддержку в Telegram</strong><span data-i18n="support_feedback_row_desc">За найденный баг или принятую идею — дни VPN в подарок</span></span>
+                    <span class="android-support-row-arrow" aria-hidden="true">›</span>
+                  </button>
+                </div>
+
                 <h3 class="android-support-section-title information" data-i18n="support_info">Информация</h3>
                 <div class="android-support-card-group">
                   <button type="button" class="android-support-row" id="card-support-about">
@@ -907,11 +918,11 @@
                   <div class="setting-item-row">
                     <span class="setting-row-icon" aria-hidden="true"><svg class="byme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M7 6.8a9 9 0 1 0 10 0"/></svg></span>
                     <div class="setting-copy-column">
-                      <strong data-i18n="autoconnect_title">Подключаться автоматически</strong>
-                      <span data-i18n="autoconnect_desc">Автоматически включать VPN после входа в приложение, если подписка активна</span>
+                      <strong data-i18n="auto_reconnect_title">Автопереподключение</strong>
+                      <span data-i18n="auto_reconnect_desc">Автоматически возвращать VPN после обрыва связи</span>
                     </div>
                     <label class="switch-control">
-                      <input type="checkbox" id="set-autoconnect" />
+                      <input type="checkbox" id="set-autoreconnect" checked />
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1240,7 +1251,7 @@
               <span class="faq-disclosure" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5 12 15.5 18 9.5"/></svg></span>
             </button>
             <div id="faq-answer-4" class="faq-item-body" aria-hidden="true">
-              <div class="faq-item-body-inner" data-i18n="faq_a4">Нажмите «Проверить снова» на главном экране. Если защита не подтверждается, переподключитесь или смените сервер: маршруты и DNS Windows восстанавливаются автоматически при отключении.</div>
+              <div class="faq-item-body-inner" data-i18n="faq_a4">Нажмите «Проверить снова» на главном экране или выберите другую страну. Если сайты по-прежнему не открываются, переподключитесь: сеть Windows придёт в обычное состояние автоматически.</div>
             </div>
           </div>
           <div class="faq-accordion-item">

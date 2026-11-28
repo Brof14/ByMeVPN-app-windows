@@ -2144,7 +2144,6 @@ pub fn select_fastest_server_latency<S: AsRef<str>>(candidates: &[(S, u32)]) -> 
         .map(|(code, _)| code.as_ref().to_string())
 }
 
-
 async fn vpn_start_inner(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -2680,7 +2679,15 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     // retried on the next connect's session creation.
     let app_for_revoke = app.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = request(&app_for_revoke, Method::DELETE, "/vpn/session", None, true, false).await;
+        let _ = request(
+            &app_for_revoke,
+            Method::DELETE,
+            "/vpn/session",
+            None,
+            true,
+            false,
+        )
+        .await;
     });
     CANCEL_CONNECT.store(false, Ordering::SeqCst);
     cleanup

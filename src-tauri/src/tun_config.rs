@@ -2,6 +2,19 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+/// Names that bypass the tunnel, the same set the Android client sends: the
+/// Russian segment, the government list, the country TLDs and the state
+/// services host. Used both to answer Russian names from a Russian resolver
+/// and to route them direct.
+const RU_DOMAINS: [&str; 6] = [
+    "geosite:category-ru",
+    "geosite:category-gov-ru",
+    "domain:ru",
+    "domain:su",
+    "domain:xn--p1ai",
+    "domain:gosuslugi.ru",
+];
+
 fn text<'a>(value: &'a Value, names: &[&str]) -> Option<&'a str> {
     names.iter().find_map(|name| {
         value
@@ -260,7 +273,11 @@ pub fn build_tun_config_split(
                     "level": "65535",
                     "opt": "4098",
                     "value": "2097152"
-                }]
+                }],
+                // Send the first TLS record with the SYN: every new connection
+                // to the server saves a full round trip, which is what a page
+                // load with many connections actually waits for.
+                "tcpFastOpen": true
             });
             if transport == "grpc" {
                 let mut grpc = json!({"serviceName": text(session, &["serviceName", "service_name", "transport_path", "path"]).unwrap_or("")});
@@ -407,6 +424,24 @@ pub fn build_tun_config_split(
         _ => return Err("Неизвестный DNS-провайдер.".into()),
     };
 
+    // A Russian name must be answered by a Russian resolver, reached directly.
+    // The resolver in the tunnel answers from the exit country, so it hands back
+    // the CDN edge nearest the exit rather than the nearest Russian one; that
+    // address is not in `geoip:ru`, the address rule stops matching, and the
+    // site is carried through the tunnel, where many Russian sites refuse to
+    // serve. Windows' DNS leak filters exempt Xray's own queries, so this one
+    // leaves through the physical adapter.
+    const RU_DNS: &str = "77.88.8.8";
+    let mut dns_entries: Vec<Value> = Vec::new();
+    if bypass_ru {
+        dns_entries.push(json!({
+            "address": RU_DNS,
+            "domains": RU_DOMAINS,
+            "skipFallback": true
+        }));
+    }
+    dns_entries.extend(dns_servers.iter().map(|server| json!(server)));
+
     let mut rules = Vec::new();
 
     // Split tunneling runs first so excluded applications leave through the
@@ -425,6 +460,16 @@ pub fn build_tun_config_split(
         "network": "tcp,udp",
         "outboundTag": "dns-out"
     }));
+    if bypass_ru {
+        // Ahead of the rule below, which sends every other lookup into the
+        // tunnel: the Russian resolver must answer from the customer's own
+        // country, not from the exit.
+        rules.push(json!({
+            "type": "field",
+            "ip": [format!("{RU_DNS}/32")],
+            "outboundTag": "direct"
+        }));
+    }
     // Built-in DNS lookups must go via the encrypted proxy rather than
     // matching geolocation bypass rules for their upstream resolver IPs.
     rules.push(json!({
@@ -474,14 +519,7 @@ pub fn build_tun_config_split(
         // decides before the address does.
         rules.push(json!({
             "type": "field",
-            "domain": [
-                "geosite:category-ru",
-                "geosite:category-gov-ru",
-                "domain:ru",
-                "domain:su",
-                "domain:xn--p1ai",
-                "domain:gosuslugi.ru"
-            ],
+            "domain": RU_DOMAINS,
             "outboundTag": "direct"
         }));
         rules.push(json!({
@@ -494,13 +532,23 @@ pub fn build_tun_config_split(
     Ok(json!({
         "log": {"loglevel": "warning"},
         "dns": {
-            "servers": dns_servers,
-            "queryStrategy": "UseIP",
+            "servers": dns_entries,
+            // Android parity: asking only for IPv4 keeps a broken IPv6 path
+            // from adding a second, unanswered lookup to every page load.
+            "queryStrategy": "UseIPv4",
             "tag": "bymevpn-dns-query"
         },
         "inbounds": [{
             "tag": "tun",
             "protocol": "tun",
+            // Names, never addresses: TUN traffic is addressed by IP, so the
+            // Russian domain rules can only match when the core reads the
+            // name. `routeOnly` keeps the address the system actually dials.
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls"],
+                "routeOnly": true
+            },
             "settings": {
                 "name": "ByMeVPN",
                 "mtu": 1500,
@@ -1006,6 +1054,15 @@ mod tests {
     #[test]
     fn validates_dns_mode_and_generates_provider_addresses() {
         let config = build_tun_config_ext(&session(), true, "none", "adguard").unwrap();
+        // The Russian resolver answers Russian names first and is queried
+        // directly; the chosen provider answers everything else.
+        assert_eq!(config["dns"]["servers"][0]["address"], "77.88.8.8");
+        assert_eq!(
+            config["dns"]["servers"][0]["domains"][0],
+            "geosite:category-ru"
+        );
+        assert_eq!(config["dns"]["servers"][0]["skipFallback"], true);
+        assert_eq!(config["dns"]["servers"][1], "94.140.14.14");
         assert_eq!(config["inbounds"][0]["settings"]["dns"][0], "94.140.14.14");
         assert!(build_tun_config_ext(&session(), true, "none", "untrusted").is_err());
     }
@@ -1326,9 +1383,14 @@ mod tests {
             .position(|rule| rule["ip"] == json!(["geoip:ru"]))
             .expect("RU address rule must stay");
         assert!(domain_index < address_index);
-        // TUN sniffing is not relied on: the pinned core accepted the config but
-        // the tunnelled path stopped carrying traffic with it enabled.
-        assert!(config["inbounds"][0].get("sniffing").is_none());
+        // The name rules can only fire when the core reads the name: the TUN
+        // inbound sniffs it for routing and keeps the dialled address.
+        assert_eq!(config["inbounds"][0]["sniffing"]["enabled"], true);
+        assert_eq!(config["inbounds"][0]["sniffing"]["routeOnly"], true);
+        assert_eq!(
+            config["inbounds"][0]["sniffing"]["destOverride"],
+            json!(["http", "tls"])
+        );
     }
 
     #[test]

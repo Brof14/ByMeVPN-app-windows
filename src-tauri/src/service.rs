@@ -2219,9 +2219,6 @@ pub async fn vpn_start(
     state: State<'_, AppState>,
     node_code: Option<String>,
 ) -> Result<TunnelMetrics, String> {
-    // Guard against a routing loop: the VPN endpoint must stay reachable
-    // through the physical gateway instead of being captured by TUN.
-    let _ = crate::tun_health::vpn_endpoint_reachable_via_physical_gateway("").await;
     match vpn_start_inner(app.clone(), &state, node_code.clone(), false).await {
         Ok(metrics) => Ok(metrics),
         // A first attempt that could not confirm traffic is usually a handshake
@@ -2409,10 +2406,15 @@ async fn vpn_start_inner(
             .filter(|port| (1..=65535).contains(port))
             .unwrap_or(443) as u16;
         // Detect a routing loop before installing TUN routes: the endpoint
-        // must remain reachable through the physical gateway.
-        if crate::tun_health::detect_routing_loop(host).await {
-            return Err("Маршрут к VPN-серверу захвачен туннелем (routing loop).".into());
-        }
+        // must remain reachable through the physical gateway. The check shells
+        // out to Windows networking and starts now, so it runs beside the
+        // preflight instead of adding its own second to every connection.
+        let routing_loop_task = {
+            let endpoint = host.to_string();
+            tauri::async_runtime::spawn(async move {
+                crate::tun_health::detect_routing_loop(&endpoint).await
+            })
+        };
         let server_name = session
             .get("display_name")
             .or_else(|| session.get("name"))
@@ -2583,6 +2585,13 @@ async fn vpn_start_inner(
             Ok(Ok(Ok(ip))) => Some(ip),
             _ => None,
         };
+
+        if routing_loop_task.await.unwrap_or(false) {
+            return Err(
+                "Часть сети уже перехвачена туннелем, поэтому маршрут до сервера не проложен. Отключите VPN и подключитесь снова."
+                    .into(),
+            );
+        }
 
         // Preserve bounded, local diagnostics for failures that happen only
         // after the preflight succeeds (Wintun, routes, WFP, DNS).

@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Mutex, OnceLock,
+        Arc, Mutex, OnceLock,
     },
     time::Duration,
 };
@@ -171,7 +171,7 @@ async fn wait_for_probe_listener(port: u16, timeout: Duration) -> bool {
         if remaining.is_zero() {
             return false;
         }
-        let slice = remaining.min(Duration::from_millis(120));
+        let slice = remaining.min(Duration::from_millis(60));
         if crate::egress::wait_for_attestation_listener(port, slice).await {
             return true;
         }
@@ -230,8 +230,9 @@ pub struct AppState {
     /// can be retried without treating a failed first connection as recovery.
     pub reconnect: Mutex<ReconnectState>,
     /// A failed startup/exit cleanup must remain visible to status polling
-    /// until a later scoped recovery succeeds.
-    pub network_recovery_required: Mutex<bool>,
+    /// until a later scoped recovery succeeds. Shared so the background
+    /// cleanup can clear it once it has actually finished.
+    pub network_recovery_required: Arc<Mutex<bool>>,
 }
 
 #[derive(Default)]
@@ -1005,11 +1006,22 @@ async fn stop_tunnel_and_restore_network(state: &AppState) -> Result<(), String>
     // drops the tunnel. Route/DNS cleanup (a PowerShell spawn) runs in the
     // background; the recovery flag keeps the next connect retrying it if it
     // fails, so the network is never left half-configured.
-    if let Ok(mut required) = state.network_recovery_required.lock() {
+    let recovery_required = Arc::clone(&state.network_recovery_required);
+    if let Ok(mut required) = recovery_required.lock() {
         *required = true;
     }
-    tauri::async_runtime::spawn(async {
-        let _ = crate::tun_health::cleanup_bymevpn_routes_after_exit().await;
+    tauri::async_runtime::spawn(async move {
+        // A successful cleanup clears the flag. Leaving it set made the next
+        // connect repeat the same PowerShell pass over routes that were already
+        // gone, which is time the user spends waiting for the spinner.
+        if crate::tun_health::cleanup_bymevpn_routes_after_exit()
+            .await
+            .is_ok()
+        {
+            if let Ok(mut required) = recovery_required.lock() {
+                *required = false;
+            }
+        }
     });
     Ok(())
 }
@@ -1225,18 +1237,45 @@ fn server_array(data: &Value) -> Option<&Vec<Value>> {
 /// Round-trip time to the server's own endpoint over a single TCP handshake:
 /// no Xray process, no TUN, no payload. The catalogue shows this while the
 /// HTTPS-through-VPN probe has to stay off.
-async fn measure_tcp_rtt(host: &str, port: u16) -> Option<u32> {
-    let started = std::time::Instant::now();
-    tokio::time::timeout(
-        Duration::from_millis(1500),
-        tokio::net::TcpStream::connect((host, port)),
-    )
-    .await
-    .ok()?
-    .ok()?;
-    u32::try_from(started.elapsed().as_millis())
-        .ok()
-        .map(|ms| ms.max(1))
+///
+/// The name is resolved before the clock starts and every returned address is
+/// raced, so the number is the handshake and nothing else. Resolving inside the
+/// measurement charged DNS to the server and reported hundreds of milliseconds
+/// for endpoints that answer in tens; trying the addresses one by one made a
+/// dual-stack host whose first record is unreachable burn the whole budget.
+async fn measure_tcp_rtt(host: &str, port: u16, budget: Duration) -> Option<u32> {
+    let deadline = tokio::time::Instant::now() + budget;
+    let resolve_budget = deadline.saturating_duration_since(tokio::time::Instant::now());
+    let lookup = tokio::time::timeout(resolve_budget, tokio::net::lookup_host((host, port)))
+        .await
+        .ok()?
+        .ok()?;
+    let addrs: Vec<std::net::SocketAddr> = lookup.collect();
+    if addrs.is_empty() {
+        return None;
+    }
+    let mut tasks = tokio::task::JoinSet::new();
+    for addr in addrs {
+        tasks.spawn(async move {
+            let started = std::time::Instant::now();
+            if tokio::net::TcpStream::connect(addr).await.is_err() {
+                return None;
+            }
+            let elapsed = started.elapsed().as_millis();
+            Some(u32::try_from(elapsed).unwrap_or(u32::MAX).max(1))
+        });
+    }
+    let mut best: Option<u32> = None;
+    let collect = async {
+        while let Some(joined) = tasks.join_next().await {
+            if let Ok(Some(rtt)) = joined {
+                best = Some(best.map_or(rtt, |current: u32| current.min(rtt)));
+            }
+        }
+    };
+    let collect_budget = deadline.saturating_duration_since(tokio::time::Instant::now());
+    let _ = tokio::time::timeout(collect_budget, collect).await;
+    best
 }
 
 fn server_ping_cache_key(node_code: &str, config: &Value) -> String {
@@ -1256,14 +1295,18 @@ pub async fn get_servers(
 ) -> Result<Vec<Value>, String> {
     let data = request(&app, Method::GET, "/servers", None, true, false).await?;
     let servers = server_array(&data).ok_or("Сервер не вернул список доступных локаций.")?;
-    // Catalog refreshes must not add probe traffic while a connection is
-    // active or a connect/disconnect operation is in progress.
-    let should_probe = state.connection_gate.try_lock().is_ok()
-        && state
-            .tunnel
-            .lock()
-            .map(|tunnel| tunnel.is_none())
-            .unwrap_or(false);
+    // Catalog refreshes must not add probe traffic while a connect/disconnect
+    // operation is in progress. A measured tunnel is not a reason to skip the
+    // probe: the handshake below travels the same route the client will use, so
+    // the list keeps answering "how far is this server" while the VPN is up.
+    let should_probe = state.connection_gate.try_lock().is_ok();
+    // A user asking for a measurement gets a longer budget per server than the
+    // silent refresh behind the catalogue, which must never delay the list.
+    let rtt_budget = if force_probe.unwrap_or(false) {
+        Duration::from_millis(1400)
+    } else {
+        Duration::from_millis(900)
+    };
     let mut rtt_targets = Vec::new();
     let mut normalized = Vec::with_capacity(servers.len());
     for server in servers {
@@ -1387,7 +1430,9 @@ pub async fn get_servers(
     // arrive after the rows were painted, so every server read "not tested".
     let mut latencies: HashMap<String, u32> = HashMap::new();
     if should_probe && !rtt_targets.is_empty() {
-        let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(12));
+        // One slot per row: a fixed cap of 12 left every server past the
+        // twelfth queued behind the timeout, so its row showed no value at all.
+        let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(rtt_targets.len().min(32)));
         let mut tasks = tokio::task::JoinSet::new();
         for (code, host, port) in rtt_targets {
             let slots = slots.clone();
@@ -1395,7 +1440,9 @@ pub async fn get_servers(
                 let Ok(_permit) = slots.acquire_owned().await else {
                     return None;
                 };
-                measure_tcp_rtt(&host, port).await.map(|rtt| (code, rtt))
+                measure_tcp_rtt(&host, port, rtt_budget)
+                    .await
+                    .map(|rtt| (code, rtt))
             });
         }
         let collect = async {
@@ -1407,7 +1454,7 @@ pub async fn get_servers(
         };
         // A filtered or rate-limited network must never hold the catalogue
         // open; unanswered rows simply stay unmeasured.
-        let _ = tokio::time::timeout(Duration::from_millis(900), collect).await;
+        let _ = tokio::time::timeout(Duration::from_millis(1000), collect).await;
     }
     for server in normalized.iter_mut() {
         let code = server
@@ -2537,13 +2584,7 @@ async fn vpn_start_inner(
             // request through the fresh tunnel also pays for Xray and TLS, so
             // it read as a 400–500 ms "ping" on a healthy 40 ms link.
             let latency = async {
-                tokio::time::timeout(
-                    Duration::from_millis(1500),
-                    measure_tcp_rtt(host, endpoint_port),
-                )
-                .await
-                .ok()
-                .flatten()
+                measure_tcp_rtt(host, endpoint_port, Duration::from_millis(1400)).await
             };
             let (mut routes, dns, ping) = tokio::join!(
                 async { routes_task.await.unwrap_or_default() },
@@ -2668,11 +2709,9 @@ pub async fn vpn_stop(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     // it until the whole handoff finishes.
     CANCEL_CONNECT.store(true, Ordering::SeqCst);
     let _connection_guard = state.connection_gate.lock().await;
-    // Restore routes/DNS in the background so disconnect returns immediately;
-    // the process kill below already drops the tunnel.
-    tauri::async_runtime::spawn(async {
-        let _ = crate::tun_health::restore_routes_and_dns_on_failure().await;
-    });
+    // Stop the tunnel and hand route/DNS cleanup to a single background task.
+    // A second PowerShell pass spawned here used to run beside that one, and the
+    // two competed for the same adapter: two process starts to do one job.
     let cleanup = stop_tunnel_and_restore_network(&state).await;
     // Revoke even if route cleanup failed: don't retain an active server slot.
     // Run in the background so disconnect stays instant; a failed revoke is

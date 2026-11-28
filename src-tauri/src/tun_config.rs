@@ -464,6 +464,12 @@ pub fn build_tun_config_split(
     }
 
     if bypass_ru {
+        // Domains only. An earlier build also sent every host sitting on a
+        // Russian address straight out; a foreign site behind such an address
+        // then bypassed the tunnel and would not open. The domain lists below
+        // match the sniffed request name, so a Russian site reached through a
+        // foreign CDN still goes direct and a foreign site on a Russian host
+        // still goes through the VPN.
         rules.push(json!({
             "type": "field",
             "domain": [
@@ -474,11 +480,6 @@ pub fn build_tun_config_split(
                 "domain:xn--p1ai",
                 "domain:gosuslugi.ru"
             ],
-            "outboundTag": "direct"
-        }));
-        rules.push(json!({
-            "type": "field",
-            "ip": ["geoip:ru"],
             "outboundTag": "direct"
         }));
     }
@@ -493,6 +494,21 @@ pub fn build_tun_config_split(
         "inbounds": [{
             "tag": "tun",
             "protocol": "tun",
+            // TUN carries addresses, not names, so without sniffing the RU
+            // bypass could only match whole IP ranges. Reading the name off
+            // each connection lets the domain rules decide on their own:
+            // Russian sites go direct, everything else stays in the tunnel.
+            // `routeOnly` keeps the original destination intact — the name is
+            // used for the routing decision and nothing else. `sniffing` is a
+            // property of the inbound, next to `settings`; the tun settings
+            // object does not accept it and would silently drop it.
+            "sniffing": {
+                "enabled": true,
+                // QUIC too, or a Russian site reached over HTTP/3 would still
+                // be tunnelled and hit the geo-block it avoids by going direct.
+                "destOverride": ["http", "tls", "quic"],
+                "routeOnly": true
+            },
             "settings": {
                 "name": "ByMeVPN",
                 "mtu": 1500,
@@ -1303,6 +1319,18 @@ mod tests {
         assert!(rules
             .iter()
             .any(|rule| rule["domain"][0] == json!("geosite:category-ru")));
+        // A Russian address alone is no longer a reason to leave the tunnel.
+        assert!(!rules.iter().any(|rule| rule["ip"] == json!(["geoip:ru"])));
+        // The bypass needs request names to work off, and TUN only carries IPs.
+        // Sniffing belongs to the inbound object, not to the tun settings.
+        let sniffing = &config["inbounds"][0]["sniffing"];
+        assert_eq!(sniffing["enabled"], json!(true));
+        assert_eq!(sniffing["routeOnly"], json!(true));
+        assert!(sniffing["destOverride"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tls")));
+        assert!(config["inbounds"][0]["settings"]["sniffing"].is_null());
     }
 
     #[test]

@@ -52,17 +52,28 @@ test('VPN watchdog tolerates one missed probe, fails closed on proven leak, and 
 
 test('catalogue latency is one TCP handshake and never starts Xray per row', () => {
   assert.match(native, /async fn measure_tcp_rtt\(/);
-  assert.match(native, /tokio::net::TcpStream::connect\(\(host, port\)\)/);
-  assert.match(native, /Semaphore::new\(12\)/);
+  // The name is resolved first and the clock starts on the handshake, so a slow
+  // resolver never shows up as server latency.
+  assert.match(native, /tokio::net::lookup_host\(\(host, port\)\)/);
+  assert.match(native, /tokio::net::TcpStream::connect\(addr\)/);
+  // One slot per row: a fixed cap left the servers past it unmeasured.
+  assert.match(native, /Semaphore::new\(rtt_targets\.len\(\)\.min\(32\)\)/);
   assert.match(native, /rtt_targets\.push\(/);
   assert.match(native, /JoinSet::new\(\)/);
   assert.match(native, /"ping_method": "tcp_rtt"/);
   // The measured round trip travels back with the catalogue, so the list paints
   // its values instead of waiting for a later event.
   assert.match(native, /server\["rtt_ms"\] = json!\(rtt\)/);
+  // A live tunnel is not a reason to skip the probe: the handshake uses the
+  // same path the client does, so latency stays readable while connected.
+  const probeGate = native.split('let should_probe =')[1].split(';')[0];
+  assert.doesNotMatch(probeGate, /tunnel/);
   // A fresh connect reports the endpoint round trip, not the HTTPS time of a
   // cold tunnel, so the displayed ping stays truthful.
-  assert.match(native, /measure_tcp_rtt\(host, endpoint_port\)/);
+  assert.match(
+    native,
+    /measure_tcp_rtt\(host, endpoint_port, Duration::from_millis\(1400\)\)/,
+  );
 });
 
 test('preview builds stay drafts while a tagged release is published', () => {

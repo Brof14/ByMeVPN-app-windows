@@ -74,11 +74,22 @@ test('catalogue latency is one TCP handshake and never starts Xray per row', () 
     native,
     /measure_tcp_rtt\(&latency_host, endpoint_port, Duration::from_millis\(1400\)\)/,
   );
-  // The handshake needs neither the HTTPS proof nor the route inspection, so it
-  // is spawned before the proof instead of after it.
+  // The handshake is measured before any route changes: once the TUN owns the
+  // default route, Xray's own stack answers it locally and every server reads
+  // "1 ms". It therefore starts before the preflight, not inside the tunnel.
   assert.ok(
-    native.indexOf('let latency_task') < native.indexOf('let mut proof = verify_tunnel_path'),
+    native.indexOf('let latency_task') <
+      native.indexOf('preflight_attestation_config(&xray_config)'),
   );
+  assert.ok(
+    native.indexOf('let latency_task') <
+      native.indexOf('let mut proof = verify_tunnel_path'),
+  );
+  // While connected the catalogue must not measure a tunnel-local handshake:
+  // the probe is skipped and the pre-tunnel round trip is shown instead.
+  assert.match(native, /let active_tunnel = state[\s\S]{0,200}tunnel\.lock\(\)/);
+  assert.match(native, /active_tunnel\.is_none\(\)/);
+  assert.match(native, /if let Some\(\(node_code, cached_ping, port, password\)\) = active_tunnel/);
 });
 
 test('preview builds stay drafts while a tagged release is published', () => {

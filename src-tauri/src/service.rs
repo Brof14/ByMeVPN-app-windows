@@ -1300,6 +1300,20 @@ pub async fn get_servers(
     // probe: the handshake below travels the same route the client will use, so
     // the list keeps answering "how far is this server" while the VPN is up.
     let should_probe = state.connection_gate.try_lock().is_ok();
+    // While a tunnel is up, connect() is answered by Xray's own TCP stack, so a
+    // handshake to any endpoint completes in about a millisecond and says
+    // nothing about distance. Skip the probe and show the round trip that was
+    // measured before the tunnel was installed.
+    let active_tunnel = state.tunnel.lock().ok().and_then(|lock| {
+        lock.as_ref().map(|active| {
+            (
+                active._node_code.clone(),
+                active.cached_ping_ms,
+                active.probe_port,
+                active.probe_password.clone(),
+            )
+        })
+    });
     // A user asking for a measurement gets a longer budget per server than the
     // silent refresh behind the catalogue, which must never delay the list.
     let rtt_budget = if force_probe.unwrap_or(false) {
@@ -1413,7 +1427,7 @@ pub async fn get_servers(
         // HTTPS-through-Xray probe started a temporary core for every row, so
         // the list stayed in "queued" for minutes and the value it produced
         // included Xray and TLS work instead of the network latency.
-        if supported && valid_endpoint {
+        if supported && valid_endpoint && active_tunnel.is_none() {
             rtt_targets.push((code.to_string(), host.clone(), port as u16));
         }
         normalized.push(json!({"code":code, "name":name, "name_en":name_en,
@@ -1465,6 +1479,37 @@ pub async fn get_servers(
         if let Some(rtt) = latencies.get(&code).copied() {
             server["ping"] = json!(rtt);
             server["rtt_ms"] = json!(rtt);
+        }
+    }
+    // The server in use keeps the value measured while Windows still routed
+    // normally, instead of a tunnel-local millisecond.
+    if let Some((node_code, cached_ping, port, password)) = active_tunnel {
+        if cached_ping > 0 {
+            for server in normalized.iter_mut() {
+                if server.get("code").and_then(Value::as_str) == Some(node_code.as_str()) {
+                    server["ping"] = json!(cached_ping);
+                    server["rtt_ms"] = json!(cached_ping);
+                }
+            }
+        }
+        // An explicit "check latency" tap while connected goes through the
+        // tunnel's own inbound, because a direct handshake would only time the
+        // local stack. It includes TLS, so it is reported as such.
+        if should_probe && force_probe.unwrap_or(false) {
+            if let Ok(Some(latency)) = tokio::time::timeout(
+                Duration::from_millis(1800),
+                crate::egress::measure_xray_server_latency(port, &password),
+            )
+            .await
+            {
+                for server in normalized.iter_mut() {
+                    if server.get("code").and_then(Value::as_str) == Some(node_code.as_str()) {
+                        server["ping"] = json!(latency);
+                        server["rtt_ms"] = json!(latency);
+                        server["ping_method"] = json!("vpn_https");
+                    }
+                }
+            }
         }
     }
     Ok(normalized)
@@ -2177,7 +2222,26 @@ pub async fn vpn_start(
     // Guard against a routing loop: the VPN endpoint must stay reachable
     // through the physical gateway instead of being captured by TUN.
     let _ = crate::tun_health::vpn_endpoint_reachable_via_physical_gateway("").await;
-    vpn_start_inner(app, state, node_code, false).await
+    match vpn_start_inner(app.clone(), &state, node_code.clone(), false).await {
+        Ok(metrics) => Ok(metrics),
+        // A first attempt that could not confirm traffic is usually a handshake
+        // that landed while Windows was still settling, not a dead country:
+        // customers made it work by pressing "Повторить". Do that once here.
+        Err(error) if is_transient_start_failure(&error) => {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            vpn_start_inner(app, &state, node_code, false).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Failures worth one automatic second attempt: the tunnel was started and
+/// rolled back cleanly, so nothing is left to repair.
+fn is_transient_start_failure(error: &str) -> bool {
+    error.starts_with("Сервер не пропустил интернет-трафик")
+        || error.starts_with("Сервер отвечает, но интернет через него не идёт")
+        || error.starts_with("Сервер отвечает слишком медленно")
+        || error.starts_with("Xray не открыл локальный порт проверки")
 }
 
 /// Selects the server with the smallest positive outbound latency. Used by
@@ -2193,7 +2257,7 @@ pub fn select_fastest_server_latency<S: AsRef<str>>(candidates: &[(S, u32)]) -> 
 
 async fn vpn_start_inner(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: &AppState,
     node_code: Option<String>,
     automatic: bool,
 ) -> Result<TunnelMetrics, String> {
@@ -2396,6 +2460,16 @@ async fn vpn_start_inner(
         #[cfg(not(windows))]
         const CREATE_NO_WINDOW: u32 = 0;
 
+        // Report the network round trip to the server endpoint, here and not
+        // after the TUN exists. Once Xray owns the default route its own stack
+        // answers the handshake locally, so the same measurement read as a
+        // meaningless "1 ms" for every server. Taken before any route change it
+        // is the real distance, and it runs beside the preflight below.
+        let latency_host = host.to_string();
+        let latency_task = tauri::async_runtime::spawn(async move {
+            measure_tcp_rtt(&latency_host, endpoint_port, Duration::from_millis(1400)).await
+        });
+
         // The preflight below parses and runs this exact configuration, so a
         // separate `xray run -test` launch only added a cold process start to
         // every connection without catching anything the preflight misses.
@@ -2576,15 +2650,9 @@ async fn vpn_start_inner(
             // alongside the HTTPS proof instead of after it. The connect path
             // no longer pays for both in sequence.
             let routes_task = tauri::async_runtime::spawn(crate::tun_health::inspect());
-            // Report the network round trip to the server endpoint. An HTTPS
-            // request through the fresh tunnel also pays for Xray and TLS, so
-            // it read as a 400–500 ms "ping" on a healthy 40 ms link. The TCP
-            // handshake needs neither the HTTPS proof nor the route inspection,
-            // so it now runs beside them instead of after a 1.4 s wait.
-            let latency_host = host.to_string();
-            let latency_task = tauri::async_runtime::spawn(async move {
-                measure_tcp_rtt(&latency_host, endpoint_port, Duration::from_millis(1400)).await
-            });
+            // The handshake was measured before the TUN was installed (see
+            // `latency_task` above); here it only needs to be collected, still
+            // without adding a wait to a healthy connection.
             let mut proof = verify_tunnel_path(baseline_ip, probe_port, &probe_password).await;
             if !proof.traffic_confirmed() {
                 // The very first HTTPS attempt can race the Wintun adapter
@@ -2947,7 +3015,7 @@ pub async fn auto_reconnect_if_due(app: AppHandle) {
         .ok()
         .and_then(|mut reconnect| reconnect.due_node(enabled, std::time::Instant::now()));
     if let Some(node_code) = node_code {
-        let _ = vpn_start_inner(app.clone(), app.state::<AppState>(), Some(node_code), true).await;
+        let _ = vpn_start_inner(app.clone(), &app.state::<AppState>(), Some(node_code), true).await;
     }
 }
 
